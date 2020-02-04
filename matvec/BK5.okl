@@ -26,7 +26,7 @@
 
 
 // default to element-per-threadblock
-@kernel void BK5(const dlong Nelements,
+@kernel void BK5_v0(const dlong Nelements,
 		    @restrict const  dfloat *  ggeo,
 		    @restrict const  dfloat *  D,
 		    const dfloat lambda,

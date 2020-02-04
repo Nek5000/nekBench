@@ -22,7 +22,7 @@ ${PROJ_DIR}/BK6: ${PROJ_DIR}/main.cpp makefile ${CORE_DIR}/meshBasis.cpp
 
 
 $(oPath)/%.o:$(sPath)/%.cpp $(wildcard $(subst $(sPath)/,$(iPath)/,$(<:.cpp=.hpp))) $(wildcard $(subst $(sPath)/,$(iPath)/,$(<:.cpp=.tpp)))
-	$(compiler) -DOCCA_VERSION_1_0 $(compilerFlags) -o $@ $(flags) -c $(paths) $<
+	$(compiler) -DOCCA_VERSION_1_0 -g $(compilerFlags) -o $@ $(flags) -c $(paths) $<
 
 clean:
 	rm -f ${PROJ_DIR}/matvec

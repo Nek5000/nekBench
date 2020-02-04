@@ -24,30 +24,14 @@
 
 */
 
-#define dfloat double
-#define dlong int
-#define p_Np (p_Nq*p_Nq*p_Nq)
-
-#define G00ID 0
-#define G01ID 1
-#define G02ID 2
-#define G11ID 3
-#define G12ID 4
-#define G22ID 5
-#define GWJID 6
-#define p_Nggeo 7 
-
-template < const int p_Nq >
-void kernel(const hlong Nelements,
-	    const dfloat * __restrict__ ggeo ,
-	    const dfloat * __restrict__ D ,
-	    const dfloat * __restrict__ S ,
-	    const dfloat lambda,
-	    const dfloat * __restrict__ q ,
-	    dfloat * __restrict__ Aq ){
+extern "C" void BK5(const dlong & Nelements,
+	            const dfloat * __restrict__ ggeo ,
+	            const dfloat * __restrict__ D ,
+	            const dfloat & lambda,
+	            const dfloat * __restrict__ q ,
+	            dfloat * __restrict__ Aq ){
   
   D    = (dfloat*)__builtin_assume_aligned(D, USE_OCCA_MEM_BYTE_ALIGN) ;
-  S    = (dfloat*)__builtin_assume_aligned(S, USE_OCCA_MEM_BYTE_ALIGN) ;
   q    = (dfloat*)__builtin_assume_aligned(q, USE_OCCA_MEM_BYTE_ALIGN) ;
   Aq   = (dfloat*)__builtin_assume_aligned(Aq, USE_OCCA_MEM_BYTE_ALIGN) ;
   ggeo = (dfloat*)__builtin_assume_aligned(ggeo, USE_OCCA_MEM_BYTE_ALIGN) ;
@@ -58,12 +42,10 @@ void kernel(const hlong Nelements,
   dfloat s_Gqt[p_Nq][p_Nq][p_Nq] __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
 
   dfloat s_D[p_Nq][p_Nq]  __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
-  dfloat s_S[p_Nq][p_Nq]  __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
 
   for(int j=0;j<p_Nq;++j){
     for(int i=0;i<p_Nq;++i){
       s_D[j][i] = D[j*p_Nq+i];
-      s_S[j][i] = S[j*p_Nq+i];
     }
   }
 
@@ -86,21 +68,21 @@ void kernel(const hlong Nelements,
       for(int j=0;j<p_Nq;++j){
         for(int i=0;i<p_Nq;++i){
           const dlong gbase = element*p_Nggeo*c_Np + k*p_Nq*p_Nq + j*p_Nq + i;
-          const dfloat r_G00 = ggeo[gbase+G00ID*p_Np];
-          const dfloat r_G01 = ggeo[gbase+G01ID*p_Np];
-          const dfloat r_G11 = ggeo[gbase+G11ID*p_Np];
-          const dfloat r_G12 = ggeo[gbase+G12ID*p_Np];
-          const dfloat r_G02 = ggeo[gbase+G02ID*p_Np];
-          const dfloat r_G22 = ggeo[gbase+G22ID*p_Np];
+          const dfloat r_G00 = ggeo[gbase+p_G00ID*p_Np];
+          const dfloat r_G01 = ggeo[gbase+p_G01ID*p_Np];
+          const dfloat r_G11 = ggeo[gbase+p_G11ID*p_Np];
+          const dfloat r_G12 = ggeo[gbase+p_G12ID*p_Np];
+          const dfloat r_G02 = ggeo[gbase+p_G02ID*p_Np];
+          const dfloat r_G22 = ggeo[gbase+p_G22ID*p_Np];
 
           dfloat qr = 0.f;
           dfloat qs = 0.f;
           dfloat qt = 0.f;
 
           for(int m = 0; m < p_Nq; m++) {
-            qr += s_S[m][i]*s_q[k][j][m];  
-            qs += s_S[m][j]*s_q[k][m][i];           
-            qt += s_S[m][k]*s_q[m][j][i]; 
+            qr += s_D[i][m]*s_q[k][j][m];  
+            qs += s_D[j][m]*s_q[k][m][i];           
+            qt += s_D[k][m]*s_q[m][j][i]; 
           }
 
           dfloat Gqr = r_G00*qr;
@@ -126,7 +108,7 @@ void kernel(const hlong Nelements,
       for(int j=0;j<p_Nq;++j){
         for(int i=0;i<p_Nq;++i){
           const dlong gbase = element*p_Nggeo*p_Np + k*p_Nq*p_Nq + j*p_Nq + i;
-          const dfloat r_GwJ = ggeo[gbase+GWJID*p_Np];
+          const dfloat r_GwJ = ggeo[gbase+p_GWJID*p_Np];
 
           dfloat r_Aq = r_GwJ*lambda*s_q[k][j][i];
           dfloat r_Aqr = 0, r_Aqs = 0, r_Aqt = 0;
@@ -145,23 +127,4 @@ void kernel(const hlong Nelements,
       }
     }
   }
-}
-
-extern "C" void BK5(const int &Nq,
-               const hlong &Nelements,
-               const dfloat *ggeo,
-               const dfloat *D,
-               const dfloat &lambda,
-               const dfloat *q,
-               dfloat *Aq) {
-
-  switch(Nq){
-  case   5: kernel <   5 > (Nelements, ggeo, D, lambda, q, Aq); break;
-  case   6: kernel <   6 > (Nelements, ggeo, D, lambda, q, Aq); break;
-  case   7: kernel <   7 > (Nelements, ggeo, D, lambda, q, Aq); break;
-  case   8: kernel <   8 > (Nelements, ggeo, D, lambda, q, Aq); break;
-  case   9: kernel <   9 > (Nelements, ggeo, D, lambda, q, Aq); break;
-  case  10: kernel <  10 > (Nelements, ggeo, D, lambda, q, Aq); break;
-  }
-
 }

@@ -59,7 +59,7 @@ int main(int argc, char **argv){
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-    Nelements = Nelements/size;
+    Nelements = Nelements;
   }
 
   int deviceId = 0;
@@ -77,7 +77,7 @@ int main(int argc, char **argv){
   const int Np = Nq*Nq*Nq;
   const int Nggeo = 7;
   const int Ndim  = 1;
-  const int Ntests = 10;
+  const int Ntests = 50;
   const dfloat lambda = 0;
   
   const dlong offset = Nelements*Np;
@@ -132,16 +132,18 @@ int main(int argc, char **argv){
   props["defines/p_Np"] = Np;
 
   props["defines/p_Nggeo"] = Nggeo;
-  props["defines/p_G00ID"] = 0;
-  props["defines/p_G01ID"] = 1;
-  props["defines/p_G02ID"] = 2;
-  props["defines/p_G11ID"] = 3;
-  props["defines/p_G12ID"] = 4;
-  props["defines/p_G22ID"] = 5;
-  props["defines/p_GWJID"] = 6;
+  props["defines/p_G00ID"] = p_G00ID;
+  props["defines/p_G01ID"] = p_G01ID;
+  props["defines/p_G02ID"] = p_G02ID;
+  props["defines/p_G11ID"] = p_G11ID;
+  props["defines/p_G12ID"] = p_G12ID;
+  props["defines/p_G22ID"] = p_G22ID;
+  props["defines/p_GWJID"] = p_GWJID;
 
   props["defines/dfloat"] = dfloatString;
   props["defines/dlong"]  = dlongString;
+
+  props["okl"] = false;
 
   // build kernel  
   int BKid = 5;
@@ -150,14 +152,20 @@ int main(int argc, char **argv){
   std::string kernelName = "BK" + std::to_string(BKid);
   occa::kernel axKernel;
 
-  if(strstr(threadModel, "NATIVE/CUDA")){
-    const std::string filename = filename + ".cu";
-    axKernel = device.buildKernel(filename, kernelName, "okl: false");
-  } else if(strstr(threadModel, "NATIVE/SERIAL")){
-    const std::string filename = filename + ".c";
-    axKernel = device.buildKernel(filename, kernelName, "okl: false");
-  } else { // fallback is okl
-    axKernel = device.buildKernel(filename + ".okl", kernelName, props);
+  for (int r=0;r<2;r++){
+    if ((r==0 && rank==0) || (r==1 && rank>0)) {
+      if(strstr(threadModel, "NATIVE+CUDA")){
+        axKernel = device.buildKernel(filename + ".cu", kernelName, props);
+        //axKernel.setRunDims(??, ??);
+      } else if(strstr(threadModel, "NATIVE+SERIAL")){
+        props["defines/USE_OCCA_MEM_BYTE_ALIGN"] = USE_OCCA_MEM_BYTE_ALIGN;
+        axKernel = device.buildKernel(filename + ".c", kernelName, props);
+      } else { // fallback is okl
+        props["okl"] = true;
+        axKernel = device.buildKernel(filename + ".okl", kernelName + "_v0", props);
+      }
+    }
+    if(mpi) MPI_Barrier(MPI_COMM_WORLD);
   }
 
   // populate device arrays
@@ -177,11 +185,11 @@ int main(int argc, char **argv){
 
   occa::streamTag start, end;
 
-  // compute reference solution
-  meshReferenceBK5(Nq, Nelements, lambda, ggeo, DrV, q, Aq);
-
   // warm up
   axKernel(Nelements, o_ggeo, o_DrV, lambda, o_q, o_Aq);
+
+  // compute reference solution
+  meshReferenceBK5(Nq, Nelements, lambda, ggeo, DrV, q, Aq);
 
   // check for correctness
   o_Aq.copyTo(q);
@@ -190,8 +198,9 @@ int main(int argc, char **argv){
     dfloat diff = fabs(q[n]-Aq[n]);
     maxDiff = (maxDiff<diff) ? diff:maxDiff;
   }
-  if (maxDiff > 1e-14)
-    printf("correctness check failed! e_inf = % e\n", maxDiff);
+  if (rank==0 && maxDiff > 1e-12) {
+    std::cout << "WARNING: Correctness check failed!" << maxDiff << "\n";
+  }
 
   // run kernel
   device.finish();
@@ -208,15 +217,16 @@ int main(int argc, char **argv){
 
   double elapsed = device.timeBetween(start, end)/Ntests;
 
-  dfloat GnodesPerSecond = (Np*Nelements/elapsed)/1.e9;
+  dfloat GnodesPerSecond = (size*Np*Nelements/elapsed)/1.e9;
   int bytesMoved = (2*Np+7*Np)*sizeof(dfloat); // x, Mx, opa
-  double bw = (bytesMoved*Nelements/elapsed)/1.e9;
+  double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
 
   if(rank==0) {
-    std::cout << "Ndim=" << Ndim
+    std::cout << "MPItasks=" << size
+              << " Ndim=" << Ndim
               << " N=" << N
-              << " Nelements=" << Nelements
-              << " Nnodes=" << Ndim*Np*Nelements
+              << " Nelements=" << size*Nelements
+              << " Nnodes=" << Ndim*Np*size*Nelements
               << " elapsed time=" << elapsed
               << " Gnodes/s=" << GnodesPerSecond
               << " GB/s=" << bw
