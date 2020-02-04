@@ -24,12 +24,12 @@
 
 */
 
-extern "C" void BK5(const dlong & Nelements,
-	            const dfloat * __restrict__ ggeo ,
-	            const dfloat * __restrict__ D ,
-	            const dfloat & lambda,
-	            const dfloat * __restrict__ q ,
-	            dfloat * __restrict__ Aq ){
+extern "C" void BK5_v0(const dlong & Nelements,
+	               const dfloat * __restrict__ ggeo ,
+	               const dfloat * __restrict__ D ,
+	               const dfloat & lambda,
+	               const dfloat * __restrict__ q ,
+	               dfloat * __restrict__ Aq ){
   
   D    = (dfloat*)__builtin_assume_aligned(D, USE_OCCA_MEM_BYTE_ALIGN) ;
   q    = (dfloat*)__builtin_assume_aligned(q, USE_OCCA_MEM_BYTE_ALIGN) ;

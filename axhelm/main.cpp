@@ -47,7 +47,8 @@ dfloat *drandAlloc(int N){
   return v;
 }
 
-occa::kernel loadKernel(int Nq, occa::device device, char *threadModel){
+occa::kernel loadKernel(int Nq, occa::device device, char *threadModel,
+                        std::string filename, std::string kernelName){
 
   int rank = 1;
   if(USEMPI) MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -78,24 +79,21 @@ occa::kernel loadKernel(int Nq, occa::device device, char *threadModel){
 
   props["okl"] = false;
 
-  // build kernel  
-  int BKid = 5;
-  //if (Ndim > 1) BKid = 6; 
-  std::string filename = "BK" + std::to_string(BKid);
-  std::string kernelName = "BK" + std::to_string(BKid);
   occa::kernel axKernel;
 
   for (int r=0;r<2;r++){
     if ((r==0 && rank==0) || (r==1 && rank>0)) {
       if(strstr(threadModel, "NATIVE+CUDA")){
-        axKernel = device.buildKernel(filename + ".cu", kernelName, props);
-        //axKernel.setRunDims(??, ??);
+        std::cout << "Current mode " <<+ threadModel << " not supported yet!\n";
+        exit(1); 
+        //axKernel = device.buildKernel(filename + ".cu", kernelName, props);
+        //axKernel.setRunDims((Nelements+Nblock+1)/Nblock, ??);
       } else if(strstr(threadModel, "NATIVE+SERIAL")){
         props["defines/USE_OCCA_MEM_BYTE_ALIGN"] = USE_OCCA_MEM_BYTE_ALIGN;
         axKernel = device.buildKernel(filename + ".c", kernelName, props);
       } else { // fallback is okl
         props["okl"] = true;
-        axKernel = device.buildKernel(filename + ".okl", kernelName + "_v0", props);
+        axKernel = device.buildKernel(filename + ".okl", kernelName, props);
       }
     }
     if(USEMPI) MPI_Barrier(MPI_COMM_WORLD);
@@ -106,12 +104,12 @@ occa::kernel loadKernel(int Nq, occa::device device, char *threadModel){
 
 int main(int argc, char **argv){
 
-  if(argc<4){
-    printf("Usage: ./matvec Nq numElements [MPI]+[NATIVE|OKL]+SERIAL|CUDA|OPENCL|SERIAL [deviceID] [platformID]\n");
+  if(argc<5){
+    printf("Usage: ./axhelm N numElements [MPI]+[NATIVE|OKL]+SERIAL|CUDA|OPENCL|SERIAL [kernelVersion] [deviceID] [platformID]\n");
     return 1;
   }
 
-  const int Nq = atoi(argv[1]);
+  const int N = atoi(argv[1]);
   dlong Nelements = atoi(argv[2]);
   char *threadModel = strdup(argv[3]);
 
@@ -125,18 +123,19 @@ int main(int argc, char **argv){
     Nelements = Nelements;
   }
 
-  int deviceId = 0;
-
+  int kernelVersion = 0;
   if(argc>=5)
-    deviceId = atoi(argv[4]);
+    kernelVersion = atoi(argv[4]);
+
+  int deviceId = 0;
+  if(argc>=6)
+    deviceId = atoi(argv[5]);
   
   int platformId = 0;
-  if(argc>=6)
-    platformId = atoi(argv[5]);
+  if(argc>=7)
+    platformId = atoi(argv[6]);
 
-  if(rank==0) std::cout << "Running: Nq=" << Nq << " Nelements=" << Nelements << "\n";
-  
-  const int N = Nq-1;
+  const int Nq = N+1;
   const int Np = Nq*Nq*Nq;
   const int Ndim  = 1;
   const int Ntests = 40;
@@ -175,7 +174,10 @@ int main(int argc, char **argv){
   if(rank==0) std::cout <<  "active occa mode: " << device.mode() << "\n";
 
   // load kernel
-  occa::kernel axKernel = loadKernel(Nq, device, threadModel);
+  std::string filename = "BK5";
+  std::string kernelName = "BK5_v" + std::to_string(kernelVersion);
+
+  occa::kernel axKernel = loadKernel(Nq, device, threadModel, filename, kernelName);
 
   // populate device arrays
   dfloat *ggeo = drandAlloc(Np*Nelements*p_Nggeo);
@@ -215,13 +217,13 @@ int main(int argc, char **argv){
   if(USEMPI) MPI_Barrier(MPI_COMM_WORLD); 
   end = device.tagStream();
 
-  device.finish();
-
   // print statistics
   const double elapsed = device.timeBetween(start, end)/Ntests;
   const dfloat GnodesPerSecond = (size*Np*Nelements/elapsed)/1.e9;
   const int bytesMoved = (2*Np+7*Np)*sizeof(dfloat); // x, Mx, opa
   const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
+  double flopCount = Np*(6*2*Nq + 17);
+  double gflops = (flopCount*size*Nelements/elapsed)/1.e9;
   if(rank==0) {
     std::cout << "MPItasks=" << size
               << " Ndim=" << Ndim
@@ -231,6 +233,7 @@ int main(int argc, char **argv){
               << " elapsed time=" << elapsed
               << " Gnodes/s=" << GnodesPerSecond
               << " GB/s=" << bw
+              << " GFLOPS/s=" << gflops
               << "\n";
   } 
 
