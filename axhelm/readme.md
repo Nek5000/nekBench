@@ -1,5 +1,11 @@
-export OCCA_DIR=$HOME/occa
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$OCCA_DIR/lib
+Fist we need to setup some env vars:
+
+>export OCCA_DIR=$HOME/occa
+>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$OCCA_DIR/lib
+
+Then simply run
+
+>make
 
 To run the kernel with N=7 and 8192 elements
 

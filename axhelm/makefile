@@ -19,7 +19,7 @@ compilerFlags += -DUSE_OCCA_MEM_BYTE_ALIGN=64
 BLASLAPACK_DIR = ../3rdParty/BlasLapack
 
 ${PROJ_DIR}/BK6: ${PROJ_DIR}/main.cpp makefile ${CORE_DIR}/meshBasis.cpp libblas
-	$(compiler) -DOCCA_VERSION_1_0 $(compilerFlags) -o matvec $(linkerFlags) ${PROJ_DIR}/main.cpp -I${CORE_DIR} ${CORE_DIR}/meshBasis.cpp $(paths) $(BLASLAPACK_DIR)/libBlasLapack.a -lgfortran -L${OCCA_DIR}/lib $(flags) 
+	$(compiler) -DOCCA_VERSION_1_0 $(compilerFlags) -o axhelm $(linkerFlags) ${PROJ_DIR}/main.cpp -I${CORE_DIR} ${CORE_DIR}/meshBasis.cpp $(paths) $(BLASLAPACK_DIR)/libBlasLapack.a -lgfortran -L${OCCA_DIR}/lib $(flags) 
 #$(linkerFlags)
 
 
@@ -30,5 +30,5 @@ libblas:
 	cd ../3rdParty/BlasLapack; make -j lib
 
 clean:
-	rm -f ${PROJ_DIR}/matvec
+	rm -f ${PROJ_DIR}/axhelm
 	make -C $(BLASLAPACK_DIR) clean
