@@ -51,6 +51,11 @@ int main(int argc, char **argv){
   dlong Nelements = atoi(argv[2]);
   char *threadModel = strdup(argv[3]);
 
+  if(argc<4){
+    printf("Usage: ./matvec Nq numElements [MPI]+[NATIVE|OKL]+SERIAL|CUDA|OPENCL|SERIAL [deviceID] [platformID]\n");
+    return 1;
+  }
+
   int mpi = 0;
   if(strstr(threadModel, "MPI")) mpi = 1;
 
