@@ -106,14 +106,14 @@ occa::kernel loadKernel(int Nq, occa::device device, char *threadModel){
 
 int main(int argc, char **argv){
 
-  const int Nq = atoi(argv[1]);
-  dlong Nelements = atoi(argv[2]);
-  char *threadModel = strdup(argv[3]);
-
   if(argc<4){
     printf("Usage: ./matvec Nq numElements [MPI]+[NATIVE|OKL]+SERIAL|CUDA|OPENCL|SERIAL [deviceID] [platformID]\n");
     return 1;
   }
+
+  const int Nq = atoi(argv[1]);
+  dlong Nelements = atoi(argv[2]);
+  char *threadModel = strdup(argv[3]);
 
   if(strstr(threadModel, "MPI")) USEMPI = 1;
 
