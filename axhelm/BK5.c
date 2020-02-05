@@ -104,7 +104,7 @@ extern "C" void BK5_v0(const dlong & Nelements,
       }
     }
 
-    for(int k = 0;k < p_Nq; k++){
+    for(int k = 0;k <p_Nq; k++){
       for(int j=0;j<p_Nq;++j){
         for(int i=0;i<p_Nq;++i){
           const dlong gbase = element*p_Nggeo*p_Np + k*p_Nq*p_Nq + j*p_Nq + i;
@@ -112,7 +112,6 @@ extern "C" void BK5_v0(const dlong & Nelements,
 
           dfloat r_Aq = r_GwJ*lambda*s_q[k][j][i];
           dfloat r_Aqr = 0, r_Aqs = 0, r_Aqt = 0;
-
 
           for(int m = 0; m < p_Nq; m++)
             r_Aqr += s_D[m][i]*s_Gqr[k][j][m];

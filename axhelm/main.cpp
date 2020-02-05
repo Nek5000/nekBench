@@ -34,7 +34,9 @@ SOFTWARE.
 #include "occa.hpp"
 #include "meshBasis.hpp"
 
-int USEMPI = 0;
+static int USEMPI = 0;
+static dlong Nelements = 0;
+static int N;
 
 dfloat *drandAlloc(int N){
 
@@ -47,12 +49,15 @@ dfloat *drandAlloc(int N){
   return v;
 }
 
-occa::kernel loadKernel(int Nq, occa::device device, char *threadModel,
-                        std::string filename, std::string kernelName){
+occa::kernel loadKernel(occa::device device, char *threadModel,
+                        std::string kernelName){
 
   int rank = 1;
   if(USEMPI) MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+  std::string filename = "BK5";
+
+  const int Nq = N + 1;
   const int Np = Nq*Nq*Nq;
   occa::env::OCCA_MEM_BYTE_ALIGN = USE_OCCA_MEM_BYTE_ALIGN;
  
@@ -84,10 +89,8 @@ occa::kernel loadKernel(int Nq, occa::device device, char *threadModel,
   for (int r=0;r<2;r++){
     if ((r==0 && rank==0) || (r==1 && rank>0)) {
       if(strstr(threadModel, "NATIVE+CUDA")){
-        std::cout << "Current mode " <<+ threadModel << " not supported yet!\n";
-        exit(1); 
-        //axKernel = device.buildKernel(filename + ".cu", kernelName, props);
-        //axKernel.setRunDims((Nelements+Nblock+1)/Nblock, ??);
+        axKernel = device.buildKernel(filename + ".cu", kernelName, props);
+        axKernel.setRunDims(Nelements, Nq*Nq);
       } else if(strstr(threadModel, "NATIVE+SERIAL")){
         props["defines/USE_OCCA_MEM_BYTE_ALIGN"] = USE_OCCA_MEM_BYTE_ALIGN;
         axKernel = device.buildKernel(filename + ".c", kernelName, props);
@@ -109,8 +112,8 @@ int main(int argc, char **argv){
     return 1;
   }
 
-  const int N = atoi(argv[1]);
-  dlong Nelements = atoi(argv[2]);
+  N = atoi(argv[1]);
+  Nelements = atoi(argv[2]);
   char *threadModel = strdup(argv[3]);
 
   if(strstr(threadModel, "MPI")) USEMPI = 1;
@@ -174,10 +177,8 @@ int main(int argc, char **argv){
   if(rank==0) std::cout <<  "active occa mode: " << device.mode() << "\n";
 
   // load kernel
-  std::string filename = "BK5";
   std::string kernelName = "BK5_v" + std::to_string(kernelVersion);
-
-  occa::kernel axKernel = loadKernel(Nq, device, threadModel, filename, kernelName);
+  occa::kernel axKernel = loadKernel(device, threadModel, kernelName);
 
   // populate device arrays
   dfloat *ggeo = drandAlloc(Np*Nelements*p_Nggeo);

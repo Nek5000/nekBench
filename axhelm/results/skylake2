@@ -1,0 +1,12 @@
+2 x Intel(R) Xeon(R) Gold 6252 CPU @ 2.10GHz
+
+kernel: BK5.c version 0
+
+OCCA_CXX='g++' (GCC 7.4.0) 
+OCCA_CXXFLAGS='-O3 -march=native -mtune=native'
+
+MPItasks=48 Ndim=1 N=7 Nelements=960 Nnodes=491520 elapsed time=4.81181e-05 Gnodes/s=10.2149 GB/s=735.47 GFLOPS/s=1154.28
+MPItasks=48 Ndim=1 N=7 Nelements=1920 Nnodes=983040 elapsed time=0.000146281 Gnodes/s=6.7202 GB/s=483.854 GFLOPS/s=759.382
+MPItasks=48 Ndim=1 N=7 Nelements=3840 Nnodes=1966080 elapsed time=0.00036082 Gnodes/s=5.44893 GB/s=392.323 GFLOPS/s=615.729
+MPItasks=48 Ndim=1 N=7 Nelements=7680 Nnodes=3932160 elapsed time=0.00110764 Gnodes/s=3.55003 GB/s=255.602 GFLOPS/s=401.153
+MPItasks=48 Ndim=1 N=7 Nelements=11520 Nnodes=5898240 elapsed time=0.00181274 Gnodes/s=3.25376 GB/s=234.271 GFLOPS/s=367.675

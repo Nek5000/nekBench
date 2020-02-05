@@ -155,8 +155,6 @@
   }
 }
 
-
-
 @kernel void BK5_v1(const dlong Nelements,
 		    @restrict const  dfloat *  ggeo,
 		    @restrict const  dfloat *  D,
@@ -912,8 +910,3 @@
   }
   
 }
-
-
-
-
-
