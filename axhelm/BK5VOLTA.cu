@@ -8,7 +8,6 @@ See LICENSE file.
 #include <stdlib.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
-//#include "meshBasis.hpp"
 
 __forceinline__ __device__ __host__  int ijN(const int i, const int j, const int N){
 

@@ -2,6 +2,8 @@
 PROJ_DIR=./
 CORE_DIR=../core
 
+SP ?= 0
+
 ifndef OCCA_DIR
 ERROR:
 	@echo "ERROR:  Environment variable OCCA_DIR is not set."
@@ -12,8 +14,13 @@ include ${OCCA_DIR}/scripts/Makefile
 compiler = mpic++
 compilerFlags += -Ddlong=int
 compilerFlags += -DdlongString='"int"'
+ifeq (1,$(SP))
+compilerFlags += -Ddfloat=float
+compilerFlags += -DdfloatString='"float"'
+else
 compilerFlags += -Ddfloat=double
 compilerFlags += -DdfloatString='"double"'
+endif
 compilerFlags += -DUSE_OCCA_MEM_BYTE_ALIGN=64
 
 BLASLAPACK_DIR = ../3rdParty/BlasLapack

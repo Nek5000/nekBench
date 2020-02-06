@@ -35,8 +35,9 @@ SOFTWARE.
 #include "meshBasis.hpp"
 
 static int USEMPI = 0;
-static dlong Nelements = 0;
+static int Nelements = 0;
 static int N;
+static int assembled = 0;
 
 dfloat *drandAlloc(int N){
 
@@ -50,12 +51,10 @@ dfloat *drandAlloc(int N){
 }
 
 occa::kernel loadKernel(occa::device device, char *threadModel,
-                        std::string kernelName){
+                        std::string arch, std::string kernelName){
 
   int rank = 1;
   if(USEMPI) MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-  std::string filename = "BK5";
 
   const int Nq = N + 1;
   const int Np = Nq*Nq*Nq;
@@ -86,11 +85,12 @@ occa::kernel loadKernel(occa::device device, char *threadModel,
 
   occa::kernel axKernel;
 
+  std::string filename = "BK5" + arch;
   for (int r=0;r<2;r++){
     if ((r==0 && rank==0) || (r==1 && rank>0)) {
       if(strstr(threadModel, "NATIVE+CUDA")){
         axKernel = device.buildKernel(filename + ".cu", kernelName, props);
-        axKernel.setRunDims(Nelements, Nq*Nq);
+        axKernel.setRunDims(Nelements, (N+1)*(N+1));
       } else if(strstr(threadModel, "NATIVE+SERIAL")){
         props["defines/USE_OCCA_MEM_BYTE_ALIGN"] = USE_OCCA_MEM_BYTE_ALIGN;
         axKernel = device.buildKernel(filename + ".c", kernelName, props);
@@ -101,14 +101,33 @@ occa::kernel loadKernel(occa::device device, char *threadModel,
     }
     if(USEMPI) MPI_Barrier(MPI_COMM_WORLD);
   }
-
   return axKernel;
+}
+
+void runKernel(occa::kernel axKernel,
+               dlong Nelements, occa::memory o_ggeo, occa::memory o_DrV, dfloat lambda, 
+               occa::memory o_q, occa::memory o_Aq){
+
+    if(assembled) {
+/*
+      axKernel(NglobalGatherElements, o_globalGatherElementList, o_ggeo, o_DrV, 
+               lambda, o_q, o_Aq);
+      ogsGatherScatterStart(o_Aq, ogsDfloat, ogsAdd, ogs);
+      axKernel(NlocalGatherElements, o_localGatherElementList, o_ggeo, o_DrV, 
+               lambda, o_q, o_Aq);
+      ogsGatherScatterFinish(o_Aq, ogsDfloat, ogsAdd, ogs);
+*/
+      std::cout << "ERROR: assembled version not implemented yet!\n";
+      exit(1);
+    } else {
+      axKernel(Nelements, o_ggeo, o_DrV, lambda, o_q, o_Aq);
+    }
 }
 
 int main(int argc, char **argv){
 
-  if(argc<5){
-    printf("Usage: ./axhelm N numElements [MPI]+[NATIVE|OKL]+SERIAL|CUDA|OPENCL|SERIAL [kernelVersion] [deviceID] [platformID]\n");
+  if(argc<4){
+    printf("Usage: ./axhelm N numElements [MPI]+[NATIVE|OKL]+SERIAL|CUDA|OPENCL|SERIAL+VOLTA [kernelVersion] [deviceID] [platformID]\n");
     return 1;
   }
 
@@ -123,20 +142,23 @@ int main(int argc, char **argv){
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-    Nelements = Nelements;
   }
 
-  int kernelVersion = 0;
+  std::string arch("");
   if(argc>=5)
-    kernelVersion = atoi(argv[4]);
+    arch.assign(argv[4]);
+
+  int kernelVersion = 0;
+  if(argc>=6)
+    kernelVersion = atoi(argv[5]);
 
   int deviceId = 0;
-  if(argc>=6)
-    deviceId = atoi(argv[5]);
+  if(argc>=7)
+    deviceId = atoi(argv[6]);
   
   int platformId = 0;
-  if(argc>=7)
-    platformId = atoi(argv[6]);
+  if(argc>=8)
+    platformId = atoi(argv[7]);
 
   const int Nq = N+1;
   const int Np = Nq*Nq*Nq;
@@ -174,11 +196,16 @@ int main(int argc, char **argv){
   std::string deviceConfigString(deviceConfig);
   device.setup(deviceConfigString);
 
-  if(rank==0) std::cout <<  "active occa mode: " << device.mode() << "\n";
+  if(rank==0) {
+   std::cout << "word size: " << sizeof(dfloat) << " bytes\n";
+   std::cout << "active occa mode: " << device.mode() << "\n";
+  }
 
   // load kernel
-  std::string kernelName = "BK5_v" + std::to_string(kernelVersion);
-  occa::kernel axKernel = loadKernel(device, threadModel, kernelName);
+  std::string kernelName = "BK5_v";
+  if(assembled) kernelName = "BK5partial_v";   
+  kernelName += std::to_string(kernelVersion);
+  occa::kernel axKernel = loadKernel(device, threadModel, arch, kernelName);
 
   // populate device arrays
   dfloat *ggeo = drandAlloc(Np*Nelements*p_Nggeo);
@@ -193,7 +220,7 @@ int main(int argc, char **argv){
   occa::streamTag start, end;
 
   // warm up
-  axKernel(Nelements, o_ggeo, o_DrV, lambda, o_q, o_Aq);
+  runKernel(axKernel, Nelements, o_ggeo, o_DrV, lambda, o_q, o_Aq);
 
   // check for correctness
   meshReferenceBK5(Nq, Nelements, lambda, ggeo, DrV, q, Aq);
@@ -213,7 +240,7 @@ int main(int argc, char **argv){
   start = device.tagStream();
 
   for(int test=0;test<Ntests;++test)
-    axKernel(Nelements, o_ggeo, o_DrV, lambda, o_q, o_Aq);
+    runKernel(axKernel, Nelements, o_ggeo, o_DrV, lambda, o_q, o_Aq);
  
   if(USEMPI) MPI_Barrier(MPI_COMM_WORLD); 
   end = device.tagStream();
