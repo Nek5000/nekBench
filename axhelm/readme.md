@@ -11,7 +11,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$OCCA_DIR/lib
 
 Then, just run 
 ```
-make
+make MPI=1 WS=8
 ```
 
 to build the benchmark. 
@@ -31,5 +31,5 @@ Here a few examples how to run the benchmark for 8192 elements with a polynomial
 
 ### MPI with native CPU kernel
 ```
-OCCA_CXX='g++' OCCA_CXXFLAGS='-O3 -march=native -mtune=native' mpirun -np 32 -bind-to core ./axhelm 7 256 MPI+NATIVE+SERIAL
+OCCA_CXX='g++' OCCA_CXXFLAGS='-O3 -march=native -mtune=native' mpirun -np 32 -bind-to core ./axhelm 7 256 NATIVE+SERIAL
 ```

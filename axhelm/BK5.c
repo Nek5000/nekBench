@@ -85,17 +85,9 @@ extern "C" void BK5_v0(const dlong & Nelements,
             qt += s_D[k][m]*s_q[m][j][i]; 
           }
 
-          dfloat Gqr = r_G00*qr;
-          Gqr += r_G01*qs;
-          Gqr += r_G02*qt;
-          
-          dfloat Gqs = r_G01*qr;
-          Gqs += r_G11*qs;
-          Gqs += r_G12*qt;
-
-          dfloat Gqt = r_G02*qr;
-          Gqt += r_G12*qs;
-          Gqt += r_G22*qt;
+          dfloat Gqr = r_G00*qr + r_G01*qs + r_G02*qt;
+          dfloat Gqs = r_G01*qr + r_G11*qs + r_G12*qt;
+          dfloat Gqt = r_G02*qr + r_G12*qs + r_G22*qt;
           
           s_Gqr[k][j][i] = Gqr;
           s_Gqs[k][j][i] = Gqs;
@@ -110,7 +102,7 @@ extern "C" void BK5_v0(const dlong & Nelements,
           const dlong gbase = element*p_Nggeo*p_Np + k*p_Nq*p_Nq + j*p_Nq + i;
           const dfloat r_GwJ = ggeo[gbase+p_GWJID*p_Np];
 
-          dfloat r_Aq = r_GwJ*lambda*s_q[k][j][i];
+          const dfloat r_Aq = r_GwJ*lambda*s_q[k][j][i];
           dfloat r_Aqr = 0, r_Aqs = 0, r_Aqt = 0;
 
           for(int m = 0; m < p_Nq; m++)

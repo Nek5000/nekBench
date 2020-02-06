@@ -2,7 +2,8 @@
 PROJ_DIR=./
 CORE_DIR=../core
 
-SP ?= 0
+WS ?= 8
+MPI ?= 1
 
 ifndef OCCA_DIR
 ERROR:
@@ -12,9 +13,12 @@ endif
 include ${OCCA_DIR}/scripts/Makefile
 
 compiler = mpic++
+ifeq (1,$(MPI))
+compilerFlags += -DUSEMPI
+endif
 compilerFlags += -Ddlong=int
 compilerFlags += -DdlongString='"int"'
-ifeq (1,$(SP))
+ifeq (4,$(WS))
 compilerFlags += -Ddfloat=float
 compilerFlags += -DdfloatString='"float"'
 else
