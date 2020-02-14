@@ -49,14 +49,10 @@ dfloat *drandAlloc(int N){
 
 int main(int argc, char **argv){
 
-  if(argc<4){
-    printf("Usage: ./axhelm N numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL|SERIAL+VOLTA [kernelVersion] [deviceID] [platformID]\n");
+  if(argc<5){
+    printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL SERIAL+VOLTA [kernelVersion] [deviceID] [platformID]\n");
     return 1;
   }
-
-  const int N = atoi(argv[1]);
-  const dlong Nelements = atoi(argv[2]);
-  char *threadModel = strdup(argv[3]);
 
   int rank = 0, size = 1;
 #ifdef USEMPI
@@ -65,26 +61,30 @@ int main(int argc, char **argv){
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 #endif
 
+  const int N = atoi(argv[1]);
+  const int Ndim = atoi(argv[2]);
+  const dlong Nelements = atoi(argv[3]);
+  char *threadModel = strdup(argv[4]);
+
   std::string arch("");
-  if(argc>=5)
-    arch.assign(argv[4]);
+  if(argc>=6)
+    arch.assign(argv[5]);
 
   int kernelVersion = 0;
-  if(argc>=6)
-    kernelVersion = atoi(argv[5]);
+  if(argc>=7)
+    kernelVersion = atoi(argv[6]);
 
   int deviceId = 0;
-  if(argc>=7)
+  if(argc>=8)
     deviceId = atoi(argv[6]);
   
   int platformId = 0;
-  if(argc>=8)
-    platformId = atoi(argv[7]);
+  if(argc>=9)
+    platformId = atoi(argv[8]);
 
   const int Nq = N+1;
   const int Np = Nq*Nq*Nq;
-  const int Ndim  = 1;
-  const int Ntests = 20000;
+  const int Ntests = 100;
   const dfloat lambda = 1.1;
   
   const dlong offset = Nelements*Np;
@@ -125,9 +125,10 @@ int main(int argc, char **argv){
   }
 
   // load kernel
-  std::string kernelName = "BK5_v";
-  if(assembled) kernelName = "BK5partial_v";   
-  kernelName += std::to_string(kernelVersion);
+  std::string kernelName = "BK5";
+  if(assembled) kernelName = "BK5partial"; 
+  if(Ndim > 1) kernelName += "_N" + std::to_string(Ndim);
+  kernelName += "_v" + std::to_string(kernelVersion);
   loadAxKernel(device, threadModel, arch, kernelName, N, Nelements);
 
   // populate device arrays
@@ -143,17 +144,21 @@ int main(int argc, char **argv){
   occa::streamTag start, end;
 
   // warm up
-  runAxKernel(Nelements, o_ggeo, o_DrV, lambda, o_q, o_Aq, assembled);
+  runAxKernel(Nelements, Ndim, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq, assembled);
 
   // check for correctness
-  meshReferenceBK5(Nq, Nelements, lambda, ggeo, DrV, q, Aq);
+  for(int n=0;n<Ndim;++n){
+    dfloat *x = q + n*offset;
+    dfloat *Ax = Aq + n*offset; 
+    meshReferenceBK5(Nq, Nelements, lambda, ggeo, DrV, x, Ax);
+  }
   o_Aq.copyTo(q);
   dfloat maxDiff = 0;
   for(int n=0;n<Ndim*Np*Nelements;++n){
     dfloat diff = fabs(q[n]-Aq[n]);
     maxDiff = (maxDiff<diff) ? diff:maxDiff;
   }
-  if (rank==0 && maxDiff > 1e-12) {
+  if (rank==0 && maxDiff > 5e-12) {
     std::cout << "WARNING: Correctness check failed!" << maxDiff << "\n";
   }
 
@@ -165,7 +170,7 @@ int main(int argc, char **argv){
   start = device.tagStream();
 
   for(int test=0;test<Ntests;++test)
-    runAxKernel(Nelements, o_ggeo, o_DrV, lambda, o_q, o_Aq, assembled);
+    runAxKernel(Nelements, Ndim, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq, assembled);
 
  #ifdef USEMPI
   MPI_Barrier(MPI_COMM_WORLD);
@@ -174,10 +179,12 @@ int main(int argc, char **argv){
 
   // print statistics
   const double elapsed = device.timeBetween(start, end)/Ntests;
-  const dfloat GnodesPerSecond = (size*Np*Nelements/elapsed)/1.e9;
-  const int bytesMoved = (2*Np+7*Np)*sizeof(dfloat); // x, Mx, opa
+  const dfloat GnodesPerSecond = (size*Ndim*Np*Nelements/elapsed)/1.e9;
+  const int bytesMoved = (Ndim*2*Np+7*Np)*sizeof(dfloat); // x, Mx, opa
   const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
-  double flopCount = Np*(6*2*Nq + 17);
+  double flopCount = Ndim*Np*12*Nq;
+  if(Ndim == 1) flopCount += 18*Np;
+  if(Ndim == 3) flopCount += 57*Np;
   double gflops = (flopCount*size*Nelements/elapsed)/1.e9;
   if(rank==0) {
     std::cout << "MPItasks=" << size

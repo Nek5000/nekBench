@@ -56,7 +56,8 @@ void loadAxKernel(occa::device device, char *threadModel,
   }
 }
 
-void runAxKernel(dlong Nelements, occa::memory o_ggeo, occa::memory o_DrV, dfloat lambda, 
+void runAxKernel(dlong Nelements, int Ndim, dlong offset, occa::memory o_ggeo, 
+                 occa::memory o_DrV, dfloat lambda, 
                  occa::memory o_q, occa::memory o_Aq, int assembled = 0){
 
     if(assembled) {
@@ -70,7 +71,13 @@ void runAxKernel(dlong Nelements, occa::memory o_ggeo, occa::memory o_DrV, dfloa
 */
       std::cout << "ERROR: assembled version not implemented yet!\n";
       exit(1);
+
     } else {
-      axKernel(Nelements, o_ggeo, o_DrV, lambda, o_q, o_Aq);
+
+      if(Ndim == 1)
+        axKernel(Nelements, o_ggeo, o_DrV, lambda, o_q, o_Aq);
+      else
+        axKernel(Nelements, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq);
+
     }
 }
