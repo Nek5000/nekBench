@@ -1,9 +1,9 @@
+WS ?= 8
+MPI ?= 1
+NALIGN ?= 64
 
 PROJ_DIR=./
 CORE_DIR=../core
-
-WS ?= 8
-MPI ?= 1
 
 ifndef OCCA_DIR
 ERROR:
@@ -25,7 +25,7 @@ else
 compilerFlags += -Ddfloat=double
 compilerFlags += -DdfloatString='"double"'
 endif
-compilerFlags += -DUSE_OCCA_MEM_BYTE_ALIGN=64
+compilerFlags += -DUSE_OCCA_MEM_BYTE_ALIGN=$(NALIGN)
 
 BLASLAPACK_DIR = ../3rdParty/BlasLapack
 

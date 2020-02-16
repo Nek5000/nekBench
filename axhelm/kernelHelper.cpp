@@ -11,13 +11,14 @@ void loadAxKernel(occa::device device, char *threadModel,
 
   const int Nq = N + 1;
   const int Np = Nq*Nq*Nq;
-  occa::env::OCCA_MEM_BYTE_ALIGN = USE_OCCA_MEM_BYTE_ALIGN;
  
   occa::properties props;
   props["defines"].asObject();
   props["includes"].asArray();
   props["header"].asArray();
   props["flags"].asObject();
+
+  props["defines/p_Nalign"] = USE_OCCA_MEM_BYTE_ALIGN;
 
   props["defines/p_Nq"] = Nq;
   props["defines/p_Np"] = Np;
@@ -36,7 +37,7 @@ void loadAxKernel(occa::device device, char *threadModel,
 
   props["okl"] = false;
 
-  std::string filename = "BK5" + arch;
+  std::string filename = "kernel/" + arch;
   for (int r=0;r<2;r++){
     if ((r==0 && rank==0) || (r==1 && rank>0)) {
       if(strstr(threadModel, "NATIVE+CUDA")){

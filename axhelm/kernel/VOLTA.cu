@@ -40,7 +40,7 @@ __forceinline__ __device__ __host__ int ijklN(const int i, const int j, const in
 __constant__ dfloat const_DofToDofD[MAX_DOFS_1D*MAX_DOFS_1D];
 
 __forceinline__ __device__ 
-  void BK5Device(const int numElements,
+  void axhelmDevice(const int numElements,
 		 const int element,
 		 const dfloat lambda,
 		 const dfloat * __restrict__ op,
@@ -127,7 +127,7 @@ __forceinline__ __device__
   
 }
 
-extern "C" __global__ void BK5_v0(const int numElements,
+extern "C" __global__ void axhelm_v0(const int numElements,
 		                  const dfloat * __restrict__ op,
 		                  const dfloat * __restrict__ DofToDofD,
 	       	                  const dfloat lambda,
@@ -160,7 +160,7 @@ extern "C" __global__ void BK5_v0(const int numElements,
   
   __syncthreads();
   
-  BK5Device(numElements, element, lambda, op, s_DofToDofD, r_q, r_Aq);
+  axhelmDevice(numElements, element, lambda, op, s_DofToDofD, r_q, r_Aq);
   
   if(element<numElements){
 #pragma unroll

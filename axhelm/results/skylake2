@@ -1,6 +1,6 @@
 2 x Intel(R) Xeon(R) Gold 6252 CPU @ 2.10GHz
 
-kernel: BK5.c version 0
+kernel: axhelm.c version 0
 
 OCCA_CXX='g++' (GCC 7.4.0) 
 OCCA_CXXFLAGS='-O3 -march=native -mtune=native'

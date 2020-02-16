@@ -24,24 +24,24 @@
 
 */
 
-extern "C" void BK5_v0(const dlong & Nelements,
+extern "C" void axhelm_v0(const dlong & Nelements,
 	               const dfloat * __restrict__ ggeo ,
 	               const dfloat * __restrict__ D ,
 	               const dfloat & lambda,
 	               const dfloat * __restrict__ q ,
 	               dfloat * __restrict__ Aq ){
   
-  D    = (dfloat*)__builtin_assume_aligned(D, USE_OCCA_MEM_BYTE_ALIGN) ;
-  q    = (dfloat*)__builtin_assume_aligned(q, USE_OCCA_MEM_BYTE_ALIGN) ;
-  Aq   = (dfloat*)__builtin_assume_aligned(Aq, USE_OCCA_MEM_BYTE_ALIGN) ;
-  ggeo = (dfloat*)__builtin_assume_aligned(ggeo, USE_OCCA_MEM_BYTE_ALIGN) ;
+  D    = (dfloat*)__builtin_assume_aligned(D, p_Nalign) ;
+  q    = (dfloat*)__builtin_assume_aligned(q, p_Nalign) ;
+  Aq   = (dfloat*)__builtin_assume_aligned(Aq, p_Nalign) ;
+  ggeo = (dfloat*)__builtin_assume_aligned(ggeo, p_Nalign) ;
   
-  dfloat s_q  [p_Nq][p_Nq][p_Nq] __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
-  dfloat s_Gqr[p_Nq][p_Nq][p_Nq] __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
-  dfloat s_Gqs[p_Nq][p_Nq][p_Nq] __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
-  dfloat s_Gqt[p_Nq][p_Nq][p_Nq] __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
+  dfloat s_q  [p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
+  dfloat s_Gqr[p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
+  dfloat s_Gqs[p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
+  dfloat s_Gqt[p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
 
-  dfloat s_D[p_Nq][p_Nq]  __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
+  dfloat s_D[p_Nq][p_Nq]  __attribute__((aligned(p_Nalign)));
 
   for(int j=0;j<p_Nq;++j){
     for(int i=0;i<p_Nq;++i){
@@ -120,7 +120,7 @@ extern "C" void BK5_v0(const dlong & Nelements,
   }
 }
 
-extern "C" void BK5_N3_v0(const dlong & Nelements,
+extern "C" void axhelm_n3_v0(const dlong & Nelements,
                           const dlong & offset,
                           const dfloat * __restrict__ ggeo ,
                           const dfloat * __restrict__ D ,
@@ -128,17 +128,17 @@ extern "C" void BK5_N3_v0(const dlong & Nelements,
                           const dfloat * __restrict__ q ,
                           dfloat * __restrict__ Aq ){
   
-  D      = (dfloat*)__builtin_assume_aligned(D, USE_OCCA_MEM_BYTE_ALIGN) ;
-  q      = (dfloat*)__builtin_assume_aligned(q, USE_OCCA_MEM_BYTE_ALIGN) ;
-  Aq     = (dfloat*)__builtin_assume_aligned(Aq, USE_OCCA_MEM_BYTE_ALIGN) ;
-  ggeo   = (dfloat*)__builtin_assume_aligned(ggeo, USE_OCCA_MEM_BYTE_ALIGN) ;
+  D      = (dfloat*)__builtin_assume_aligned(D, p_Nalign) ;
+  q      = (dfloat*)__builtin_assume_aligned(q, p_Nalign) ;
+  Aq     = (dfloat*)__builtin_assume_aligned(Aq, p_Nalign) ;
+  ggeo   = (dfloat*)__builtin_assume_aligned(ggeo, p_Nalign) ;
   
-  dfloat s_q  [3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
+  dfloat s_q  [3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
 
-  dfloat s_Gqr[3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
-  dfloat s_Gqs[3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
-  dfloat s_Gqt[3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
-  dfloat s_D[p_Nq][p_Nq]  __attribute__((aligned(USE_OCCA_MEM_BYTE_ALIGN)));
+  dfloat s_Gqr[3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
+  dfloat s_Gqs[3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
+  dfloat s_Gqt[3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
+  dfloat s_D[p_Nq][p_Nq]  __attribute__((aligned(p_Nalign)));
 
   for(int j=0;j<p_Nq;++j){
     for(int i=0;i<p_Nq;++i){

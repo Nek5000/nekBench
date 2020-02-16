@@ -34,7 +34,7 @@ SOFTWARE.
 #include "occa.hpp"
 #include "meshBasis.hpp"
 
-#include "BK5helper.cpp"
+#include "kernelHelper.cpp"
 
 dfloat *drandAlloc(int N){
 
@@ -49,7 +49,7 @@ dfloat *drandAlloc(int N){
 
 int main(int argc, char **argv){
 
-  if(argc<5){
+  if(argc<6){
     printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL SERIAL+VOLTA [kernelVersion] [deviceID] [platformID]\n");
     return 1;
   }
@@ -118,6 +118,7 @@ int main(int argc, char **argv){
 
   std::string deviceConfigString(deviceConfig);
   device.setup(deviceConfigString);
+  occa::env::OCCA_MEM_BYTE_ALIGN = USE_OCCA_MEM_BYTE_ALIGN;
 
   if(rank==0) {
    std::cout << "word size: " << sizeof(dfloat) << " bytes\n";
@@ -125,8 +126,8 @@ int main(int argc, char **argv){
   }
 
   // load kernel
-  std::string kernelName = "BK5";
-  if(assembled) kernelName = "BK5partial"; 
+  std::string kernelName = "axhelm";
+  if(assembled) kernelName = "axhelm_partial"; 
   if(Ndim > 1) kernelName += "_N" + std::to_string(Ndim);
   kernelName += "_v" + std::to_string(kernelVersion);
   loadAxKernel(device, threadModel, arch, kernelName, N, Nelements);
@@ -180,7 +181,7 @@ int main(int argc, char **argv){
   // print statistics
   const double elapsed = device.timeBetween(start, end)/Ntests;
   const dfloat GnodesPerSecond = (size*Ndim*Np*Nelements/elapsed)/1.e9;
-  const int bytesMoved = (Ndim*2*Np+7*Np)*sizeof(dfloat); // x, Mx, opa
+  const long long bytesMoved = (Ndim*2*Np+7*Np)*sizeof(dfloat); // x, Mx, opa
   const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
   double flopCount = Ndim*Np*12*Nq;
   if(Ndim == 1) flopCount += 18*Np;

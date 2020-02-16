@@ -47,5 +47,5 @@ Here a few examples how to run the benchmark for 8192 elements with a polynomial
 
 ### MPI with native CPU kernel
 ```
-OCCA_CXX='g++' OCCA_CXXFLAGS='-O3 -march=native -mtune=native' mpirun -np 32 -bind-to core ./axhelm 7 1 256 NATIVE+SERIAL
+OCCA_CXX='g++' OCCA_CXXFLAGS='-O3 -march=native -mtune=native' mpirun -np 32 -bind-to core ./axhelm 7 1 256 NATIVE+SERIAL CPU
 ```

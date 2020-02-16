@@ -26,7 +26,7 @@
 
 
 // default to element-per-threadblock
-@kernel void BK5_v0(const dlong Nelements,
+@kernel void axhelm_v0(const dlong Nelements,
 		    @restrict const  dfloat *  ggeo,
 		    @restrict const  dfloat *  D,
 		    const dfloat lambda,
@@ -155,7 +155,7 @@
   }
 }
 
-@kernel void BK5_v1(const dlong Nelements,
+@kernel void axhelm_v1(const dlong Nelements,
 		    @restrict const  dfloat *  ggeo,
 		    @restrict const  dfloat *  D,
 		    const dfloat lambda,
@@ -288,7 +288,7 @@
 }
 
 
-@kernel void BK5CubeKernel(const int numElements,
+@kernel void axhelmCubeKernel(const int numElements,
 			   @restrict const dfloat *op,
 			   @restrict const dfloat *D,
 			   const dfloat lambda,
@@ -408,7 +408,7 @@
 }
 
 // qr,qs,qt 
-@kernel void BK5_v2(const int numElements,
+@kernel void axhelm_v2(const int numElements,
 		    @restrict const dfloat *op,
 		    @restrict const dfloat *D,
 		    const dfloat lambda,
@@ -571,7 +571,7 @@
 
 
 // two slices - trying to halve smem access
-@kernel void BK5_v3(const int numElements,
+@kernel void axhelm_v3(const int numElements,
 		    @restrict const dfloat *op,
 		    @restrict const dfloat *D,
 		    const dfloat lambda,
@@ -743,7 +743,7 @@
 }
 
 // 1/2 slab
-@kernel void BK5_v4(const int numElements,
+@kernel void axhelm_v4(const int numElements,
 		    @restrict const dfloat *op,
 		    @restrict const dfloat *D,
 		    const dfloat lambda,
@@ -911,7 +911,7 @@
   
 }
 
-@kernel void BK5partial_v0(const dlong Nelements,
+@kernel void axhelmpartial_v0(const dlong Nelements,
                            @restrict const  dlong  *  elementList,
                            @restrict const  dfloat *  ggeo,
                            @restrict const  dfloat *  D,
@@ -1053,7 +1053,7 @@
 /*
     VECTOR VERSION
 */
-@kernel void BK5_N3_v0(const dlong Nelements,
+@kernel void axhelm_n3_v0(const dlong Nelements,
                        const dlong offset,
                        @restrict const dfloat *ggeo,
                        @restrict const dfloat *D,
