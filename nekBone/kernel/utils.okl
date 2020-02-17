@@ -1,0 +1,751 @@
+/*
+
+The MIT License (MIT)
+
+Copyright (c) 2017 Tim Warburton, Noel Chalmers, Jesse Chan, Ali Karakus
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+*/
+
+//add constant scalar value to every entry of a vector
+
+@kernel void addScalar(const dlong N,
+                      const dfloat alpha,
+                      @restrict dfloat *  y){
+  
+  for(dlong n=0;n<N;++n;@tile(256,@outer,@inner)){
+    if(n<N){
+      y[n] += alpha;
+    }
+  }
+}
+
+
+@kernel void setScalar(const dlong N,
+                      const dfloat alpha,
+                      @restrict dfloat *  y){
+  
+  for(dlong n=0;n<N;++n;@tile(256,@outer,@inner)){
+    if(n<N){
+      y[n]  = alpha;
+    }
+  }
+}
+
+@kernel void dotDivide(const dlong N,
+		      @restrict const  dfloat *  v,
+		      @restrict const  dfloat *  w,
+		      @restrict dfloat *  viw){
+  
+  for(dlong n=0;n<N;++n;@tile(256,@outer,@inner)){
+    if(n<N){
+      viw [n] = v[n]/w[n];
+    }
+  }
+
+}
+
+@kernel void dotMultiplyAdd(const dlong N,
+			    @restrict const  dfloat *  w,
+			    @restrict const  dfloat *  v,
+			    @restrict dfloat *  z){
+
+  for(dlong n=0;n<N;++n;@tile(256,@outer,@inner)){
+    if(n<N){
+      z[n] += w[n]*v[n];
+    }
+  }
+
+}
+
+
+@kernel void dotMultiply(const dlong N,
+			@restrict const  dfloat *  w,
+			@restrict const  dfloat *  v,
+			@restrict dfloat *  wv){
+
+  for(dlong n=0;n<N;++n;@tile(256,@outer,@inner)){
+    if(n<N){
+      wv [n] = w[n]*v[n];
+    }
+  }
+
+}
+
+@kernel void innerProduct(const dlong N,
+			 @restrict const  dfloat *  w,
+			 @restrict const  dfloat *  x,
+			 @restrict dfloat *  wx){
+  
+
+  for(dlong b=0;b<(N+p_blockSize-1)/p_blockSize;++b;@outer(0)){
+    
+    @shared volatile dfloat s_wx[p_blockSize];
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)){
+      const dlong id = t + b*p_blockSize;
+      s_wx[t] = (id<N) ? (w[id]*x[id]) : 0.f;
+    }
+
+    @barrier("local");
+
+#if p_blockSize>512
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<512) s_wx[t] += s_wx[t+512];
+    @barrier("local");
+#endif
+
+#if p_blockSize>256
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<256) s_wx[t] += s_wx[t+256];
+    @barrier("local");
+#endif
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<128) s_wx[t] += s_wx[t+128];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 64) s_wx[t] += s_wx[t+ 64];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 32) s_wx[t] += s_wx[t+ 32];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 16) s_wx[t] += s_wx[t+ 16];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  8) s_wx[t] += s_wx[t+  8];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  4) s_wx[t] += s_wx[t+  4];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  2) s_wx[t] += s_wx[t+  2];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  1) wx[b] = s_wx[0] + s_wx[1];
+  }
+}
+
+
+@kernel void mask(const dlong Nmasked,
+                 @restrict const  dlong    *  maskIds,
+                       @restrict dfloat *  q){
+
+  for(dlong n=0;n<Nmasked;++n;@tile(256,@outer,@inner)){
+    if(n<Nmasked){
+      q[maskIds[n]] = 0.;
+    }
+  }
+}
+
+@kernel void meshHaloExtract3D(const dlong NhaloElements,
+			      const int Nentries,
+			      @restrict const  dlong   *  haloElements,
+			      @restrict const  dfloat *  q,
+			            @restrict dfloat *  haloq){
+
+  for(dlong e=0;e<NhaloElements;++e;@outer(0)){  // for all elements
+    for(int n=0;n<Nentries;++n;@inner(0)){     // for all entries in this element
+      const dlong id = haloElements[e];
+      haloq[n + Nentries*e] = q[n + Nentries*id];
+    }
+  }
+}
+
+@kernel void norm2(const dlong N,
+		  @restrict const  dfloat *  x,
+		  @restrict dfloat *  xx){
+  
+  
+  for(dlong b=0;b<(N+p_blockSize-1)/p_blockSize;++b;@outer(0)){
+    
+    @shared volatile dfloat s_wxx[p_blockSize];
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)){
+      const dlong id = t + b*p_blockSize;
+      const dfloat xid = (id<N)?x[id]:0;
+      s_wxx[t] = xid*xid;
+    }
+
+    @barrier("local");
+
+#if p_blockSize>512
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<512) s_wxx[t] += s_wxx[t+512];
+    @barrier("local");
+#endif
+
+#if p_blockSize>256
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<256) s_wxx[t] += s_wxx[t+256];
+    @barrier("local");
+#endif
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<128) s_wxx[t] += s_wxx[t+128];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 64) s_wxx[t] += s_wxx[t+ 64];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 32) s_wxx[t] += s_wxx[t+ 32];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 16) s_wxx[t] += s_wxx[t+ 16];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  8) s_wxx[t] += s_wxx[t+  8];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  4) s_wxx[t] += s_wxx[t+  4];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  2) s_wxx[t] += s_wxx[t+  2];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  1) xx[b] = s_wxx[0] + s_wxx[1];
+  }
+}
+
+
+@kernel void scaledAdd(const dlong N,
+                      const dfloat alpha,
+                      @restrict const  dfloat *  x,
+                      const dfloat beta,
+                      @restrict dfloat *  y){
+  
+  for(dlong n=0;n<N;++n;@tile(256,@outer,@inner)){
+    if(n<N){
+      y[n] = alpha*x[n] + beta*y[n];
+    }
+  }
+}
+
+
+@kernel void scaledAddwOffset(const dlong N,
+                      const dfloat alpha,
+                      const dlong sourceOffset,
+                      @restrict const  dfloat *  x,
+                      const dfloat beta,
+                      const dlong destOffset,
+                      @restrict dfloat *  y){
+  
+  for(dlong n=0;n<N;++n;@tile(256,@outer,@inner)){
+    if(n<N){
+      y[n+destOffset] = alpha*x[n+sourceOffset] + beta*y[n+destOffset];
+    }
+  }
+}
+
+
+//partially sum the entries of a vector using a block-wise reductions
+
+@kernel void sum(const dlong N,
+                @restrict const  dfloat *  x,
+                @restrict dfloat *  sx){
+  
+
+  for(dlong b=0;b<(N+p_blockSize-1)/p_blockSize;++b;@outer(0)){
+    
+    @shared volatile dfloat s_sx[p_blockSize];
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)){
+      const dlong id = t + b*p_blockSize;
+      s_sx[t] = (id<N) ? x[id] : 0.f;
+    }
+
+    @barrier("local");
+
+#if p_blockSize>512
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<512) s_sx[t] += s_sx[t+512];
+    @barrier("local");
+#endif
+
+#if p_blockSize>256
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<256) s_sx[t] += s_sx[t+256];
+    @barrier("local");
+#endif
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<128) s_sx[t] += s_sx[t+128];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 64) s_sx[t] += s_sx[t+ 64];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 32) s_sx[t] += s_sx[t+ 32];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 16) s_sx[t] += s_sx[t+ 16];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  8) s_sx[t] += s_sx[t+  8];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  4) s_sx[t] += s_sx[t+  4];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  2) s_sx[t] += s_sx[t+  2];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  1) sx[b] = s_sx[0] + s_sx[1];
+  }
+}
+
+#define B 256
+
+@kernel void weightedInnerProduct1(const dlong N,
+				  @restrict const  dfloat *  w,
+				  @restrict const  dfloat *  x,
+				  @restrict dfloat *  wx2){
+  
+
+  for(dlong b=0;b<(N+B-1)/B;++b;@outer(0)){
+    
+    @shared volatile dfloat s_wx2[B];
+
+    for(int t=0;t<B;++t;@inner(0)){
+      const dlong id = t + B*b;
+      s_wx2[t] = (id<N) ? w[id]*x[id]*x[id] : 0.f;
+    }
+
+    @barrier("local");
+    for(int t=0;t<B;++t;@inner(0)) if(t<128) s_wx2[t] += s_wx2[t+128];
+    @barrier("local");
+    for(int t=0;t<B;++t;@inner(0)) if(t< 64) s_wx2[t] += s_wx2[t+ 64];
+    @barrier("local");
+    for(int t=0;t<B;++t;@inner(0)) if(t< 32) s_wx2[t] += s_wx2[t+ 32];
+    @barrier("local");
+    for(int t=0;t<B;++t;@inner(0)) if(t< 16) s_wx2[t] += s_wx2[t+ 16];
+    @barrier("local");
+    for(int t=0;t<B;++t;@inner(0)) if(t<  8) s_wx2[t] += s_wx2[t+  8];
+    @barrier("local");
+    for(int t=0;t<B;++t;@inner(0)) if(t<  4) s_wx2[t] += s_wx2[t+  4];
+    @barrier("local");
+    for(int t=0;t<B;++t;@inner(0)) if(t<  2) s_wx2[t] += s_wx2[t+  2];
+    @barrier("local");
+    for(int t=0;t<B;++t;@inner(0)) if(t<  1) wx2[b] = s_wx2[0] + s_wx2[1];
+  }
+}
+
+
+@kernel void weightedInnerProduct2(const dlong N,
+				  @restrict const  dfloat *  w,
+				  @restrict const  dfloat *  x,
+				  @restrict const  dfloat *  y,
+				  @restrict dfloat *  wxy){
+  
+  for(dlong b=0;b<(N+p_blockSize-1)/p_blockSize;++b;@outer(0)){
+    
+    //    @shared volatile dfloat s_wxy[p_blockSize];
+    @shared dfloat s_wxy[p_blockSize];
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)){
+      const dlong id = t + p_blockSize*b;
+      s_wxy[t] = (id<N) ? w[id]*x[id]*y[id] : 0.f;
+    }
+
+#if 1
+
+    //    @barrier("local");
+#if p_blockSize>512
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<512) s_wxy[t] += s_wxy[t+512];
+    //    @barrier("local");
+#endif
+#if p_blockSize>256
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<256) s_wxy[t] += s_wxy[t+256];
+    //    @barrier("local");
+#endif
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<128) s_wxy[t] += s_wxy[t+128];
+    //    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 64) s_wxy[t] += s_wxy[t+64];
+    //    barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 32) s_wxy[t] += s_wxy[t+32];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 16) s_wxy[t] += s_wxy[t+16];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  8) s_wxy[t] += s_wxy[t+8];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  4) s_wxy[t] += s_wxy[t+4];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  2) s_wxy[t] += s_wxy[t+2];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  1) wxy[b] = s_wxy[0] + s_wxy[1];
+#else
+    // assumes 1024
+    for(int t=0;t<p_blockSize;++t;@inner(0)){
+      int r_n = t%32;
+      volatile dfloat *tmp = s_wxy+t;
+      if(r_n< 16) tmp[0] += tmp[+16];
+      if(r_n<  8) tmp[0] += tmp[+8];
+      if(r_n<  4) tmp[0] += tmp[+4];
+      if(r_n<  2) tmp[0] += tmp[+2];
+      if(r_n<  1) {
+	tmp[0] += tmp[+1];
+      }
+    }
+    
+    for(int t=0;t<p_blockSize;++t;@inner(0)){
+      volatile dfloat *tmp = s_wxy+t;
+      if(t<32) tmp[0] = s_wxy[t*32];
+      if(t< 16) tmp[0] += tmp[16];
+      if(t<  8) tmp[0] += tmp[+8];
+      if(t<  4) tmp[0] += tmp[+4];
+      if(t<  2) tmp[0] += tmp[+2];
+      if(t<  1) {
+	wxy[b] = tmp[0] + tmp[1]; // fix later
+      }
+    }
+#endif
+  }
+}
+
+
+@kernel void multipleInnerProduct2(const dlong N,
+				   const dlong offset,
+				   @restrict const  dfloat *  x,
+				   @restrict const  dfloat *  y,
+				   @restrict dfloat *  wxy){
+  
+
+  for(dlong b=0;b<(N+p_blockSize-1)/p_blockSize;++b;@outer(0)){
+    
+    @shared volatile dfloat s_wxy[p_blockSize];
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)){
+      const dlong id = t + p_blockSize*b;
+      dfloat res = 0;
+      if(id<N){
+	for(int fld=0;fld<p_Nfields;++fld){
+	  res +=  x[id+offset*fld]*y[id+offset*fld];
+	}
+      }
+      s_wxy[t] = res;
+    }
+    
+    @barrier("local");
+#if p_blockSize>512
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<512) s_wxy[t] += s_wxy[t+512];
+    @barrier("local");
+#endif
+#if p_blockSize>256
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<256) s_wxy[t] += s_wxy[t+256];
+    @barrier("local");
+#endif
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<128) s_wxy[t] += s_wxy[t+128];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 64) s_wxy[t] += s_wxy[t+64];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 32) s_wxy[t] += s_wxy[t+32];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 16) s_wxy[t] += s_wxy[t+16];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  8) s_wxy[t] += s_wxy[t+8];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  4) s_wxy[t] += s_wxy[t+4];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  2) s_wxy[t] += s_wxy[t+2];
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  1) wxy[b] = s_wxy[0] + s_wxy[1];
+  }
+}
+
+
+@kernel void weightedMultipleInnerProduct2(const dlong N,
+					   const dlong offset,
+					   @restrict const  dfloat *  w,
+					   @restrict const  dfloat *  x,
+					   @restrict const  dfloat *  y,
+					   @restrict dfloat *  wxy){
+  
+
+  for(dlong b=0;b<(N+p_blockSize-1)/p_blockSize;++b;@outer(0)){
+    
+    @shared volatile dfloat s_wxy[p_blockSize];
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)){
+      const dlong id = t + p_blockSize*b;
+      dfloat res = 0;
+      if(id<N){
+	dfloat wid = w[id];
+	
+	for(int fld=0;fld<p_Nfields;++fld){
+	  res +=  wid*x[id+offset*fld]*y[id+offset*fld];
+	}
+      }
+      s_wxy[t] = res;
+    }
+    
+    @barrier("local");
+#if p_blockSize>512
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<512) s_wxy[t] += s_wxy[t+512];
+    @barrier("local");
+#endif
+#if p_blockSize>256
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<256) s_wxy[t] += s_wxy[t+256];
+    @barrier("local");
+#endif
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<128) s_wxy[t] += s_wxy[t+128];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 64) s_wxy[t] += s_wxy[t+64];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 32) s_wxy[t] += s_wxy[t+32];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 16) s_wxy[t] += s_wxy[t+16];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  8) s_wxy[t] += s_wxy[t+8];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  4) s_wxy[t] += s_wxy[t+4];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  2) s_wxy[t] += s_wxy[t+2];
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  1) wxy[b] = s_wxy[0] + s_wxy[1];
+  }
+}
+
+
+@kernel void weightedNorm2(const dlong N,
+			  @restrict const  dfloat *  w,
+			  @restrict const  dfloat *  x,
+			  @restrict dfloat *  wxx){
+  
+
+  for(dlong b=0;b<(N+p_blockSize-1)/p_blockSize;++b;@outer(0)){
+    
+    @shared volatile dfloat s_wxx[p_blockSize];
+    
+    for(int t=0;t<p_blockSize;++t;@inner(0)){
+      const dlong id = t + p_blockSize*b;
+      const dfloat xid = (id<N)?x[id]:0;
+      const dfloat wid = (id<N)?w[id]:0;
+      s_wxx[t] = wid*xid*xid;
+    }
+    
+    @barrier("local");
+#if p_blockSize>512
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<512) s_wxx[t] += s_wxx[t+512];
+    @barrier("local");
+#endif
+#if p_blockSize>256
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<256) s_wxx[t] += s_wxx[t+256];
+    @barrier("local");
+#endif
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<128) s_wxx[t] += s_wxx[t+128];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 64) s_wxx[t] += s_wxx[t+64];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 32) s_wxx[t] += s_wxx[t+32];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 16) s_wxx[t] += s_wxx[t+16];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  8) s_wxx[t] += s_wxx[t+8];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  4) s_wxx[t] += s_wxx[t+4];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  2) s_wxx[t] += s_wxx[t+2];
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  1) wxx[b] = s_wxx[0] + s_wxx[1];
+  }
+}
+
+@kernel void multipleNorm2(const dlong N,
+			   const dlong offset,
+			   @restrict const  dfloat *  x,
+			   @restrict dfloat *  wxx){
+
+  for(dlong b=0;b<(N+p_blockSize-1)/p_blockSize;++b;@outer(0)){
+    
+    @shared volatile dfloat s_wxx[p_blockSize];
+    
+    for(int t=0;t<p_blockSize;++t;@inner(0)){
+      const dlong id = t + p_blockSize*b;
+      dfloat res = 0;
+      
+      if(id<N){
+	for(int fld=0;fld<p_Nfields;++fld){
+	  const dfloat xid = x[id+fld*offset];
+	  res += xid*xid;
+	}
+      }
+      s_wxx[t] = res;
+    }
+    
+    @barrier("local");
+#if p_blockSize>512
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<512) s_wxx[t] += s_wxx[t+512];
+    @barrier("local");
+#endif
+#if p_blockSize>256
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<256) s_wxx[t] += s_wxx[t+256];
+    @barrier("local");
+#endif
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<128) s_wxx[t] += s_wxx[t+128];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 64) s_wxx[t] += s_wxx[t+64];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 32) s_wxx[t] += s_wxx[t+32];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 16) s_wxx[t] += s_wxx[t+16];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  8) s_wxx[t] += s_wxx[t+8];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  4) s_wxx[t] += s_wxx[t+4];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  2) s_wxx[t] += s_wxx[t+2];
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  1) wxx[b] = s_wxx[0] + s_wxx[1];
+  }
+}
+
+
+
+@kernel void weightedMultipleNorm2(const dlong N,
+				   const dlong offset,
+				   @restrict const  dfloat *  w,
+				   @restrict const  dfloat *  x,
+				   @restrict dfloat *  wxx){
+
+  for(dlong b=0;b<(N+p_blockSize-1)/p_blockSize;++b;@outer(0)){
+    
+    @shared volatile dfloat s_wxx[p_blockSize];
+    
+    for(int t=0;t<p_blockSize;++t;@inner(0)){
+      const dlong id = t + p_blockSize*b;
+      dfloat res = 0;
+
+      if(id<N){
+	dfloat wid = w[id];
+
+	for(int fld=0;fld<p_Nfields;++fld){
+	  const dfloat xid = x[id+fld*offset];
+	  res += wid*xid*xid;
+	}
+      }
+      s_wxx[t] = res;
+    }
+    
+    @barrier("local");
+#if p_blockSize>512
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<512) s_wxx[t] += s_wxx[t+512];
+    @barrier("local");
+#endif
+#if p_blockSize>256
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<256) s_wxx[t] += s_wxx[t+256];
+    @barrier("local");
+#endif
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<128) s_wxx[t] += s_wxx[t+128];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 64) s_wxx[t] += s_wxx[t+64];
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 32) s_wxx[t] += s_wxx[t+32];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t< 16) s_wxx[t] += s_wxx[t+16];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  8) s_wxx[t] += s_wxx[t+8];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  4) s_wxx[t] += s_wxx[t+4];
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  2) s_wxx[t] += s_wxx[t+2];
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) if(t<  1) wxx[b] = s_wxx[0] + s_wxx[1];
+  }
+}
+
+
+
+@kernel void nothingKernel(){
+
+  for(int b=0;b<1;++b;@outer(0)){
+    for(int t=0;t<1;++t;@inner(0)){
+    }
+  }
+}
+
+
+/* Sets v = 0. */
+@kernel void vecZero(const dlong N,        /* Length of vector */
+		     @restrict dfloat *v)  /* Array of vector data */
+{
+  for (dlong n = 0; n < N; n +=p_blockSize; @outer(0)) {
+    for (dlong i = n; i < (n +p_blockSize); i++; @inner(0)) {
+      if (i < N)
+        v[i] = 0.0;
+    }
+  }
+}
+
+// in place scale by scalar
+@kernel void vecScale(const dlong N,        /* Length of vector */
+		      const dfloat fac,
+		     @restrict dfloat *v)  /* Array of vector data */
+{
+  for (dlong n = 0; n < N; n +=p_blockSize; @outer(0)) {
+    for (dlong i = n; i < (n +p_blockSize); i++; @inner(0)) {
+      if (i < N)
+        v[i] *= fac;
+    }
+  }
+}
+
+
+// in place scale by scalar
+@kernel void vecCopy(const dlong N,        /* Length of vector */
+		      @restrict const dfloat *x,  /* Array of vector data */
+		      @restrict dfloat *y)  /* Array of vector data */
+{
+#if 1
+  for (dlong n = 0; n < N; n +=p_blockSize; @outer(0)) {
+    for (dlong i = n; i < (n +p_blockSize); i++; @inner(0)) {
+      if (i < N)
+        y[i]  = x[i];
+    }
+  }
+#else
+#define MAXB360
+  for (dlong b = 0; b < MAXB; ++b; @outer(0)) {
+    for (dlong t = 0; t < p_blockSize; t++; @inner(0)) {
+      dlong n = t + p_blockSize*b;
+      while(n<N){
+        y[n]  = x[n];
+	n += MAXB*p_blockSize;
+      }
+    }
+  }  
+#endif
+}
+
+@kernel void vecScatter(const dlong N,        /* Length of vector */
+			@restrict const dlong *localizedIds,
+			@restrict const dfloat *v,
+			@restrict dfloat *sv)
+{
+  for (dlong n = 0; n < N; n +=p_blockSize; @outer(0)) {
+    for (dlong i = n; i < (n +p_blockSize); i++; @inner(0)) {
+      if (i < N){
+	dlong id  = localizedIds[i]-1;
+        sv[i] = v[id];
+      }
+    }
+  }
+}
+
+@kernel void vecMultipleScatter(const dlong N,        /* Length of vector */
+				const dlong offset,
+				@restrict const dlong *localizedIds,
+				@restrict const dfloat *v,
+				@restrict dfloat *sv)
+{
+  for (dlong n = 0; n < N; n +=p_blockSize; @outer(0)) {
+    for (dlong i = n; i < (n +p_blockSize); i++; @inner(0)) {
+      if (i < N){
+	dlong id  = localizedIds[i]-1;
+	for(int fld=0;fld<p_Nfields;++fld)
+	  sv[i+N*fld] = v[id+offset*fld];
+      }
+    }
+  }
+}

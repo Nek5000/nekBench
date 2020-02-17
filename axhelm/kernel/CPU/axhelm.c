@@ -25,6 +25,7 @@
 */
 
 extern "C" void axhelm_v0(const dlong & Nelements,
+                       const dlong & offset,
 	               const dfloat * __restrict__ ggeo ,
 	               const dfloat * __restrict__ D ,
 	               const dfloat & lambda,
@@ -52,6 +53,7 @@ extern "C" void axhelm_v0(const dlong & Nelements,
   const int c_Np = p_Np;
   const int p_N = p_Nq-1;
 
+#pragma omp parallel for private(s_q, s_Gqr, s_Gqs, s_Gqt) 
   for(dlong e=0; e<Nelements; ++e){
     const dlong element = e;
     for(int k = 0; k < p_Nq; k++) {
@@ -134,10 +136,10 @@ extern "C" void axhelm_n3_v0(const dlong & Nelements,
   ggeo   = (dfloat*)__builtin_assume_aligned(ggeo, p_Nalign) ;
   
   dfloat s_q  [3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
-
   dfloat s_Gqr[3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
   dfloat s_Gqs[3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
   dfloat s_Gqt[3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
+
   dfloat s_D[p_Nq][p_Nq]  __attribute__((aligned(p_Nalign)));
 
   for(int j=0;j<p_Nq;++j){
@@ -149,6 +151,7 @@ extern "C" void axhelm_n3_v0(const dlong & Nelements,
   const int c_Np = p_Np;
   const int p_N = p_Nq-1;
 
+#pragma omp parallel for private(s_q, s_Gqr, s_Gqs, s_Gqt) 
   for(dlong e=0; e<Nelements; ++e){
     
     const dlong element = e;

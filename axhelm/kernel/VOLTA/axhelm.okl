@@ -27,6 +27,7 @@
 
 // default to element-per-threadblock
 @kernel void axhelm_v0(const dlong Nelements,
+                    const dlong offset,
 		    @restrict const  dfloat *  ggeo,
 		    @restrict const  dfloat *  D,
 		    const dfloat lambda,
@@ -156,6 +157,7 @@
 }
 
 @kernel void axhelm_v1(const dlong Nelements,
+                    const dlong offset,
 		    @restrict const  dfloat *  ggeo,
 		    @restrict const  dfloat *  D,
 		    const dfloat lambda,
@@ -289,6 +291,7 @@
 
 
 @kernel void axhelmCubeKernel(const int numElements,
+                           const dlong offset,
 			   @restrict const dfloat *op,
 			   @restrict const dfloat *D,
 			   const dfloat lambda,
@@ -409,6 +412,7 @@
 
 // qr,qs,qt 
 @kernel void axhelm_v2(const int numElements,
+                    const dlong offset,
 		    @restrict const dfloat *op,
 		    @restrict const dfloat *D,
 		    const dfloat lambda,
@@ -572,6 +576,7 @@
 
 // two slices - trying to halve smem access
 @kernel void axhelm_v3(const int numElements,
+                    const dlong offset,
 		    @restrict const dfloat *op,
 		    @restrict const dfloat *D,
 		    const dfloat lambda,
@@ -744,6 +749,7 @@
 
 // 1/2 slab
 @kernel void axhelm_v4(const int numElements,
+                    const dlong offset,
 		    @restrict const dfloat *op,
 		    @restrict const dfloat *D,
 		    const dfloat lambda,
@@ -912,6 +918,7 @@
 }
 
 @kernel void axhelmpartial_v0(const dlong Nelements,
+                           const dlong offset,
                            @restrict const  dlong  *  elementList,
                            @restrict const  dfloat *  ggeo,
                            @restrict const  dfloat *  D,

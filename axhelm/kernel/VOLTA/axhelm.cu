@@ -128,6 +128,7 @@ __forceinline__ __device__
 }
 
 extern "C" __global__ void axhelm_v0(const int numElements,
+                                  const dlong offset,
 		                  const dfloat * __restrict__ op,
 		                  const dfloat * __restrict__ DofToDofD,
 	       	                  const dfloat lambda,

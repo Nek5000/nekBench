@@ -29,11 +29,6 @@ SOFTWARE.
 #include "mpi.h"
 #include "mesh.h"
 
-#if USE_CUDA_NATIVE==1
-#include <occa/modes/cuda/utils.hpp>
-#include <cuda_runtime_api.h>
-#endif
-
 int findBestPeriodicMatch(dfloat xper, dfloat yper, dfloat zper,
 			  dfloat x1, dfloat y1, dfloat z1,
 			  int Np2, int *nodeList, dfloat *x2, dfloat *y2, dfloat *z2, int *nP){
@@ -217,12 +212,8 @@ void meshGeometricFactorsTet3D(mesh3D *mesh){
       gbase[mesh->cubNp*G12ID] = JW*(bx*cx + by*cy + bz*cz);
       gbase[mesh->cubNp*G22ID] = JW*(cx*cx + cy*cy + cz*cz);
       gbase[mesh->cubNp*GWJID] = JW;
-      //      printf("% e ", JW);
    }
-   //   printf("\n"); 
   }
-
-  //printf("minJ = %g, maxJ = %g\n", minJ, maxJ);
 }
 
 
@@ -437,8 +428,10 @@ void meshGeometricFactorsHex3D(mesh3D *mesh){
     MPI_Reduce(&maxJ, &globalMaxJ, 1, MPI_DFLOAT, MPI_MAX, 0, mesh->comm);
     MPI_Reduce(&maxSkew, &globalMaxSkew, 1, MPI_DFLOAT, MPI_MAX, 0, mesh->comm);
 
+#if 0
     if(mesh->rank==0)
       printf("J in range [%g,%g] and max Skew = %g\n", globalMinJ, globalMaxJ, globalMaxSkew);
+#endif
   }
 
   free(xre); free(xse); free(xte);
@@ -962,7 +955,6 @@ void meshHaloExchange(mesh_t *mesh,
     if(r!=rank){
       size_t count = mesh->NhaloPairs[r]*Nbytes;
       if(count){
-	//	printf("rank %d sending %d bytes to rank %d\n", rank, count, r);
 	MPI_Irecv(((char*)recvBuffer)+offset, count, MPI_CHAR, r, tag,
 		  mesh->comm, (MPI_Request*)mesh->haloRecvRequests+message);
 	
@@ -1212,6 +1204,7 @@ void meshLoadReferenceNodesTet3D(mesh3D *mesh, int N, int cubN){
   if(fabs(mesh->r[n]+1)<NODETOL)
       mesh->faceNodes[3*mesh->Nfp+(cnt++)] = n;
 
+#if 0
   for(int f=0;f<mesh->Nfaces;++f){
     printf("%d: ", f);
     for(int n=0;n<mesh->Nfp;++n){
@@ -1219,6 +1212,7 @@ void meshLoadReferenceNodesTet3D(mesh3D *mesh, int N, int cubN){
     }
     printf("\n");
   }
+#endif
   
   // find node indices of vertex nodes
   mesh->vertexNodes = (int*) calloc(mesh->Nverts, sizeof(int));
@@ -1830,19 +1824,9 @@ void meshConnect(mesh_t *mesh){
     for(int f=0;f<mesh->Nfaces;++f){
       mesh->EToE[cnt] = faces[cnt].elementNeighbor;
       mesh->EToF[cnt] = faces[cnt].faceNeighbor;
-
-      //      printf("EToE(%d,%d) = %d \n", e,f, mesh->EToE[cnt]);
-      
       ++cnt;
     }
   }
-
-  // dlong Nbcs = 0;
-  // for(dlong e=0;e<mesh->Nelements;++e)
-  //   for(int f=0;f<mesh->Nfaces;++f)
-  //     if(mesh->EToE[e*mesh->Nfaces+f]==-1)
-  //       ++Nbcs;
-  //printf("Nelements = %d, Nbcs = %d\n", mesh->Nelements, Nbcs);
 }
 
 typedef struct {
@@ -2104,12 +2088,14 @@ void meshPartitionStatistics(mesh_t *mesh){
   for(int r=0;r<size;++r){
     MPI_Barrier(mesh->comm);
     if(r==rank){
+#if 0
       fflush(stdout);
       printf("r: %02d [", rank);
       for(int s=0;s<size;++s){
         printf(" %04d", comms[s]);
       }
       printf("] (Nelements=" dlongFormat ", Nmessages=%d, Ncomms=%d)\n", mesh->Nelements,Nmessages, Ncomms);
+#endif
       fflush(stdout);
     }
   }
@@ -2307,7 +2293,7 @@ mesh3D *meshSetupBoxHex3D(int N, int cubN, setupAide &options){
   hlong NX = 3, NY = 3, NZ = 3; // defaults
 
   int NdofsTarget = 0;
-  options.getArgs("TARGET NODES", NdofsTarget);
+  //options.getArgs("TARGET NODES", NdofsTarget);
   if(NdofsTarget){
     int tmpNp = (N+1)*(N+1)*(N+1);
     int NelementsTarget = (NdofsTarget+tmpNp-1)/tmpNp;
@@ -2346,7 +2332,7 @@ mesh3D *meshSetupBoxHex3D(int N, int cubN, setupAide &options){
   mesh->Nelements = end-start;
   mesh->NboundaryFaces = 0;
 
-  printf("Rank %d initially has %d elements\n", mesh->rank, mesh->Nelements);
+  //printf("Rank %d initially has %d elements\n", mesh->rank, mesh->Nelements);
   
   mesh->EToV = (hlong*) calloc(mesh->Nelements*mesh->Nverts, sizeof(hlong));
 
@@ -2481,7 +2467,7 @@ mesh3D *meshSetupBoxTet3D(int N, int cubN, setupAide &options){
     int tmpNp = 6*(N+1)*(N+2)*(N+3)/6;
     int NboxesTarget = (NdofsTarget+tmpNp-1)/tmpNp;
     meshChooseBoxDimensions(NboxesTarget, &NX, &NY, &NZ);
-    printf("TARGET NODES = %d, ACTUAL NODES = %d, NELEMENTS = [%d,%d,%d=>%d]\n", NdofsTarget, NX*NY*NZ*tmpNp, NX,NY,NZ, NX*NY*NZ);
+    //printf("TARGET NODES = %d, ACTUAL NODES = %d, NELEMENTS = [%d,%d,%d=>%d]\n", NdofsTarget, NX*NY*NZ*tmpNp, NX,NY,NZ, NX*NY*NZ);
   }else{
     options.getArgs("BOX NX", NX);
     options.getArgs("BOX NY", NY);
@@ -2515,7 +2501,7 @@ mesh3D *meshSetupBoxTet3D(int N, int cubN, setupAide &options){
   mesh->Nelements = 6*(end-start);
   mesh->NboundaryFaces = 0;
 
-  printf("Rank %d initially has %d elements\n", mesh->rank, mesh->Nelements);
+  //printf("Rank %d initially has %d elements\n", mesh->rank, mesh->Nelements);
   
   mesh->EToV = (hlong*) calloc(mesh->Nelements*mesh->Nverts, sizeof(hlong));
 
@@ -3073,45 +3059,23 @@ void occaDeviceConfig(mesh_t *mesh, setupAide &options){
     if (hostIds[r]==hostId) totalDevices++;
   }
 
-  if (size==1) options.getArgs("DEVICE NUMBER" ,device_id);
-
-  printf("device_id = %d\n", device_id);
+  //if (size==1) options.getArgs("DEVICE NUMBER" ,device_id);
+  //printf("device_id = %d\n", device_id);
   
-  //  device_id = device_id%2;
-
   occa::properties deviceProps;
   
-  // read thread model/device/platform from options
   if(options.compareArgs("THREAD MODEL", "CUDA")){
-    //    deviceProps["mode"] = "CUDA";
-    //    deviceProps["device_id"] = 0; string(device_id);
     sprintf(deviceConfig, "mode: 'CUDA', device_id: %d", device_id);
-
-#if USE_CUDA_NATIVE==1
-    cudaStream_t cuStream;
-    // Default: cuStream = 0
-    cudaStreamCreate(&cuStream);// , CU_STREAM_DEFAULT);
-
-    //  ---[ Get CUDA Info ]----
-    int cuDeviceID = 0;
-    CUdevice cuDevice;
-    CUcontext cuContext;
-    
-    cuDeviceGet(&cuDevice, cuDeviceID);
-    cuCtxGetCurrent(&cuContext);
-    mesh->device = occa::cuda::wrapDevice(cuDevice, cuContext);
-#endif
-    
   }
   else if(options.compareArgs("THREAD MODEL", "HIP")){
     sprintf(deviceConfig, "mode: 'HIP', device_id: %d",device_id);
   }
-  else if(options.compareArgs("THREAD MODEL", "OpenCL")){
+  else if(options.compareArgs("THREAD MODEL", "OPENCL")){
     int plat;
     options.getArgs("PLATFORM NUMBER", plat);
     sprintf(deviceConfig, "mode: 'OpenCL', device_id: %d, platform_id: %d", device_id, plat);
   }
-  else if(options.compareArgs("THREAD MODEL", "OpenMP")){
+  else if(options.compareArgs("THREAD MODEL", "OPENMP")){
     sprintf(deviceConfig, "mode: 'OpenMP' ");
   }
   else{
@@ -3126,42 +3090,14 @@ void occaDeviceConfig(mesh_t *mesh, setupAide &options){
   Nthreads = mymax(1,Nthreads/2);
   omp_set_num_threads(Nthreads);
 
-  if (options.compareArgs("VERBOSE","TRUE"))
-    printf("Rank %d: Ncores = %d, Nthreads = %d, device_id = %d \n", rank, Ncores, Nthreads, device_id);
+  //if (options.compareArgs("VERBOSE","TRUE"))
+  //  printf("Rank %d: Ncores = %d, Nthreads = %d, device_id = %d \n", rank, Ncores, Nthreads, device_id);
 
-  std::cout << deviceConfig << std::endl;
-  
-  //  mesh->device.setup( (std::string) deviceConfig); // deviceProps);
-#if USE_CUDA_NATIVE!=1
-  mesh->device.setup( (std::string)deviceConfig);
-#endif
+  mesh->device.setup((std::string)deviceConfig);
 
 #ifdef USE_OCCA_MEM_BYTE_ALIGN 
-  // change OCCA MEM BYTE ALIGNMENT
   occa::env::OCCA_MEM_BYTE_ALIGN = USE_OCCA_MEM_BYTE_ALIGN;
 #endif
-
-  #if 0
-#if USE_MASTER_NOEL==1
-
-  int foo;
-  // check to see if the options specify to use precompiled binaries
-  if(options.compareArgs("USE PRECOMPILED BINARIES", "TRUE")){
-    mesh->device.UsePreCompiledKernels(1);
-    occa::host().UsePreCompiledKernels(1);
-  }
-  else if(options.compareArgs("USE PRECOMPILED BINARIES", "NONROOT")){
-    mesh->device.UsePreCompiledKernels(mesh->rank!=0);
-    occa::host().UsePreCompiledKernels(mesh->rank!=0);
-  }else{
-    mesh->device.UsePreCompiledKernels(0);
-    occa::host().UsePreCompiledKernels(0);
-  }
-    
-#endif
-#endif
-  //  occa::initTimer(mesh->device);
-
 }
 
 
@@ -3547,7 +3483,8 @@ void meshLocalizedConnectNodes(mesh_t *mesh){
   for(dlong id=0;id<localNodeCount;++id){
     mesh->localizedIds[id] = localNodes[id].localizedId;
   }
-  
+ 
+#if 0 
   printf("Local nodes=%d, Localized nodes=%d\n",
 	 localNodeCount, mesh->Nlocalized);
   for(dlong e=0;e<mesh->Nelements;++e){
@@ -3557,7 +3494,8 @@ void meshLocalizedConnectNodes(mesh_t *mesh){
       }
     }
   }
-  
+#endif 
+ 
   free(localNodes);
   free(sendBuffer);
   free(localizedIds);

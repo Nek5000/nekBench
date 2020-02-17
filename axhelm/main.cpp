@@ -36,6 +36,8 @@ SOFTWARE.
 
 #include "kernelHelper.cpp"
 
+static occa::kernel axKernel;
+
 dfloat *drandAlloc(int N){
 
   dfloat *v = (dfloat*) calloc(N, sizeof(dfloat));
@@ -64,7 +66,8 @@ int main(int argc, char **argv){
   const int N = atoi(argv[1]);
   const int Ndim = atoi(argv[2]);
   const dlong Nelements = atoi(argv[3]);
-  char *threadModel = strdup(argv[4]);
+  std::string threadModel;
+  threadModel.assign(strdup(argv[4]));
 
   std::string arch("");
   if(argc>=6)
@@ -100,22 +103,24 @@ int main(int argc, char **argv){
   occa::device device;
   char deviceConfig[BUFSIZ];
 
-  if(strstr(threadModel, "CUDA")){
+  if(strstr(threadModel.c_str(), "CUDA")){
     sprintf(deviceConfig, "mode: 'CUDA', device_id: %d",deviceId);
   }
-  else if(strstr(threadModel,  "HIP")){
+  else if(strstr(threadModel.c_str(),  "HIP")){
     sprintf(deviceConfig, "mode: 'HIP', device_id: %d",deviceId);
   }
-  else if(strstr(threadModel,  "OPENCL")){
+  else if(strstr(threadModel.c_str(),  "OPENCL")){
     sprintf(deviceConfig, "mode: 'OpenCL', device_id: %d, platform_id: %d", deviceId, platformId);
   }
-  else if(strstr(threadModel,  "OPENMP")){
+  else if(strstr(threadModel.c_str(),  "OPENMP")){
     sprintf(deviceConfig, "mode: 'OpenMP' ");
   }
   else{
     sprintf(deviceConfig, "mode: 'Serial' ");
+    omp_set_num_threads(1);
   }
 
+  int Nthreads =  omp_get_max_threads();
   std::string deviceConfigString(deviceConfig);
   device.setup(deviceConfigString);
   occa::env::OCCA_MEM_BYTE_ALIGN = USE_OCCA_MEM_BYTE_ALIGN;
@@ -128,9 +133,9 @@ int main(int argc, char **argv){
   // load kernel
   std::string kernelName = "axhelm";
   if(assembled) kernelName = "axhelm_partial"; 
-  if(Ndim > 1) kernelName += "_N" + std::to_string(Ndim);
+  if(Ndim > 1) kernelName += "_n" + std::to_string(Ndim);
   kernelName += "_v" + std::to_string(kernelVersion);
-  loadAxKernel(device, threadModel, arch, kernelName, N, Nelements);
+  axKernel = loadAxKernel(device, threadModel, arch, kernelName, N, Nelements);
 
   // populate device arrays
   dfloat *ggeo = drandAlloc(Np*Nelements*p_Nggeo);
@@ -145,7 +150,7 @@ int main(int argc, char **argv){
   occa::streamTag start, end;
 
   // warm up
-  runAxKernel(Nelements, Ndim, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq, assembled);
+  axKernel(Nelements, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq);
 
   // check for correctness
   for(int n=0;n<Ndim;++n){
@@ -171,7 +176,7 @@ int main(int argc, char **argv){
   start = device.tagStream();
 
   for(int test=0;test<Ntests;++test)
-    runAxKernel(Nelements, Ndim, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq, assembled);
+    axKernel(Nelements, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq);
 
  #ifdef USEMPI
   MPI_Barrier(MPI_COMM_WORLD);
@@ -189,6 +194,7 @@ int main(int argc, char **argv){
   double gflops = (flopCount*size*Nelements/elapsed)/1.e9;
   if(rank==0) {
     std::cout << "MPItasks=" << size
+              << " OMPthreads=" << Nthreads
               << " Ndim=" << Ndim
               << " N=" << N
               << " Nelements=" << size*Nelements

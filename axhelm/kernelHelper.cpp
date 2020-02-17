@@ -1,8 +1,6 @@
-static occa::kernel axKernel;
-
-void loadAxKernel(occa::device device, char *threadModel,
-                  std::string arch, std::string kernelName,
-                  int N, dlong Nelements){
+static occa::kernel loadAxKernel(occa::device device, const std::string threadModel,
+                                 const std::string arch, std::string kernelName,
+                                 int N, dlong Nelements){
 
   int rank = 1;
 #ifdef USEMPI
@@ -37,13 +35,16 @@ void loadAxKernel(occa::device device, char *threadModel,
 
   props["okl"] = false;
 
-  std::string filename = "kernel/" + arch;
+  occa::kernel axKernel;
+
+  std::string filename = "kernel/" + arch + "/axhelm";
   for (int r=0;r<2;r++){
     if ((r==0 && rank==0) || (r==1 && rank>0)) {
-      if(strstr(threadModel, "NATIVE+CUDA")){
+      if(strstr(threadModel.c_str(), "NATIVE+CUDA")){
         axKernel = device.buildKernel(filename + ".cu", kernelName, props);
         axKernel.setRunDims(Nelements, Nq*Nq);
-      } else if(strstr(threadModel, "NATIVE+SERIAL")){
+      } else if(strstr(threadModel.c_str(), "NATIVE+SERIAL") || 
+                strstr(threadModel.c_str(), "NATIVE+OPENMP")){
         props["defines/USE_OCCA_MEM_BYTE_ALIGN"] = USE_OCCA_MEM_BYTE_ALIGN;
         axKernel = device.buildKernel(filename + ".c", kernelName, props);
       } else { // fallback is okl
@@ -55,30 +56,5 @@ void loadAxKernel(occa::device device, char *threadModel,
     MPI_Barrier(MPI_COMM_WORLD);
 #endif
   }
-}
-
-void runAxKernel(dlong Nelements, int Ndim, dlong offset, occa::memory o_ggeo, 
-                 occa::memory o_DrV, dfloat lambda, 
-                 occa::memory o_q, occa::memory o_Aq, int assembled = 0){
-
-    if(assembled) {
-/*
-      axKernel(NglobalGatherElements, o_globalGatherElementList, o_ggeo, o_DrV, 
-               lambda, o_q, o_Aq);
-      ogsGatherScatterStart(o_Aq, ogsDfloat, ogsAdd, ogs);
-      axKernel(NlocalGatherElements, o_localGatherElementList, o_ggeo, o_DrV, 
-               lambda, o_q, o_Aq);
-      ogsGatherScatterFinish(o_Aq, ogsDfloat, ogsAdd, ogs);
-*/
-      std::cout << "ERROR: assembled version not implemented yet!\n";
-      exit(1);
-
-    } else {
-
-      if(Ndim == 1)
-        axKernel(Nelements, o_ggeo, o_DrV, lambda, o_q, o_Aq);
-      else
-        axKernel(Nelements, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq);
-
-    }
+  return axKernel;
 }
