@@ -153,20 +153,6 @@ SOFTWARE.
   }
 }
 
-@kernel void meshHaloExtract3D(const dlong NhaloElements,
-			      const int Nentries,
-			      @restrict const  dlong   *  haloElements,
-			      @restrict const  dfloat *  q,
-			            @restrict dfloat *  haloq){
-
-  for(dlong e=0;e<NhaloElements;++e;@outer(0)){  // for all elements
-    for(int n=0;n<Nentries;++n;@inner(0)){     // for all entries in this element
-      const dlong id = haloElements[e];
-      haloq[n + Nentries*e] = q[n + Nentries*id];
-    }
-  }
-}
-
 @kernel void norm2(const dlong N,
 		  @restrict const  dfloat *  x,
 		  @restrict dfloat *  xx){

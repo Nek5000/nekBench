@@ -1,4 +1,5 @@
 NALIGN ?= 64
+PREFIX ?= "$(CUDIR)/build"
 
 ifndef OCCA_DIR
 ERROR:
@@ -25,7 +26,7 @@ compilerFlags += -Ddlong=int
 compilerFlags += -DdfloatString='"double"'
 compilerFlags += -DdlongString='"int"'
 compilerFlags += -DUSE_OCCA_MEM_BYTE_ALIGN=$(NALIGN)
-compilerFlags += -g
+compilerFlags += -O0 -g
 
 CFLAGS = -I. -DOCCA_VERSION_1_0 $(compilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR)  -D DBP='"./"' $(LIBP_OPT_FLAGS) -I$(OGSDIR)/include 
 

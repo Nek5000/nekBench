@@ -24,7 +24,6 @@ SOFTWARE.
 
 */
 
-#include "omp.h"
 #include <unistd.h>
 #include "BP.hpp"
 #include "../axhelm/kernelHelper.cpp"
@@ -46,34 +45,6 @@ BP_t *setup(mesh_t *mesh, dfloat lambda, dfloat mu, occa::properties &kernelInfo
   options.getArgs("ELEMENT TYPE", BP->elementType);
   BP->mesh = mesh;
   BP->options = options;
-  
-  // defaults for conjugate gradient
-  int enableGatherScatters = 1;
-  int enableReductions = 1; 
-  int flexible = 1; 
-  int verbose = 0;
-  
-  int serial = options.compareArgs("THREAD MODEL", "SERIAL");
-
-  int continuous = options.compareArgs("DISCRETIZATION", "CONTINUOUS");
-  int ipdg = options.compareArgs("DISCRETIZATION", "IPDG");
-
-  options.getArgs("DEBUG ENABLE REDUCTIONS", enableReductions);
-  options.getArgs("DEBUG ENABLE OGS", enableGatherScatters);
-  
-  flexible = options.compareArgs("KRYLOV SOLVER", "FLEXIBLE");
-  verbose  = options.compareArgs("VERBOSE", "TRUE");
-
-  if(mesh->rank==0 && verbose==1){
-    printf("CG OPTIONS: enableReductions=%d, enableGatherScatters=%d, flexible=%d, verbose=%d, ipdg=%d, continuous=%d, serial=%d\n",
-	   enableGatherScatters, 
-	   enableReductions,
-	   flexible,
-	   verbose,
-	   ipdg,
-	   continuous,
-	   serial);
-  }
 
   solveSetup(BP, lambda, mu, kernelInfo);
 
@@ -83,6 +54,7 @@ BP_t *setup(mesh_t *mesh, dfloat lambda, dfloat mu, occa::properties &kernelInfo
   BP->x   = (dfloat*) calloc(Nall,   sizeof(dfloat));
   BP->q   = (dfloat*) calloc(Nall,   sizeof(dfloat));
 
+  // setup RHS
   for(dlong e=0;e<mesh->Nelements;++e){
     for(int n=0;n<mesh->Np;++n){
 
@@ -107,8 +79,8 @@ BP_t *setup(mesh_t *mesh, dfloat lambda, dfloat mu, occa::properties &kernelInfo
     }
   }
 
-  BP->o_r   = mesh->device.malloc(Nall*sizeof(dfloat), BP->r);
-  BP->o_x   = mesh->device.malloc(Nall*sizeof(dfloat), BP->x);
+  BP->o_r = mesh->device.malloc(Nall*sizeof(dfloat), BP->r);
+  BP->o_x = mesh->device.malloc(Nall*sizeof(dfloat), BP->x);
   
   char *suffix = strdup("Hex3D");
   
@@ -138,7 +110,7 @@ void solveSetup(BP_t *BP, dfloat lambda, dfloat mu, occa::properties &kernelInfo
   dlong Ntotal = mesh->Np*mesh->Nelements;
   dlong Nhalo  = mesh->Np*mesh->totalHaloPairs;
   dlong Nall   = (Ntotal + Nhalo)*BP->Nfields;
-  
+
   dlong Nblock  = mymax(1,(Ntotal+blockSize-1)/blockSize);
   dlong Nblock2 = mymax(1,(Nblock+blockSize-1)/blockSize);
 
@@ -151,8 +123,16 @@ void solveSetup(BP_t *BP, dfloat lambda, dfloat mu, occa::properties &kernelInfo
 
   BP->NsolveWorkspace = 10;
   BP->solveWorkspace = (dfloat*) calloc(Nall*BP->NsolveWorkspace, sizeof(dfloat));
-  
   BP->o_solveWorkspace  = mesh->device.malloc(Nall*BP->NsolveWorkspace*sizeof(dfloat), BP->solveWorkspace);
+
+/*
+  if(options.compareArgs("PRECONDITIONER", "JACOBI"){
+    dfloat *invDiagA = (dfloat*) calloc(Nall, sizeof(dfloat));
+    BPBuildJacobi(BP, lambda, &invDiagA);  
+    BP->o_invDiagA = device.malloc(Nall*sizeof(dfloat), BP->invDiagA);
+    free(invDiagA);
+  }
+*/
 
   BP->tmp  = (dfloat*) calloc(Nblock, sizeof(dfloat));
   //  BP->tmp2 = (dfloat*) calloc(Nblock2, sizeof(dfloat));
@@ -238,14 +218,6 @@ void solveSetup(BP_t *BP, dfloat lambda, dfloat mu, occa::properties &kernelInfo
   for (int r=0;r<2;r++){
     if ((r==0 && mesh->rank==0) || (r==1 && mesh->rank>0)) {      
       
-      //mesh kernels
-      /*
-      mesh->haloExtractKernel =
-        mesh->device.buildKernel(DBP "/kernel/utils.okl",
-                                       "meshHaloExtract3D",
-                                       kernelInfo);
-     */
-
       mesh->addScalarKernel =
         mesh->device.buildKernel(DBP "/kernel/utils.okl",
                    "addScalar",
@@ -256,23 +228,12 @@ void solveSetup(BP_t *BP, dfloat lambda, dfloat mu, occa::properties &kernelInfo
                    "mask",
                    kernelInfo);
 
-
-
       mesh->sumKernel =
         mesh->device.buildKernel(DBP "/kernel/utils.okl",
                    "sum",
                    kernelInfo);
 
-      BP->weightedInnerProduct1Kernel =
-        mesh->device.buildKernel(DBP "/kernel/utils.okl", "weightedInnerProduct1", kernelInfo);
-
-      BP->multipleInnerProduct2Kernel =
-        mesh->device.buildKernel(DBP "/kernel/utils.okl", "multipleInnerProduct2", kernelInfo);
-
       BP->innerProductKernel =
-        mesh->device.buildKernel(DBP "/kernel/utils.okl", "innerProduct", kernelInfo);
-
-      BP->innerProduct2Kernel =
         mesh->device.buildKernel(DBP "/kernel/utils.okl", "innerProduct", kernelInfo);
 
       BP->weightedNorm2Kernel =
@@ -280,31 +241,12 @@ void solveSetup(BP_t *BP, dfloat lambda, dfloat mu, occa::properties &kernelInfo
 
       BP->weightedMultipleNorm2Kernel =
         mesh->device.buildKernel(DBP "/kernel/utils.okl", "weightedMultipleNorm2", kernelInfo);
-
-      BP->norm2Kernel =
-        mesh->device.buildKernel(DBP "/kernel/utils.okl", "norm2", kernelInfo);
-
-      BP->multipleNorm2Kernel =
-        mesh->device.buildKernel(DBP "/kernel/utils.okl", "multipleNorm2", kernelInfo);
-
       
       BP->scaledAddKernel =
           mesh->device.buildKernel(DBP "/kernel/utils.okl", "scaledAdd", kernelInfo);
 
       BP->dotMultiplyKernel =
           mesh->device.buildKernel(DBP "/kernel/utils.okl", "dotMultiply", kernelInfo);
-
-      BP->dotMultiplyAddKernel =
-          mesh->device.buildKernel(DBP "/kernel/utils.okl", "dotMultiplyAdd", kernelInfo);
-
-      BP->dotDivideKernel =
-          mesh->device.buildKernel(DBP "/kernel/utils.okl", "dotDivide", kernelInfo);
-
-      BP->vecZeroKernel =
-          mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecZero", kernelInfo);
-
-      BP->vecScaleKernel =
-          mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecScale", kernelInfo);
 
       BP->vecCopyKernel =
           mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecCopy", kernelInfo);
@@ -320,13 +262,6 @@ void solveSetup(BP_t *BP, dfloat lambda, dfloat mu, occa::properties &kernelInfo
 	mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecAtomicInnerProduct", kernelInfo);
 */
 
-      BP->vecScatterKernel =
-	mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecScatter", kernelInfo);
-      
-      BP->vecMultipleScatterKernel =
-	mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecMultipleScatter", kernelInfo);
-
-      
       // add custom defines
       kernelInfo["defines/" "p_NpTet"]= mesh->Np;
       

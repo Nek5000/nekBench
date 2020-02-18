@@ -1,5 +1,6 @@
-This benchmark solves a screened 3D Possion equation on a spectral element mesh 
-using preconditioned conjuate gradients.
+This benchmark solves a 3D inhomogenous Helmholtz equation 
+on a deformed hexahedral spectral element mesh using Jacobi preconditioned conjuate gradients.
+It exposes the principal computational kernel to reveal the essential elements of the algorithmic- architectural coupling that is pertinent to nek5000/nekRS.
 
 # Usage
 

@@ -99,6 +99,7 @@ typedef struct {
   occa::stream dataStream;
 
   occa::memory o_q, o_x, o_r;
+  occa::memory o_invDiagA;
 
   occa::memory o_gr; // gathered RHS
   
@@ -173,17 +174,10 @@ typedef struct {
 
   hlong NelementsGlobal;
   dfloat nullProjectWeightGlobal;
-
-  /* NATIVE CUDA ARRAYS */
-  dfloat *c_DofToDofD;
-  dfloat *c_oddDofToDofD;
-  dfloat *c_evenDofToDofD;
   
 }BP_t;
 
 BP_t *setup(mesh_t *mesh, dfloat lambda, dfloat mu, occa::properties &kernelInfo, setupAide &options);
-
-int  BPSolve(BP_t *BP, dfloat lambda, dfloat mu, dfloat tol, occa::memory &o_r, occa::memory &o_x, double *opElapsed);
 
 void solveSetup(BP_t *BP, dfloat lambda, dfloat mu, occa::properties &kernelInfo);
 
@@ -197,7 +191,9 @@ int BPPCG   (BP_t* BP, dfloat lambda, dfloat mu, occa::memory &o_r, occa::memory
 void BPScaledAdd(BP_t *BP, dfloat alpha, occa::memory &o_a, dfloat beta, occa::memory &o_b);
 dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b);
 
-dfloat AxOperator(BP_t *BP, dfloat lambda, dfloat mu, occa::memory &o_q, occa::memory &o_Aq, const char *precision, occa::streamTag *, occa::streamTag *);
+dfloat AxOperator(BP_t *BP, dfloat lambda, dfloat mu, occa::memory &o_q, occa::memory &o_Aq, const char *precision);
+
+void BPPreconditioner(BP_t *BP, dfloat lambda, occa::memory &o_r, occa::memory &o_z);
 
 dfloat BPWeightedNorm2(BP_t *BP, occa::memory &o_w, occa::memory &o_a);
 
@@ -215,13 +211,6 @@ dfloat BPUpdatePCG(BP_t *BP, occa::memory &o_p, occa::memory &o_Ap, dfloat alpha
 occa::properties BPKernelInfo(mesh_t *mesh);
 
 void BPZeroMean(BP_t *BP, occa::memory &o_q);
-
-//void BK5(int numElements, int Nq, dfloat lambda, dfloat *c_op, dfloat *c_DofToDofD, dfloat *c_oddDofToDofD, dfloat *c_evenDofToDofD,
-//	 dfloat *c_solIn, dfloat *c_solOut, int mode);
-
-//void BK5Setup(int numElements, int Nq, dfloat *h_DofToDofD,
-//	      dfloat **c_DofToDofD, dfloat **c_oddDofToDofD, dfloat **c_evenDofToDofD);
-
 
 dfloat BPNorm2(BP_t *BP, dlong Ntotal, dlong offset, occa::memory &o_a);
 dfloat BPInnerProduct(BP_t *BP, dlong Ntotal, dlong offset, occa::memory &o_a, occa::memory &o_b);

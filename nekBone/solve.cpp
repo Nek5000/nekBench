@@ -25,32 +25,6 @@ SOFTWARE.
 */
 
 #include "BP.hpp"
-#include <sys/time.h>
-
-int BPSolve(BP_t *BP, dfloat lambda, dfloat mu, dfloat tol, occa::memory &o_r, occa::memory &o_x, double *opElapsed){
-  mesh_t *mesh = BP->mesh;
-  setupAide options = BP->options;
-
-  int Niter = 0;
-  int maxIter = 1000; 
-
-  options.getArgs("MAXIMUM ITERATIONS", maxIter);
-  options.getArgs("SOLVER TOLERANCE", tol);
-
-  // zero mean of RHS
-  if(BP->allNeumann) 
-    BPZeroMean(BP, o_r);
-  
-  // solve with preconditioned conjugate gradient (diag precon)
-  if(options.compareArgs("KRYLOV SOLVER", "PCG"))
-    Niter = BPPCG(BP, lambda, mu, o_r, o_x, tol, maxIter, opElapsed);
-
-  // zero mean of RHS
-  if(BP->allNeumann) 
-    BPZeroMean(BP, o_x);
-  
-  return Niter;
-}
 
 int BPPCG(BP_t* BP, dfloat lambda, dfloat mu,
 	  occa::memory &o_r, occa::memory &o_x, 
@@ -75,24 +49,19 @@ int BPPCG(BP_t* BP, dfloat lambda, dfloat mu,
   dfloat alpha = 0, beta = 0;
 
   dlong Ndof = mesh->Nelements*mesh->Np*BP->Nfields;
-  dlong Nbytes = Ndof*sizeof(dfloat);
   
   /*aux variables */
-  occa::memory o_p  = BP->o_solveWorkspace + 0*Ndof*sizeof(dfloat);
-  occa::memory o_z  = BP->o_solveWorkspace + 1*Ndof*sizeof(dfloat);
-  occa::memory o_Ap = BP->o_solveWorkspace + 2*Ndof*sizeof(dfloat);
-  occa::memory o_Ax = BP->o_solveWorkspace + 3*Ndof*sizeof(dfloat);
-  occa::memory o_res = BP->o_solveWorkspace + 4*Ndof*sizeof(dfloat);
-
-  occa::streamTag starts[MAXIT+1];
-  occa::streamTag ends[MAXIT+1];
+  occa::memory o_p   = BP->o_solveWorkspace + 0*Ndof*sizeof(dfloat);
+  occa::memory o_z   = BP->o_solveWorkspace + 1*Ndof*sizeof(dfloat);
+  occa::memory o_Ap  = BP->o_solveWorkspace + 2*Ndof*sizeof(dfloat);
+  occa::memory o_Ax  = BP->o_solveWorkspace + 3*Ndof*sizeof(dfloat);
 
   rdotz1 = 1;
 
   dfloat rdotr0;
 
   // compute A*x
-  dfloat pAp = AxOperator(BP, lambda, mu, o_x, o_Ax, dfloatString, starts, ends); 
+  dfloat pAp = AxOperator(BP, lambda, mu, o_x, o_Ax, dfloatString); 
   
   // subtract r = b - A*x
   BPScaledAdd(BP, -1.f, o_Ax, 1.f, o_r);
@@ -101,7 +70,7 @@ int BPPCG(BP_t* BP, dfloat lambda, dfloat mu,
 
   dfloat TOL =  mymax(tol*tol*rdotr0,tol*tol);
 
-  double elapsedCopy = 0;
+  double elapsedPreco = 0;
   double elapsedPupdate = 0;
   double elapsedAx = 0;
   double elapsedDot = 0;
@@ -109,37 +78,17 @@ int BPPCG(BP_t* BP, dfloat lambda, dfloat mu,
   double elapsedOp = 0;
   double elapsedOverall = 0;
 
-
-  occa::streamTag startCopy;
-  occa::streamTag endCopy;
-
-  occa::streamTag startPupdate;
-  occa::streamTag endPupdate;
-
-  occa::streamTag startUpdate;
-  occa::streamTag endUpdate;
-
-  occa::streamTag startDot;
-  occa::streamTag endDot;
-
-  occa::streamTag startOp;
-  occa::streamTag endOp;
-
-  occa::streamTag startOverall;
-  occa::streamTag endOverall;
-  
   int iter;
 
 //  startOverall = BP->mesh->device.tagStream();
   
   for(iter=1;iter<=MAXIT;++iter){
 
-    // z = Precon^{-1} r [ just a copy for this example ]
-//    startCopy = BP->mesh->device.tagStream();
-    //    o_r.copyTo(o_z, Nbytes);
-    BP->vecCopyKernel(Ndof, o_r, o_z);
-//    endCopy = BP->mesh->device.tagStream();
-    
+    // z = Precon^{-1} r 
+//    startPreco = BP->mesh->device.tagStream();
+    BPPreconditioner(BP, lambda, o_r, o_z);
+//    endPreco = BP->mesh->device.tagStream();
+     
     rdotz2 = rdotz1;
 
     // r.z
@@ -162,7 +111,7 @@ int BPPCG(BP_t* BP, dfloat lambda, dfloat mu,
 	
     // Ap and p.Ap
 //    startOp = BP->mesh->device.tagStream();
-    pAp = AxOperator(BP, lambda, mu, o_p, o_Ap, dfloatString, starts+iter, ends+iter);
+    pAp = AxOperator(BP, lambda, mu, o_p, o_Ap, dfloatString);
 //    endOp = BP->mesh->device.tagStream();
     
     // alpha = r.z/p.Ap
@@ -176,15 +125,6 @@ int BPPCG(BP_t* BP, dfloat lambda, dfloat mu,
     dfloat rdotr = BPUpdatePCG(BP, o_p, o_Ap, alpha, o_x, o_r);
 //    endUpdate = BP->mesh->device.tagStream();
 
-/* 
-    BP->mesh->device.finish();
-    elapsedUpdate  += BP->mesh->device.timeBetween(startUpdate,  endUpdate);
-    elapsedCopy    += BP->mesh->device.timeBetween(startCopy,    endCopy);
-    elapsedPupdate += BP->mesh->device.timeBetween(startPupdate, endPupdate);    
-    elapsedDot     += BP->mesh->device.timeBetween(startDot,     endDot);
-    elapsedOp      += BP->mesh->device.timeBetween(startOp,      endOp);
-*/
-
     if (verbose&&(mesh->rank==0)) {
 
       if(rdotr<0)
@@ -196,39 +136,6 @@ int BPPCG(BP_t* BP, dfloat lambda, dfloat mu,
     if(rdotr<=TOL && !fixedIterationCountFlag) break;
   }
 
-//  endOverall = BP->mesh->device.tagStream();
-  
-  BP->mesh->device.finish();
-  
-  //elapsedOverall += BP->mesh->device.timeBetween(startOverall,endOverall);
-  
-/*
-  printf("Elapsed: overall: %g, PCG Update %g, Pupdate: %g, Copy: %g, dot: %g, op: %g\n",
-	 elapsedOverall, elapsedUpdate, elapsedPupdate, elapsedCopy, elapsedDot, elapsedOp);
-*/
-
-  double gbytesPCG = 7.*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
-  double gbytesCopy = Nbytes/1.e9;
-  double gbytesOp = (7+2*BP->Nfields)*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
-  double gbytesDot = (2*BP->Nfields+1)*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
-  double gbytesPupdate =  3*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
-
-  int combineDot = 0;
-  combineDot = 0; //options.compareArgs("COMBINE DOT PRODUCT", "TRUE");
-
-  if(!combineDot)
-    gbytesOp += 3*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
-
-#if 0
-  if(verbose)
-  printf("Bandwidth (GB/s): PCG update: %g, Copy: %g, Op: %g, Dot: %g, Pupdate: %g\n",
-	 gbytesPCG*iter/elapsedUpdate,
-	 gbytesCopy*iter/elapsedCopy,
-	 gbytesOp*iter/elapsedOp,
-	 gbytesDot*iter/elapsedDot,
-	 gbytesPupdate*iter/elapsedPupdate);
-#endif
-  
   return iter;
 }
 
@@ -314,8 +221,20 @@ dfloat BPUpdatePCG(BP_t *BP,
 
 #include "../axhelm/kernelHelper.cpp"
 
+void BPPreconditioner(BP_t *BP, dfloat lambda, occa::memory &o_r, occa::memory &o_z){
+  mesh_t *mesh = BP->mesh;
+  setupAide &options = BP->options;
+
+  if(options.compareArgs("PRECONDITIONER", "JACOBI")) {
+    //dlong Ntotal = mesh->Np*mesh->Nelements; 
+    //BP->dotMultiplyKernel(Ntotal, o_r, BP->o_invDiagA, o_z);
+    dlong Ndof = mesh->Nelements*mesh->Np*BP->Nfields;
+    BP->vecCopyKernel(Ndof, o_r, o_z);
+  }
+}
+
 dfloat AxOperator(BP_t *BP, dfloat lambda, dfloat mu, occa::memory &o_q, occa::memory &o_Aq,
-		  const char *precision, occa::streamTag *start, occa::streamTag *end){
+		  const char *precision){
 
   mesh_t *mesh = BP->mesh;
   setupAide &options = BP->options;
@@ -333,12 +252,10 @@ dfloat AxOperator(BP_t *BP, dfloat lambda, dfloat mu, occa::memory &o_q, occa::m
 //  if(end)
 //    *end = BP->mesh->device.tagStream();
   
-#if 1
   if(BP->Nfields==1)
     ogsGatherScatter(o_Aq, ogsDfloat, ogsAdd, ogs);
   else
     ogsGatherScatterMany(o_Aq, BP->Nfields, offset, ogsDfloat, ogsAdd, ogs);
-#endif
   
   dfloat pAp = 0;
   pAp = BPWeightedInnerProduct(BP, BP->o_invDegree, o_q, o_Aq);

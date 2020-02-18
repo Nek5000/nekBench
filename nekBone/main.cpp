@@ -26,16 +26,38 @@
 
 #include "BP.hpp"
 
+int solve(BP_t *BP, dfloat lambda, dfloat mu, dfloat tol, occa::memory &o_r, occa::memory &o_x, double *opElapsed){
+  mesh_t *mesh = BP->mesh;
+  setupAide options = BP->options;
+
+  int Niter = 0;
+  int maxIter = 1000; 
+
+  options.getArgs("MAXIMUM ITERATIONS", maxIter);
+  options.getArgs("SOLVER TOLERANCE", tol);
+
+  if(BP->allNeumann) 
+    BPZeroMean(BP, o_r);
+  
+  if(options.compareArgs("KRYLOV SOLVER", "PCG"))
+    Niter = BPPCG(BP, lambda, mu, o_r, o_x, tol, maxIter, opElapsed);
+
+  if(BP->allNeumann) 
+    BPZeroMean(BP, o_x);
+  
+  return Niter;
+}
+
 int main(int argc, char **argv){
 
   // start up MPI
   MPI_Init(&argc, &argv);
 
   if(argc!=2){
-    printf("usage: ./BP setupfile\n");
+    printf("usage: ./nekBone setupfile\n");
 
     MPI_Finalize();
-    exit(-1);
+    exit(1);
   }
 
   // if argv > 2 then should load input data from argv
@@ -48,8 +70,15 @@ int main(int argc, char **argv){
   options.getArgs("POLYNOMIAL DEGREE", N);
   int cubN = 0;
 
+  options.setArgs("BOX XMIN", "-1.0");
+  options.setArgs("BOX YMIN", "-1.0");
+  options.setArgs("BOX ZMIN", "-1.0");
+  options.setArgs("BOX XMAX", "1.0");
+  options.setArgs("BOX YMAX", "1.0");
+  options.setArgs("BOX ZMAX", "1.0");
   options.setArgs("MESH DIMENSION", "3");
   options.setArgs("BOX DOMAIN", "TRUE");
+
   options.setArgs("DISCRETIZATION", "CONTINUOUS");
   options.setArgs("ELEMENT MAP", "ISOPARAMETRIC");
 
@@ -67,11 +96,7 @@ int main(int argc, char **argv){
   // set up mesh
   mesh = meshSetupBoxHex3D(N, cubN, options);
   mesh->elementType = elementType;
-  
-  dfloat lambda = 1, mu = 1;
-  options.getArgs("LAMBDA", lambda);
-  //options.getArgs("VISCOSITY",  mu);
-  
+ 
   // set up
   occa::properties kernelInfo;
   kernelInfo["defines"].asObject();
@@ -80,13 +105,15 @@ int main(int argc, char **argv){
   kernelInfo["flags"].asObject();
 
   meshOccaSetup3D(mesh, options, kernelInfo);
+
+  dfloat lambda = 1, mu = 1;
+  options.getArgs("LAMBDA", lambda);
   
   BP_t *BP = setup(mesh, lambda, mu, kernelInfo, options);
 
   occa::memory o_r, o_x;
 
-  dlong Ndofs = mesh->Np*mesh->Nelements;
-  Ndofs *= BP->Nfields;
+  dlong Ndofs = BP->Nfields*mesh->Np*mesh->Nelements;
   o_r = mesh->device.malloc(Ndofs*sizeof(dfloat), BP->o_r);
   o_x = mesh->device.malloc(Ndofs*sizeof(dfloat), BP->o_x);    
   
@@ -104,7 +131,7 @@ int main(int argc, char **argv){
     // warm up
     double opElapsed = 0;
 
-    //BPSolve(BP, lambda, mu, tol, BP->o_r, BP->o_x, &opElapsed);
+    //solve(BP, lambda, mu, tol, BP->o_r, BP->o_x, &opElapsed);
     
     opElapsed = 0;
     
@@ -113,7 +140,6 @@ int main(int argc, char **argv){
     occa::streamTag *stopTags  = new occa::streamTag[Ntests];
 
     it = 0;
-    double globalElapsed;
     double elapsed = MPI_Wtime();
     for(int test=0;test<Ntests;++test){
 
@@ -122,26 +148,20 @@ int main(int argc, char **argv){
       
 //      startTags[test] = mesh->device.tagStream();
 
-      it += BPSolve(BP, lambda, mu, tol, BP->o_r, BP->o_x, &opElapsed);
+      it += solve(BP, lambda, mu, tol, BP->o_r, BP->o_x, &opElapsed);
 
 //      stopTags[test] = mesh->device.tagStream();
     }
     mesh->device.finish();  
     MPI_Barrier(mesh->comm);
-  
-#if 1 
     elapsed = MPI_Wtime() - elapsed; 
-    globalElapsed = elapsed;
-#else
-    for(int test=0;test<Ntests;++test){
-      elapsed += mesh->device.timeBetween(startTags[test], stopTags[test]);
-    }
-    MPI_Reduce(&elapsed, &globalElapsed, 1, MPI_DOUBLE, MPI_MAX, 0, mesh->comm);
-#endif
 
     hlong globalNelements, localNelements=mesh->Nelements;
     MPI_Reduce(&localNelements, &globalNelements, 1, MPI_HLONG, MPI_SUM, 0, mesh->comm);
-   
+  
+    hlong globalNdofs = mesh->Nlocalized;
+    MPI_Reduce(MPI_IN_PLACE, &globalNdofs, 1, MPI_HLONG, MPI_SUM, 0, mesh->comm);
+ 
     // copy solution from DEVICE to HOST
     BP->o_x.copyTo(BP->q);
     dfloat maxError = 0;
@@ -168,6 +188,15 @@ int main(int argc, char **argv){
     double NGbytes;
     int combineDot = 0; //options.compareArgs("COMBINE DOT PRODUCT", "TRUE");
     int useInvDeg = 1;
+
+    double Nbytes = Ndofs*sizeof(dfloat);
+    double gbytesPCG = 7.*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
+    double gbytesCopy = Nbytes/1.e9;
+    double gbytesOp = (7+2*BP->Nfields)*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
+    double gbytesDot = (2*BP->Nfields+1)*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
+    double gbytesPupdate =  3*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
+    if(!combineDot)
+      gbytesOp += 3*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
  
     if(options.compareArgs("KRYLOV SOLVER", "PCG"))
       // z=r, z.r/deg, p=z+beta*p, A*p (p in/Ap out), [x=x+alpha*p, r=r-alpha*Ap, r.r./deg]
@@ -178,7 +207,7 @@ int main(int argc, char **argv){
     NGbytes += mesh->Nelements*(mesh->Nggeo*mesh->Np/1.e9);
 
     NGbytes *= sizeof(dfloat);
-    double bw = (it*(NGbytes/(globalElapsed)));
+    double bw = (it*(NGbytes/(elapsed)));
     MPI_Allreduce(MPI_IN_PLACE, &bw, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
     if(mesh->rank==0){
@@ -187,19 +216,18 @@ int main(int argc, char **argv){
       int knlId = 0;
       options.getArgs("KERNEL ID", knlId);
   
-      printf("global: N, Nfields, Nelements, elapsed, iterations, GNodes/s/iter, BW GB/s, kernel Id\n"); 
+      printf("\nN, Nfields, Nelements, elapsed, iterations, GDOF/s/iter, BW GB/s, kernel Id\n"); 
       printf("%d, %d, %d, %g, %d, %g, %g, %d\n",
 	     mesh->N,
              BP->Nfields,
 	     globalNelements,
-	     globalElapsed,
+	     elapsed,
 	     it,
-	     BP->Nfields*(it*(mesh->Np*globalNelements/globalElapsed))/1.e9,
+	     BP->Nfields*(it*(globalNdofs/elapsed))/1.e9,
 	     bw,
 	     knlId);
     }
 
-#if 0   
     if (options.compareArgs("VERBOSE", "TRUE")){
       fflush(stdout);
       MPI_Barrier(mesh->comm);
@@ -209,7 +237,6 @@ int main(int argc, char **argv){
 	     mesh->NnotInternalElements);
       MPI_Barrier(mesh->comm);
     }
-#endif
   
   }  
   MPI_Finalize();
