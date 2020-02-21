@@ -105,7 +105,8 @@ typedef struct {
   
   // PCG storage
   int NsolveWorkspace;
-  
+  dlong offsetSolveWorkspace; 
+ 
   occa::memory o_solveWorkspace;
   occa::memory o_res;
   occa::memory o_Sres;
@@ -177,21 +178,21 @@ typedef struct {
   
 }BP_t;
 
-BP_t *setup(mesh_t *mesh, dfloat lambda, dfloat mu, occa::properties &kernelInfo, setupAide &options);
+BP_t *setup(mesh_t *mesh, dfloat lambda, occa::properties &kernelInfo, setupAide &options);
 
-void solveSetup(BP_t *BP, dfloat lambda, dfloat mu, occa::properties &kernelInfo);
+void solveSetup(BP_t *BP, dfloat lambda, occa::properties &kernelInfo);
 
 void BPStartHaloExchange(BP_t *BP, occa::memory &o_q, int Nentries, dfloat *sendBuffer, dfloat *recvBuffer);
 void BPInterimHaloExchange(BP_t *BP, occa::memory &o_q, int Nentries, dfloat *sendBuffer, dfloat *recvBuffer);
 void BPEndHaloExchange(BP_t *BP, occa::memory &o_q, int Nentries, dfloat *recvBuffer);
 
 //Linear solvers
-int BPPCG   (BP_t* BP, dfloat lambda, dfloat mu, occa::memory &o_r, occa::memory &o_x, const dfloat tol, const int MAXIT, double *opElapsed);
+int BPPCG   (BP_t* BP, dfloat lambda, occa::memory &o_r, occa::memory &o_x, const dfloat tol, const int MAXIT, double *opElapsed);
 
 void BPScaledAdd(BP_t *BP, dfloat alpha, occa::memory &o_a, dfloat beta, occa::memory &o_b);
 dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b);
 
-dfloat AxOperator(BP_t *BP, dfloat lambda, dfloat mu, occa::memory &o_q, occa::memory &o_Aq, const char *precision);
+dfloat AxOperator(BP_t *BP, dfloat lambda, occa::memory &o_q, occa::memory &o_Aq, const char *precision);
 
 void BPPreconditioner(BP_t *BP, dfloat lambda, occa::memory &o_r, occa::memory &o_z);
 

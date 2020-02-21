@@ -46,10 +46,15 @@ void weightedInnerProduct2(const dlong & N,
 extern "C"
 void weightedMultipleInnerProduct2(const dlong & N,
                                    const dlong & offset,
-                                   const dfloat * __restrict__ cpu_w,
-		 	           const dfloat * __restrict__ cpu_a,
-		       	           const dfloat * __restrict__ cpu_b,
+                                   dfloat * __restrict__ cpu_w,
+		 	           dfloat * __restrict__ cpu_a,
+		       	           dfloat * __restrict__ cpu_b,
 			           dfloat * __restrict__ cpu_wab ){
 
-  weightedInnerProduct2(N, cpu_w, cpu_a, cpu_b, cpu_wab);
+  dfloat wab = 0;
+  for(dlong fld=0;fld<p_Nfields;++fld){
+    for(dlong id=0;id<N;++id) wab += cpu_a[id+fld*offset]*cpu_b[id+fld*offset]*cpu_w[id+fld*offset];
+  }
+  cpu_wab[0] = wab;
+
 }

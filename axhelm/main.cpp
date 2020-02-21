@@ -52,16 +52,14 @@ dfloat *drandAlloc(int N){
 int main(int argc, char **argv){
 
   if(argc<6){
-    printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL SERIAL+VOLTA [kernelVersion] [deviceID] [platformID]\n");
+    printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL CPU|VOLTA [kernelVersion] [deviceID] [platformID]\n");
     return 1;
   }
 
   int rank = 0, size = 1;
-#ifdef USEMPI
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-#endif
+  MPI_Init(&argc, &argv);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
 
   const int N = atoi(argv[1]);
   const int Ndim = atoi(argv[2]);
@@ -170,22 +168,18 @@ int main(int argc, char **argv){
 
   // run kernel
   device.finish();
-#ifdef USEMPI
   MPI_Barrier(MPI_COMM_WORLD);
-#endif
   start = device.tagStream();
 
   for(int test=0;test<Ntests;++test)
     axKernel(Nelements, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq);
 
- #ifdef USEMPI
   MPI_Barrier(MPI_COMM_WORLD);
-#endif
   end = device.tagStream();
 
   // print statistics
   const double elapsed = device.timeBetween(start, end)/Ntests;
-  const dfloat GnodesPerSecond = (size*Ndim*Np*Nelements/elapsed)/1.e9;
+  const dfloat GDOFPerSecond = (size*Ndim*(N*N*N)*Nelements/elapsed)/1.e9;
   const long long bytesMoved = (Ndim*2*Np+7*Np)*sizeof(dfloat); // x, Mx, opa
   const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
   double flopCount = Ndim*Np*12*Nq;
@@ -198,16 +192,13 @@ int main(int argc, char **argv){
               << " Ndim=" << Ndim
               << " N=" << N
               << " Nelements=" << size*Nelements
-              << " Nnodes=" << Ndim*Np*size*Nelements
               << " elapsed time=" << elapsed
-              << " Gnodes/s=" << GnodesPerSecond
+              << " GDOF/s=" << GDOFPerSecond
               << " GB/s=" << bw
               << " GFLOPS/s=" << gflops
               << "\n";
   } 
 
-#ifdef USEMPI
   MPI_Finalize();
-#endif 
   exit(0);
 }

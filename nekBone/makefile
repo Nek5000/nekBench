@@ -1,37 +1,7 @@
-NALIGN ?= 64
-PREFIX ?= "$(CUDIR)/build"
-
-ifndef OCCA_DIR
+ifeq (0,$(MAKELEVEL))
 ERROR:
-	@echo "Error, environment variable [OCCA_DIR] is not set"
+	@echo "ERROR:  Please use toplevel makefile"
 endif
-
-include ${OCCA_DIR}/scripts/Makefile
-
-# define variables
-HDRDIR = ../core
-GSDIR  = ../3rdParty/gslib/
-OGSDIR = ../3rdParty/ogs/
-BLASLAPACK_DIR = ../3rdParty/BlasLapack
-
-# set options for this machine
-# specify which compilers to use for c, fortran and linking
-CC = mpicc
-FC = mpif77  
-CC = mpic++
-LD = mpic++
-
-compilerFlags += -Ddfloat=double
-compilerFlags += -Ddlong=int
-compilerFlags += -DdfloatString='"double"'
-compilerFlags += -DdlongString='"int"'
-compilerFlags += -DUSE_OCCA_MEM_BYTE_ALIGN=$(NALIGN)
-compilerFlags += -O0 -g
-
-CFLAGS = -I. -DOCCA_VERSION_1_0 $(compilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR)  -D DBP='"./"' $(LIBP_OPT_FLAGS) -I$(OGSDIR)/include 
-
-# link flags to be used
-LDFLAGS	= -DOCCA_VERSION_1_0 $(compilerFlags) $(LIBP_OPT_FLAGS)
 
 # libraries to be linked in
 LIBS	=  -L$(OGSDIR) -logs -L$(GSDIR)/lib -lgs -L$(OCCA_DIR)/lib -locca $(linkerFlags) $(BLASLAPACK_DIR)/libBlasLapack.a  $(LIBP_EXT_LIBS) -lgfortran -fopenmp
@@ -52,7 +22,7 @@ $(OGSDIR)/ogs.hpp \
 	$(CC) $(CFLAGS) -o $*.o -c $*.c $(paths)
 
 .cpp.o: $(DEPS)
-	$(CC) $(CFLAGS) -o $*.o -c $*.cpp $(paths)
+	$(CXX) $(CXXFLAGS) -o $*.o -c $*.cpp $(paths)
 
 .f.o: $(DEPS)
 	$(FC) $(CFLAGS) -o $*.o -c $*.f $(paths)

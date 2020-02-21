@@ -1,8 +1,0 @@
-NVidia V100 SXM2
-nvcc (V10.0.130)
-
-kernel: axhelm.okl version 0
-
-MPItasks=1 Ndim=1 N=7 Nelements=2000 Nnodes=1024000 elapsed time=0.000106058 Gnodes/s=9.65513 GB/s=695.169 GFLOPS/s=1091.03
-MPItasks=1 Ndim=1 N=7 Nelements=4000 Nnodes=2048000 elapsed time=0.000202528 Gnodes/s=10.1122 GB/s=728.077 GFLOPS/s=1142.68
-MPItasks=1 Ndim=1 N=7 Nelements=8000 Nnodes=4096000 elapsed time=0.000394296 Gnodes/s=10.3881 GB/s=747.946 GFLOPS/s=1173.86

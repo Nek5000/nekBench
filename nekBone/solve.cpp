@@ -26,7 +26,7 @@ SOFTWARE.
 
 #include "BP.hpp"
 
-int BPPCG(BP_t* BP, dfloat lambda, dfloat mu,
+int BPPCG(BP_t* BP, dfloat lambda,
 	  occa::memory &o_r, occa::memory &o_x, 
 	  const dfloat tol, const int MAXIT,
 	  double *opElapsed){
@@ -40,48 +40,35 @@ int BPPCG(BP_t* BP, dfloat lambda, dfloat mu,
   
   if(options.compareArgs("FIXED ITERATION COUNT", "TRUE"))
     fixedIterationCountFlag = 1;
-  
+ 
+  int iter;
+ 
   // register scalars
-  dfloat rdotz1 = 0;
+  dfloat rdotz1 = 1;
   dfloat rdotz2 = 0;
+  dfloat rdotr0;
 
   // now initialized
   dfloat alpha = 0, beta = 0;
 
-  dlong Ndof = mesh->Nelements*mesh->Np*BP->Nfields;
-  
   /*aux variables */
-  occa::memory o_p   = BP->o_solveWorkspace + 0*Ndof*sizeof(dfloat);
-  occa::memory o_z   = BP->o_solveWorkspace + 1*Ndof*sizeof(dfloat);
-  occa::memory o_Ap  = BP->o_solveWorkspace + 2*Ndof*sizeof(dfloat);
-  occa::memory o_Ax  = BP->o_solveWorkspace + 3*Ndof*sizeof(dfloat);
-
-  rdotz1 = 1;
-
-  dfloat rdotr0;
+  occa::memory o_p   = BP->o_solveWorkspace + 0*BP->offsetSolveWorkspace*sizeof(dfloat);
+  occa::memory o_z   = BP->o_solveWorkspace + 1*BP->offsetSolveWorkspace*sizeof(dfloat);
+  occa::memory o_Ap  = BP->o_solveWorkspace + 2*BP->offsetSolveWorkspace*sizeof(dfloat);
+  occa::memory o_Ax  = BP->o_solveWorkspace + 3*BP->offsetSolveWorkspace*sizeof(dfloat);
 
   // compute A*x
-  dfloat pAp = AxOperator(BP, lambda, mu, o_x, o_Ax, dfloatString); 
+  dfloat pAp = AxOperator(BP, lambda, o_x, o_Ax, dfloatString); 
   
   // subtract r = b - A*x
   BPScaledAdd(BP, -1.f, o_Ax, 1.f, o_r);
 
   rdotr0 = BPWeightedNorm2(BP, BP->o_invDegree, o_r);
 
-  dfloat TOL =  mymax(tol*tol*rdotr0,tol*tol);
+  const dfloat TOL =  mymax(tol*tol*rdotr0,tol*tol);
 
-  double elapsedPreco = 0;
-  double elapsedPupdate = 0;
-  double elapsedAx = 0;
-  double elapsedDot = 0;
-  double elapsedUpdate = 0;
-  double elapsedOp = 0;
-  double elapsedOverall = 0;
-
-  int iter;
 
 //  startOverall = BP->mesh->device.tagStream();
-  
   for(iter=1;iter<=MAXIT;++iter){
 
     // z = Precon^{-1} r 
@@ -111,7 +98,7 @@ int BPPCG(BP_t* BP, dfloat lambda, dfloat mu,
 	
     // Ap and p.Ap
 //    startOp = BP->mesh->device.tagStream();
-    pAp = AxOperator(BP, lambda, mu, o_p, o_Ap, dfloatString);
+    pAp = AxOperator(BP, lambda, o_p, o_Ap, dfloatString);
 //    endOp = BP->mesh->device.tagStream();
     
     // alpha = r.z/p.Ap
@@ -192,12 +179,13 @@ dfloat BPUpdatePCG(BP_t *BP,
   // dot(r,r)
 
   const dlong offset = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
+  const dlong Nlocal = mesh->Nelements*mesh->Np;
 
   if(BP->Nfields==1)
-    BP->updatePCGKernel(mesh->Nelements, mesh->Np, BP->NblocksUpdatePCG,
+    BP->updatePCGKernel(Nlocal, BP->NblocksUpdatePCG,
 			BP->o_invDegree, o_p, o_Ap, alpha, o_x, o_r, BP->o_tmpNormr);
   else
-    BP->updateMultiplePCGKernel(mesh->Nelements, mesh->Np, offset, BP->NblocksUpdatePCG,
+    BP->updateMultiplePCGKernel(Nlocal, offset, BP->NblocksUpdatePCG,
 				BP->o_invDegree, o_p, o_Ap, alpha, o_x, o_r, BP->o_tmpNormr);
 
   BP->o_tmpNormr.copyTo(BP->tmpNormr);
@@ -233,7 +221,7 @@ void BPPreconditioner(BP_t *BP, dfloat lambda, occa::memory &o_r, occa::memory &
   }
 }
 
-dfloat AxOperator(BP_t *BP, dfloat lambda, dfloat mu, occa::memory &o_q, occa::memory &o_Aq,
+dfloat AxOperator(BP_t *BP, dfloat lambda, occa::memory &o_q, occa::memory &o_Aq,
 		  const char *precision){
 
   mesh_t *mesh = BP->mesh;
@@ -242,20 +230,17 @@ dfloat AxOperator(BP_t *BP, dfloat lambda, dfloat mu, occa::memory &o_q, occa::m
 
   occa::kernel &kernel = BP->BPKernel[BP->BPid];
   
-  const dlong offset = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
+  const dlong fieldOffset = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
 
 //  if(start)
 //    *start = BP->mesh->device.tagStream();
 
-    kernel(mesh->Nelements, offset, mesh->o_ggeo, mesh->o_D, lambda, o_q, o_Aq);
+    kernel(mesh->Nelements, fieldOffset, mesh->o_ggeo, mesh->o_D, lambda, o_q, o_Aq);
 
 //  if(end)
 //    *end = BP->mesh->device.tagStream();
   
-  if(BP->Nfields==1)
-    ogsGatherScatter(o_Aq, ogsDfloat, ogsAdd, ogs);
-  else
-    ogsGatherScatterMany(o_Aq, BP->Nfields, offset, ogsDfloat, ogsAdd, ogs);
+  ogsGatherScatterMany(o_Aq, BP->Nfields, fieldOffset, ogsDfloat, ogsAdd, ogs);
   
   dfloat pAp = 0;
   pAp = BPWeightedInnerProduct(BP, BP->o_invDegree, o_q, o_Aq);

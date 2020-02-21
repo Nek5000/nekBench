@@ -25,8 +25,7 @@ SOFTWARE.
 */
 
 extern "C" 
-void BPUpdatePCG(const dlong & Nelements,
-                 const dlong & Np,
+void BPUpdatePCG(const dlong & N,
                  const dlong & Nblocks,
 	         const dfloat * __restrict__ cpu_invDegree,
 		 const dfloat * __restrict__ cpu_p,
@@ -43,7 +42,8 @@ void BPUpdatePCG(const dlong & Nelements,
   cpu_invDegree = (dfloat*)__builtin_assume_aligned(cpu_invDegree,  p_Nalign) ;
   
   dfloat rdotr = 0;
-  
+  const dlong Nelements = N/p_Np; 
+ 
   for(dlong e=0;e<Nelements;++e){
     for(int i=0;i<p_Np;++i){
       const dlong n = e*p_Np+i;
@@ -59,8 +59,7 @@ void BPUpdatePCG(const dlong & Nelements,
 
 extern "C" 
 void BPMultipleUpdatePCG(
-             const dlong & Nelements,
-             const dlong & Np,
+             const dlong & N,
              const dlong & offset,
              const dlong & Nblocks,
              const dfloat * __restrict__ cpu_invDegree,
@@ -78,6 +77,7 @@ void BPMultipleUpdatePCG(
   cpu_invDegree = (dfloat*)__builtin_assume_aligned(cpu_invDegree,  p_Nalign) ;
   
   dfloat rdotr = 0;
+  const dlong Nelements = N/p_Np; 
   
   for(int fld=0; fld<p_Nfields; fld++){
   for(dlong e=0;e<Nelements;++e){

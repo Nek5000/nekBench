@@ -2290,13 +2290,13 @@ mesh3D *meshSetupBoxHex3D(int N, int cubN, setupAide &options){
   
   // build an NX x NY x NZ periodic box grid
   
-  hlong NX = 3, NY = 3, NZ = 3; // defaults
+  dlong NX = 3, NY = 3, NZ = 3; // defaults
 
   int NdofsTarget = 0;
   //options.getArgs("TARGET NODES", NdofsTarget);
   if(NdofsTarget){
     int tmpNp = (N+1)*(N+1)*(N+1);
-    int NelementsTarget = (NdofsTarget+tmpNp-1)/tmpNp;
+    hlong NelementsTarget = (NdofsTarget+tmpNp-1)/tmpNp;
     meshChooseBoxDimensions(NelementsTarget, &NX, &NY, &NZ);
     printf("TARGET NODES = %d, ACTUAL NODES = %d, NELEMENTS = [%d,%d,%d=>%d]\n", NdofsTarget, NX*NY*NZ*tmpNp, NX,NY,NZ, NX*NY*NZ);
   }else{
@@ -2459,13 +2459,13 @@ mesh3D *meshSetupBoxTet3D(int N, int cubN, setupAide &options){
   
   // build an NX x NY x NZ periodic box grid
   
-  hlong NX = 3, NY = 3, NZ = 3; // defaults
+  dlong NX = 3, NY = 3, NZ = 3; // defaults
 
   int NdofsTarget = 0;
   options.getArgs("TARGET NODES", NdofsTarget);
   if(NdofsTarget){
     int tmpNp = 6*(N+1)*(N+2)*(N+3)/6;
-    int NboxesTarget = (NdofsTarget+tmpNp-1)/tmpNp;
+    hlong NboxesTarget = (NdofsTarget+tmpNp-1)/tmpNp;
     meshChooseBoxDimensions(NboxesTarget, &NX, &NY, &NZ);
     //printf("TARGET NODES = %d, ACTUAL NODES = %d, NELEMENTS = [%d,%d,%d=>%d]\n", NdofsTarget, NX*NY*NZ*tmpNp, NX,NY,NZ, NX*NY*NZ);
   }else{
@@ -3045,23 +3045,24 @@ void occaDeviceConfig(mesh_t *mesh, setupAide &options){
   rank = mesh->rank;
   size = mesh->size;
 
-  long int hostId = gethostid();
-
-  long int* hostIds = (long int*) calloc(size,sizeof(long int));
-  MPI_Allgather(&hostId,1,MPI_LONG,hostIds,1,MPI_LONG,mesh->comm);
-
   int device_id = 0;
-  int totalDevices = 0;
-  for (int r=0;r<rank;r++) {
-    if (hostIds[r]==hostId) device_id++;
-  }
-  for (int r=0;r<size;r++) {
-    if (hostIds[r]==hostId) totalDevices++;
+  if(options.compareArgs("DEVICE NUMBER", "LOCAL-RANK")){
+    long int hostId = gethostid();
+
+    long int* hostIds = (long int*) calloc(size,sizeof(long int));
+    MPI_Allgather(&hostId,1,MPI_LONG,hostIds,1,MPI_LONG,mesh->comm);
+
+    int totalDevices = 0;
+    for (int r=0;r<rank;r++) {
+      if (hostIds[r]==hostId) device_id++;
+    }
+    for (int r=0;r<size;r++) {
+      if (hostIds[r]==hostId) totalDevices++;
+    }
+  } else {
+    options.getArgs("DEVICE NUMBER" ,device_id);
   }
 
-  //if (size==1) options.getArgs("DEVICE NUMBER" ,device_id);
-  //printf("device_id = %d\n", device_id);
-  
   occa::properties deviceProps;
   
   if(options.compareArgs("THREAD MODEL", "CUDA")){
@@ -3079,25 +3080,15 @@ void occaDeviceConfig(mesh_t *mesh, setupAide &options){
     sprintf(deviceConfig, "mode: 'OpenMP' ");
   }
   else{
+    //sprintf(deviceConfig, "mode: 'Serial', memory: { use_host_pointer: true }");
     sprintf(deviceConfig, "mode: 'Serial' ");
   }
 
-  //set number of omp threads to use
-  int Ncores = sysconf(_SC_NPROCESSORS_ONLN);
-  int Nthreads = Ncores/totalDevices;
-
-  //  Nthreads = mymax(1,Nthreads/2);
-  Nthreads = mymax(1,Nthreads/2);
-  omp_set_num_threads(Nthreads);
-
-  //if (options.compareArgs("VERBOSE","TRUE"))
-  //  printf("Rank %d: Ncores = %d, Nthreads = %d, device_id = %d \n", rank, Ncores, Nthreads, device_id);
-
   mesh->device.setup((std::string)deviceConfig);
+  if(rank==0) 
+   std::cout << "active occa mode: " << mesh->device.mode() << "\n";
 
-#ifdef USE_OCCA_MEM_BYTE_ALIGN 
   occa::env::OCCA_MEM_BYTE_ALIGN = USE_OCCA_MEM_BYTE_ALIGN;
-#endif
 }
 
 
@@ -3247,7 +3238,7 @@ void parallelSort(int size, int rank, MPI_Comm comm,
 
 void meshParallelGatherScatterSetup(mesh_t *mesh,
                                       dlong N,
-                                      dlong *globalIds,
+                                      hlong *globalIds,
                                       MPI_Comm &comm,
                                       int verbose) { 
 

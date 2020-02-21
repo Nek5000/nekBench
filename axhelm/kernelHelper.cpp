@@ -3,9 +3,7 @@ static occa::kernel loadAxKernel(occa::device device, const std::string threadMo
                                  int N, dlong Nelements){
 
   int rank = 1;
-#ifdef USEMPI
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-#endif
 
   const int Nq = N + 1;
   const int Np = Nq*Nq*Nq;
@@ -52,9 +50,7 @@ static occa::kernel loadAxKernel(occa::device device, const std::string threadMo
         axKernel = device.buildKernel(filename + ".okl", kernelName, props);
       }
     }
-#ifdef USEMPI
     MPI_Barrier(MPI_COMM_WORLD);
-#endif
   }
   return axKernel;
 }

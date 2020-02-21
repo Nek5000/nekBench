@@ -26,19 +26,17 @@
 
 // WARNING: p_NthreadsUpdatePCG must be a power of 2
 
-@kernel void BPUpdatePCG(const dlong Nelements,
-                       const dlong Np,
-		       const dlong Nblocks,
-		       @restrict const dfloat *invDegree,
-		       @restrict const dfloat *p,
-		       @restrict const dfloat *Ap,
-		       const dfloat alpha,
-		       @restrict dfloat *x,
-		       @restrict dfloat *r,
-		       @restrict dfloat *redr){
+@kernel void BPUpdatePCG(const dlong N,
+		        const dlong Nblocks,
+		        @restrict const dfloat *invDegree,
+		        @restrict const dfloat *p,
+		        @restrict const dfloat *Ap,
+		        const dfloat alpha,
+		        @restrict dfloat *x,
+		        @restrict dfloat *r,
+		        @restrict dfloat *redr){
 
   for(dlong b=0;b<Nblocks;++b;@outer(0)){
-    const dlong N = Nelements*Np; 
 
     @shared volatile dfloat s_sum[p_NthreadsUpdatePCG];
     @shared volatile dfloat s_warpSum[p_NwarpsUpdatePCG]; // good  to 256
@@ -113,22 +111,19 @@
 }
 
 
-
-@kernel void BPMultipleUpdatePCG(const dlong Nelements,
-             const dlong Np,
-             const dlong offset, 
-             const dlong Nblocks,
-             @restrict const dfloat *invDegree,
-             @restrict const dfloat *p,
-             @restrict const dfloat *Ap,
-             const dfloat alpha,
-             @restrict dfloat *x,
-             @restrict dfloat *r,
-             @restrict dfloat *redr){
+@kernel void BPMultipleUpdatePCG(const dlong N,
+                                 const dlong Np,
+                                 const dlong offset, 
+                                 const dlong Nblocks,
+                                 @restrict const dfloat *invDegree,
+                                 @restrict const dfloat *p,
+                                 @restrict const dfloat *Ap,
+                                 const dfloat alpha,
+                                 @restrict dfloat *x,
+                                 @restrict dfloat *r,
+                                 @restrict dfloat *redr){
 
   for(dlong b=0;b<Nblocks;++b;@outer(0)){
-
-    const dlong N = Nelements*Np; 
 
     @shared volatile dfloat s_sum[p_NthreadsUpdatePCG];
     @shared volatile dfloat s_warpSum[p_NwarpsUpdatePCG]; // good  to 256

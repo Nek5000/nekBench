@@ -26,7 +26,7 @@
 
 #include "BP.hpp"
 
-int solve(BP_t *BP, dfloat lambda, dfloat mu, dfloat tol, occa::memory &o_r, occa::memory &o_x, double *opElapsed){
+int solve(BP_t *BP, dfloat lambda, dfloat tol, occa::memory &o_r, occa::memory &o_x, double *opElapsed){
   mesh_t *mesh = BP->mesh;
   setupAide options = BP->options;
 
@@ -40,7 +40,7 @@ int solve(BP_t *BP, dfloat lambda, dfloat mu, dfloat tol, occa::memory &o_r, occ
     BPZeroMean(BP, o_r);
   
   if(options.compareArgs("KRYLOV SOLVER", "PCG"))
-    Niter = BPPCG(BP, lambda, mu, o_r, o_x, tol, maxIter, opElapsed);
+    Niter = BPPCG(BP, lambda, o_r, o_x, tol, maxIter, opElapsed);
 
   if(BP->allNeumann) 
     BPZeroMean(BP, o_x);
@@ -106,17 +106,13 @@ int main(int argc, char **argv){
 
   meshOccaSetup3D(mesh, options, kernelInfo);
 
-  dfloat lambda = 1, mu = 1;
+  dfloat lambda = 1;
   options.getArgs("LAMBDA", lambda);
   
-  BP_t *BP = setup(mesh, lambda, mu, kernelInfo, options);
-
-  occa::memory o_r, o_x;
+  BP_t *BP = setup(mesh, lambda, kernelInfo, options);
 
   dlong Ndofs = BP->Nfields*mesh->Np*mesh->Nelements;
-  o_r = mesh->device.malloc(Ndofs*sizeof(dfloat), BP->o_r);
-  o_x = mesh->device.malloc(Ndofs*sizeof(dfloat), BP->o_x);    
-  
+ 
   // convergence tolerance
   dfloat tol = 1e-8;
   
@@ -125,31 +121,15 @@ int main(int argc, char **argv){
   int bpid = BP->BPid;
   {
     BP->BPid = bpid;
-    
-    MPI_Barrier(mesh->comm);
-
-    // warm up
     double opElapsed = 0;
-
-    //solve(BP, lambda, mu, tol, BP->o_r, BP->o_x, &opElapsed);
-    
-    opElapsed = 0;
-    
     int Ntests = 1;
-    occa::streamTag *startTags = new occa::streamTag[Ntests];
-    occa::streamTag *stopTags  = new occa::streamTag[Ntests];
-
     it = 0;
+
+    MPI_Barrier(mesh->comm);
     double elapsed = MPI_Wtime();
     for(int test=0;test<Ntests;++test){
-
-      o_r.copyTo(BP->o_r);
-      o_x.copyTo(BP->o_x);
-      
 //      startTags[test] = mesh->device.tagStream();
-
-      it += solve(BP, lambda, mu, tol, BP->o_r, BP->o_x, &opElapsed);
-
+      it += solve(BP, lambda, tol, BP->o_r, BP->o_x, &opElapsed);
 //      stopTags[test] = mesh->device.tagStream();
     }
     mesh->device.finish();  
@@ -160,11 +140,13 @@ int main(int argc, char **argv){
     MPI_Reduce(&localNelements, &globalNelements, 1, MPI_HLONG, MPI_SUM, 0, mesh->comm);
   
     hlong globalNdofs = mesh->Nlocalized;
-    MPI_Reduce(MPI_IN_PLACE, &globalNdofs, 1, MPI_HLONG, MPI_SUM, 0, mesh->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &globalNdofs, 1, MPI_HLONG, MPI_SUM, mesh->comm);
  
     // copy solution from DEVICE to HOST
     BP->o_x.copyTo(BP->q);
+    const dlong offset = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs); 
     dfloat maxError = 0;
+    for(dlong fld=0;fld<BP->Nfields;++fld){
     for(dlong e=0;e<mesh->Nelements;++e){
       for(int n=0;n<mesh->Np;++n){
 	dlong   id = e*mesh->Np+n;
@@ -177,9 +159,10 @@ int main(int argc, char **argv){
 	// hard coded to match the RHS used in BPSetup
 	exact = (3.*M_PI*M_PI*mode*mode+lambda)*cos(mode*M_PI*xn)*cos(mode*M_PI*yn)*cos(mode*M_PI*zn);
 	exact /= (3.*mode*mode*M_PI*M_PI+lambda);
-	dfloat error = fabs(exact-BP->q[id]);
+	dfloat error = fabs(exact-BP->q[id+fld*offset]);
 	maxError = mymax(maxError, error);
       }
+    }
     }
     dfloat globalMaxError = 0;
     MPI_Allreduce(&maxError, &globalMaxError, 1, MPI_DFLOAT, MPI_MAX, mesh->comm);
@@ -211,7 +194,7 @@ int main(int argc, char **argv){
     MPI_Allreduce(MPI_IN_PLACE, &bw, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
     if(mesh->rank==0){
-      printf("globalMaxError = %g\n", globalMaxError);
+      printf("\ncorrectness check: globalMaxError = %g\n", globalMaxError);
  
       int knlId = 0;
       options.getArgs("KERNEL ID", knlId);

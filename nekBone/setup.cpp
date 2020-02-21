@@ -31,14 +31,14 @@ SOFTWARE.
 
 void reportMemoryUsage(occa::device &device, const char *mess);
 
-BP_t *setup(mesh_t *mesh, dfloat lambda, dfloat mu, occa::properties &kernelInfo, setupAide &options){
+BP_t *setup(mesh_t *mesh, dfloat lambda, occa::properties &kernelInfo, setupAide &options){
 
   BP_t *BP = new BP_t();
 
   BP->BPid = 5;
 
   BP->Nfields = 1;
-  options.getArgs("NUMBER OF FIELDS", BP->Nfields);
+  //options.getArgs("NUMBER OF FIELDS", BP->Nfields);
   if(BP->Nfields > 1) BP->BPid = 6;
 
   options.getArgs("MESH DIMENSION", BP->dim);
@@ -46,10 +46,10 @@ BP_t *setup(mesh_t *mesh, dfloat lambda, dfloat mu, occa::properties &kernelInfo
   BP->mesh = mesh;
   BP->options = options;
 
-  solveSetup(BP, lambda, mu, kernelInfo);
+  solveSetup(BP, lambda, kernelInfo);
 
-  dlong Ndof = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
-  dlong Nall = BP->Nfields*Ndof;
+  const dlong Ndof = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
+  const dlong Nall = BP->Nfields*Ndof;
   BP->r   = (dfloat*) calloc(Nall,   sizeof(dfloat));
   BP->x   = (dfloat*) calloc(Nall,   sizeof(dfloat));
   BP->q   = (dfloat*) calloc(Nall,   sizeof(dfloat));
@@ -84,12 +84,8 @@ BP_t *setup(mesh_t *mesh, dfloat lambda, dfloat mu, occa::properties &kernelInfo
   
   char *suffix = strdup("Hex3D");
   
-  if(options.compareArgs("DISCRETIZATION","CONTINUOUS")){
-    if(BP->Nfields == 1)
-      ogsGatherScatter(BP->o_r, ogsDfloat, ogsAdd, mesh->ogs);
-    else
-      ogsGatherScatterMany(BP->o_r, BP->Nfields, Ndof, ogsDfloat, ogsAdd, mesh->ogs);
-  }
+  if(options.compareArgs("DISCRETIZATION","CONTINUOUS"))
+    ogsGatherScatterMany(BP->o_r, BP->Nfields, Ndof, ogsDfloat, ogsAdd, mesh->ogs);
 
   if (mesh->rank==0)
     reportMemoryUsage(mesh->device, "setup done");
@@ -98,7 +94,7 @@ BP_t *setup(mesh_t *mesh, dfloat lambda, dfloat mu, occa::properties &kernelInfo
 }
 
 
-void solveSetup(BP_t *BP, dfloat lambda, dfloat mu, occa::properties &kernelInfo){
+void solveSetup(BP_t *BP, dfloat lambda, occa::properties &kernelInfo){
 
   mesh_t *mesh = BP->mesh;
   setupAide options = BP->options;
@@ -121,9 +117,13 @@ void solveSetup(BP_t *BP, dfloat lambda, dfloat mu, occa::properties &kernelInfo
   BP->NthreadsUpdatePCG = NthreadsUpdatePCG;
   BP->NblocksUpdatePCG = NblocksUpdatePCG;
 
-  BP->NsolveWorkspace = 10;
-  BP->solveWorkspace = (dfloat*) calloc(Nall*BP->NsolveWorkspace, sizeof(dfloat));
-  BP->o_solveWorkspace  = mesh->device.malloc(Nall*BP->NsolveWorkspace*sizeof(dfloat), BP->solveWorkspace);
+  BP->NsolveWorkspace = 4;
+  BP->offsetSolveWorkspace = Nall;
+  const int PAGESIZE = 4096; // default is 4kB
+  const int pageW = PAGESIZE/sizeof(dfloat);
+  if (BP->offsetSolveWorkspace%pageW) BP->offsetSolveWorkspace = (BP->offsetSolveWorkspace + 1)*pageW;
+  BP->solveWorkspace = (dfloat*) calloc(BP->offsetSolveWorkspace*BP->NsolveWorkspace, sizeof(dfloat));
+  BP->o_solveWorkspace  = mesh->device.malloc(BP->offsetSolveWorkspace*BP->NsolveWorkspace*sizeof(dfloat), BP->solveWorkspace);
 
 /*
   if(options.compareArgs("PRECONDITIONER", "JACOBI"){

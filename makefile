@@ -1,22 +1,48 @@
-# set options for this machine
-# specify which compilers to use for c, fortran and linking
-NALIGN ?= 64
-PREFIX ?= "$(CURDIR)/build"
+ifndef OCCA_DIR
+ERROR:
+	@echo "ERROR:  Environment variable OCCA_DIR is not set."
+endif
+include ${OCCA_DIR}/scripts/Makefile
 
+export CC = mpicc
+export FC = mpif77
+export CXX = mpic++
+export LD = mpic++
+
+export NALIGN ?= 64
+export PREFIX ?= "$(CURDIR)/build"
 export NALIGN
 export PREFIX
 
-ifndef OCCA_DIR
-ERROR:
-	@echo "Error, environment variable [OCCA_DIR] is not set"
-endif
+export HDRDIR = $(CURDIR)/core
+export GSDIR  = $(CURDIR)/3rdParty/gslib/
+export OGSDIR = $(CURDIR)/3rdParty/ogs/
+export BLASLAPACK_DIR = $(CURDIR)/3rdParty/BlasLapack
+
+flags += -g
+flags += -Ddfloat=double
+flags += -Ddlong=int
+flags += -Dhlong='long long int'
+flags += -DhlongString='"long long int"'
+flags += -DdfloatString='"double"'
+flags += -DdlongString='"int"'
+flags += -DUSE_OCCA_MEM_BYTE_ALIGN=$(NALIGN)
+
+export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR)  -D DBP='"./"' $(LIBP_OPT_FLAGS) -I$(OGSDIR)/include $(paths)
+
+export CXXFLAGS = -I. -DOCCA_VERSION_1_0 $(compilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR)  -D DBP='"./"' $(LIBP_OPT_FLAGS) -I$(OGSDIR)/include $(paths)
 
 NEKBONEDIR = ./nekBone 
 AXHELMDIR  = ./axhelm 
 
 .PHONY: install axhelm nekBone all clean realclean
 
-all: axhelm nekBone install 
+all: axhelm nekBone install
+	@if test -f ${PREFIX}/axhelm && test -f ${PREFIX}/nekBone; then \
+	echo ""; \
+	echo "compilation successful!"; \
+	echo "install dir: ${PREFIX}"; \
+	fi
 
 install:
 	@rm -rf $(PREFIX)/libgs.a
