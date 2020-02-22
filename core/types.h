@@ -24,6 +24,7 @@ SOFTWARE.
 
 */
 
+/*
 
 //float data type
 #if 0
@@ -63,3 +64,5 @@ SOFTWARE.
 #define dlongFormat "%lld"
 #define dlongString "long long int"
 #endif
+
+*/

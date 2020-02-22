@@ -11,8 +11,6 @@ export LD = mpic++
 
 export NALIGN ?= 64
 export PREFIX ?= "$(CURDIR)/build"
-export NALIGN
-export PREFIX
 
 export HDRDIR = $(CURDIR)/core
 export GSDIR  = $(CURDIR)/3rdParty/gslib/
@@ -21,11 +19,17 @@ export BLASLAPACK_DIR = $(CURDIR)/3rdParty/BlasLapack
 
 flags += -g
 flags += -Ddfloat=double
+flags += -DdfloatString='"double"'
+flags += -DMPI_DFLOAT='MPI_DOUBLE'
+flags += -DdfloatFormat='"%lf"'
 flags += -Ddlong=int
+flags += -DdlongString='"int"'
+flags += -DMPI_DLONG='MPI_INT'
+flags += -DdlongFormat='"%d"'
 flags += -Dhlong='long long int'
 flags += -DhlongString='"long long int"'
-flags += -DdfloatString='"double"'
-flags += -DdlongString='"int"'
+flags += -DMPI_HLONG='MPI_LONG_LONG_INT'
+flags += -DhlongFormat='"%lld"'
 flags += -DUSE_OCCA_MEM_BYTE_ALIGN=$(NALIGN)
 
 export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR)  -D DBP='"./"' $(LIBP_OPT_FLAGS) -I$(OGSDIR)/include $(paths)
