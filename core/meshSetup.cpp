@@ -3082,6 +3082,7 @@ void occaDeviceConfig(mesh_t *mesh, setupAide &options){
   else{
     //sprintf(deviceConfig, "mode: 'Serial', memory: { use_host_pointer: true }");
     sprintf(deviceConfig, "mode: 'Serial' ");
+    omp_set_num_threads(1);
   }
 
   mesh->device.setup((std::string)deviceConfig);

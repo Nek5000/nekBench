@@ -24,6 +24,7 @@
 
 */
 
+#include "omp.h"
 #include "BP.hpp"
 
 int solve(BP_t *BP, dfloat lambda, dfloat tol, occa::memory &o_r, occa::memory &o_x, double *opElapsed){
@@ -198,9 +199,13 @@ int main(int argc, char **argv){
  
       int knlId = 0;
       options.getArgs("KERNEL ID", knlId);
+
+      int Nthreads =  omp_get_max_threads();
   
-      printf("\nN, Nfields, Nelements, elapsed, iterations, GDOF/s/iter, BW GB/s, kernel Id\n"); 
-      printf("%d, %d, %d, %g, %d, %g, %g, %d\n",
+      printf("\nMPItasks, OMPthreads, N, Nfields, Nelements, elapsed, iterations, GDOF/s/iter, BW GB/s, kernel Id\n"); 
+      printf("%d, %d, %d, %d, %d, %g, %d, %g, %g, %d\n",
+             mesh->size,
+             Nthreads,
 	     mesh->N,
              BP->Nfields,
 	     globalNelements,

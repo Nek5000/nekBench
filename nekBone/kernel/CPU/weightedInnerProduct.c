@@ -37,6 +37,7 @@ void weightedInnerProduct2(const dlong & N,
   cpu_wab = (dfloat*)__builtin_assume_aligned(cpu_wab, p_Nalign);
 
   dfloat wab = 0;
+#pragma omp parallel for reduction(+: wab)
   for(dlong id=0;id<N;++id)
     wab += cpu_a[id]*cpu_b[id]*cpu_w[id];
 
@@ -53,8 +54,9 @@ void weightedMultipleInnerProduct2(const dlong & N,
 
   dfloat wab = 0;
   for(dlong fld=0;fld<p_Nfields;++fld){
+#pragma omp parallel for reduction(+: wab)
     for(dlong id=0;id<N;++id) wab += cpu_a[id+fld*offset]*cpu_b[id+fld*offset]*cpu_w[id+fld*offset];
   }
-  cpu_wab[0] = wab;
 
+  cpu_wab[0] = wab;
 }

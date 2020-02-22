@@ -42,8 +42,9 @@ void BPUpdatePCG(const dlong & N,
   cpu_invDegree = (dfloat*)__builtin_assume_aligned(cpu_invDegree,  p_Nalign) ;
   
   dfloat rdotr = 0;
-  const dlong Nelements = N/p_Np; 
+  const dlong Nelements = N/p_Np;
  
+#pragma omp parallel for reduction(+: rdotr) 
   for(dlong e=0;e<Nelements;++e){
     for(int i=0;i<p_Np;++i){
       const dlong n = e*p_Np+i;
@@ -54,6 +55,7 @@ void BPUpdatePCG(const dlong & N,
       cpu_r[n] = rn;
     }
   }
+
   redr[0] = rdotr;
 }
 
@@ -80,6 +82,8 @@ void BPMultipleUpdatePCG(
   const dlong Nelements = N/p_Np; 
   
   for(int fld=0; fld<p_Nfields; fld++){
+
+#pragma omp parallel for reduction(+: rdotr) 
   for(dlong e=0;e<Nelements;++e){
     for(int i=0;i<p_Np;++i){
       const dlong n = e*p_Np+i + fld*offset;
@@ -90,6 +94,7 @@ void BPMultipleUpdatePCG(
       cpu_r[n] = rn;
    }
  }
+
  }
  redr[0] = rdotr;
 }

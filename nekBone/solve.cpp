@@ -171,6 +171,7 @@ dfloat BPUpdatePCG(BP_t *BP,
   int flexible = options.compareArgs("KRYLOV SOLVER", "FLEXIBLE");
   int verbose = options.compareArgs("VERBOSE", "TRUE");
   int serial = options.compareArgs("THREAD MODEL", "SERIAL"); 
+  int omp = options.compareArgs("THREAD MODEL", "OPENMP"); 
  
   mesh_t *mesh = BP->mesh;
   
@@ -191,7 +192,7 @@ dfloat BPUpdatePCG(BP_t *BP,
   BP->o_tmpNormr.copyTo(BP->tmpNormr);
 
   dfloat rdotr1 = 0; 
-  if(serial) {
+  if(serial || omp) {
     rdotr1 = BP->tmpNormr[0];
   }
   else {
@@ -317,9 +318,10 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
     BP->weightedMultipleInnerProduct2Kernel(Ntotal, offset, o_w, o_a, o_b, o_tmp);
 
   int serial = options.compareArgs("THREAD MODEL", "SERIAL");
+  int omp = options.compareArgs("THREAD MODEL", "OPENMP");
 
   dfloat wab = 0;
-  if(serial){
+  if(serial || omp){
     o_tmp.copyTo(tmp);
     wab = tmp[0];
   } else {

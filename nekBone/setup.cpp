@@ -301,14 +301,16 @@ void solveSetup(BP_t *BP, dfloat lambda, occa::properties &kernelInfo){
       if(strstr(threadModel.c_str(), "NATIVE")) props["okl"] = false;
 
       string fileName = DBP "/kernel/" + arch + "/updatePCG.okl";
-      if(strstr(threadModel.c_str(), "NATIVE+SERIAL")) fileName = "kernel/" + arch + "/updatePCG.c"; 
+      if(strstr(threadModel.c_str(), "NATIVE+SERIAL") || strstr(threadModel.c_str(), "NATIVE+OPENMP")) 
+        fileName = "kernel/" + arch + "/updatePCG.c"; 
       BP->updatePCGKernel =
 	mesh->device.buildKernel(fileName.c_str(), "BPUpdatePCG", props);
       BP->updateMultiplePCGKernel =
 	mesh->device.buildKernel(fileName.c_str(), "BPMultipleUpdatePCG", props);
 
       fileName = DBP "/kernel/utils.okl";
-      if(strstr(threadModel.c_str(), "NATIVE+SERIAL")) fileName = "kernel/" + arch + "/weightedInnerProduct.c"; 
+      if(strstr(threadModel.c_str(), "NATIVE+SERIAL") || strstr(threadModel.c_str(), "NATIVE+OPENMP")) 
+        fileName = "kernel/" + arch + "/weightedInnerProduct.c"; 
       BP->weightedInnerProduct2Kernel =
         mesh->device.buildKernel(fileName.c_str(), "weightedInnerProduct2", props);
       BP->weightedMultipleInnerProduct2Kernel =
