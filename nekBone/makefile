@@ -45,7 +45,7 @@ all: BP install
 
 install:
 	@mkdir -p $(PREFIX)
-	@cp setup.ini $(PREFIX)
+	@cp setup.ini $(PREFIX)/nekBone.ini
 	@cp -a kernel $(PREFIX) 
 	@cd ../axhelm/kernel; find . -type f -name "*" -exec install -D {} $(PREFIX)/kernel/{} \;
 	@cd $(CURDIR)	 
