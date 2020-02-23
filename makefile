@@ -7,7 +7,7 @@ export CXX = mpic++
 export LD = mpic++
 
 export NALIGN ?= 64
-export PREFIX ?= "$(CURDIR)/build"
+export PREFIX ?= $(CURDIR)/build
 
 export OCCA_CUDA_ENABLED ?= 0
 export OCCA_HIP_ENABLED ?= 0
@@ -45,7 +45,7 @@ OCCADIR  = ./3rd_party/occa
 
 .PHONY: install axhelm nekBone all clean realclean
 
-all: axhelm nekBone occa install
+all: occa axhelm nekBone install
 	@if test -f ${PREFIX}/axhelm && test -f ${PREFIX}/nekBone; then \
 	echo ""; \
 	echo "compilation successful!"; \
