@@ -1,0 +1,73 @@
+#!/bin/bash
+set -e
+
+OCCA_DIR=$(cd $(dirname "$0")/.. && pwd)
+EXAMPLE_DIR="${OCCA_DIR}/examples"
+
+export ASAN_OPTIONS
+ASAN_OPTIONS+=':protect_shadow_gap=0'
+ASAN_OPTIONS+=':detect_container_overflow=0'
+
+HEADER_CHARS=80
+
+declare -a examples=(
+  cpp/01_add_vectors
+  cpp/02_background_device
+  cpp/03_inline_okl
+  cpp/04_reduction
+  cpp/05_building_kernels
+  cpp/06_unified_memory
+  cpp/07_dtypes
+  cpp/08_arrays
+  cpp/09_streams
+  c/01_add_vectors
+  c/02_background_device
+  c/03_inline_okl
+  c/04_reduction
+)
+
+for mode in $("${OCCA_DIR}/bin/occa" modes); do
+    case "${mode}" in
+        Serial) device="mode: 'Serial'";;
+        OpenMP) device="mode: 'OpenMP'";;
+        CUDA)   device="mode: 'CUDA', device_id: 0";;
+        OpenCL) device="mode: 'OpenCL', platform_id: 0, device_id: 0";;
+        Metal) device="mode: 'Metal', device_id: 0";;
+    esac
+
+    for example_dir in "${examples[@]}"; do
+        # OpenCL throws CL_DEVICE_MAX_WORK_GROUP_SIZE
+        if [ -n "${TRAVIS}" ] && [ "${mode}" == "OpenCL" ]; then
+            continue
+        fi
+
+        # OpenCL + Shared memory is finicky
+        if [ "${mode}" == OpenCL ]; then
+            case "${example_dir}" in
+                cpp/04_reduction) continue;;
+                cpp/06_arrays) continue;;
+                c/03_reduction) continue;;
+            esac
+        fi
+
+        banner="(${mode}) ${example_dir}"
+        chars=$(echo "${banner}" | wc -c);
+        linechars=$((${HEADER_CHARS} - ${chars} - 6));
+	      line=$(printf '%*s' ${linechars} | tr ' ' '-');
+	      echo -e "\n---[ ${banner} ]${line}";
+
+        cd "${EXAMPLE_DIR}/${example_dir}"
+        rm -rf main
+        make
+
+        # Make sure not to go over the log size
+        if [ -n "${TRAVIS}" ]; then
+            OCCA_VERBOSE=1 ./main --verbose --device "${device}" 2>&1 | head -n 100;
+        else
+            OCCA_VERBOSE=1 ./main --verbose --device "${device}" 2>&1
+        fi
+
+        # Test output footer
+	      printf '%*s\n' ${HEADER_CHARS} | tr ' ' '=';
+    done
+done

@@ -11,18 +11,9 @@ The code uses the [CEED](https://ceed.exascaleproject.org/) software products [O
 
 # Installation
 
-First you need to install OCCA :
+Just run 
 ```
-git clone https://github.com/libocca/occa
-cd occa
-make -j
-export OCCA_DIR=$HOME/occa
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$OCCA_DIR/lib
-```
-
-Then, just run 
-```
-make PREFIX=<install dir>
+make
 ```
 to build the benchmarks. 
 

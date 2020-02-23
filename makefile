@@ -1,7 +1,4 @@
-ifndef OCCA_DIR
-ERROR:
-	@echo "ERROR:  Environment variable OCCA_DIR is not set."
-endif
+export OCCA_DIR = $(CURDIR)/3rdParty/occa
 include ${OCCA_DIR}/scripts/Makefile
 
 export CC = mpicc
@@ -12,10 +9,10 @@ export LD = mpic++
 export NALIGN ?= 64
 export PREFIX ?= "$(CURDIR)/build"
 
-export HDRDIR = $(CURDIR)/core
-export GSDIR  = $(CURDIR)/3rdParty/gslib/
-export OGSDIR = $(CURDIR)/3rdParty/ogs/
-export BLASLAPACK_DIR = $(CURDIR)/3rdParty/BlasLapack
+export OCCA_CUDA_ENABLED ?= 0
+export OCCA_HIP_ENABLED ?= 0
+export OCCA_OPENCL_ENABLED ?= 0
+export OCCA_METAL_ENABLED ?= 0
 
 flags += -g
 flags += -Ddfloat=double
@@ -36,12 +33,19 @@ export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I
 
 export CXXFLAGS = -I. -DOCCA_VERSION_1_0 $(compilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR)  -D DBP='"./"' $(LIBP_OPT_FLAGS) -I$(OGSDIR)/include $(paths)
 
+
+export HDRDIR = $(CURDIR)/core
+export GSDIR  = $(CURDIR)/3rdParty/gslib/
+export OGSDIR = $(CURDIR)/3rdParty/ogs/
+export BLASLAPACK_DIR = $(CURDIR)/3rdParty/BlasLapack
+
 NEKBONEDIR = ./nekBone 
 AXHELMDIR  = ./axhelm 
+OCCADIR  = ./3rd_party/occa 
 
 .PHONY: install axhelm nekBone all clean realclean
 
-all: axhelm nekBone install
+all: axhelm nekBone occa install
 	@if test -f ${PREFIX}/axhelm && test -f ${PREFIX}/nekBone; then \
 	echo ""; \
 	echo "compilation successful!"; \
@@ -57,6 +61,12 @@ axhelm:
 nekBone:
 	$(MAKE) -C $(NEKBONEDIR)
 
+occa:
+	$(MAKE) -j8 -C $(OCCA_DIR)
+
 clean:
 	@$(MAKE) -C $(NEKBONEDIR) realclean
-	@$(MAKE) -C $(NEKBONEDIR) realclean
+	@$(MAKE) -C $(AXHELMDIR) realclean
+
+realclean: clean
+	@$(MAKE) -C $(OCCA_DIR) clean
