@@ -63,6 +63,9 @@ nekBone:
 
 occa:
 	$(MAKE) -j8 -C $(OCCA_DIR)
+	@rm -rf ${PREFIX}/lib
+	@rm -rf ${PREFIX}/bin
+	@rm -rf ${PREFIX}/include
 
 clean:
 	@$(MAKE) -C $(NEKBONEDIR) realclean

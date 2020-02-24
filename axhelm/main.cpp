@@ -35,6 +35,8 @@ SOFTWARE.
 #include "meshBasis.hpp"
 
 #include "kernelHelper.cpp"
+#include "axhelmReference.cpp"
+
 
 static occa::kernel axKernel;
 
@@ -49,102 +51,10 @@ dfloat *drandAlloc(int N){
   return v;
 }
 
-void axhelmElementReference(int cubNq,
-		            int element,
-		            dfloat lambda,
-		            const dfloat *  ggeo,
-		            const dfloat *  cubD,
-		            const dfloat * qIII,
-		            dfloat *lapqIII){
-  
-  dfloat Gqr[cubNq][cubNq][cubNq];
-  dfloat Gqs[cubNq][cubNq][cubNq];
-  dfloat Gqt[cubNq][cubNq][cubNq];
-
-  for(int k=0;k<cubNq;++k){
-    for(int j=0;j<cubNq;++j){
-      for(int i=0;i<cubNq;++i){
-	
-	dfloat qr = 0;
-	dfloat qs = 0;
-	dfloat qt = 0;
-	
-	for(int n=0;n<cubNq;++n){
-	  int in = meshIJN(n,i,cubNq);
-	  int jn = meshIJN(n,j,cubNq);
-	  int kn = meshIJN(n,k,cubNq);
-	  
-	  int kjn = meshIJKN(n,j,k,cubNq);
-	  int kni = meshIJKN(i,n,k,cubNq);
-	  int nji = meshIJKN(i,j,n,cubNq);
-	  
-	  qr += cubD[in]*qIII[kjn];
-	  qs += cubD[jn]*qIII[kni];
-	  qt += cubD[kn]*qIII[nji];	  
-	}
-
-	const int gbase = element*p_Nggeo*cubNq3 + meshIJKN(i,j,k,cubNq);
-	
-	dfloat G00 = ggeo[gbase+p_G00ID*cubNq3];
-	dfloat G01 = ggeo[gbase+p_G01ID*cubNq3];
-	dfloat G02 = ggeo[gbase+p_G02ID*cubNq3];
-	dfloat G11 = ggeo[gbase+p_G11ID*cubNq3];
-	dfloat G12 = ggeo[gbase+p_G12ID*cubNq3];
-	dfloat G22 = ggeo[gbase+p_G22ID*cubNq3];
-	
-	Gqr[k][j][i] = (G00*qr + G01*qs + G02*qt);
-	Gqs[k][j][i] = (G01*qr + G11*qs + G12*qt);
-	Gqt[k][j][i] = (G02*qr + G12*qs + G22*qt);
-      }
-    }
-  }
-
-
-  for(int k=0;k<cubNq;++k){
-    for(int j=0;j<cubNq;++j){
-      for(int i=0;i<cubNq;++i){
-  
-	int kji = meshIJKN(i,j,k,cubNq);
-	
-	const int gbase = element*p_Nggeo*cubNq3 + meshIJKN(i,j,k,cubNq);
-
-	dfloat GWJ = ggeo[gbase+p_GWJID*cubNq3];
-	dfloat lapq = lambda*GWJ*qIII[kji];
-	
-	for(int n=0;n<cubNq;++n){
-	  int ni = meshIJN(i,n,cubNq);
-	  int nj = meshIJN(j,n,cubNq);
-	  int nk = meshIJN(k,n,cubNq);
-
-	  lapq += cubD[ni]*Gqr[k][j][n];
-	  lapq += cubD[nj]*Gqs[k][n][i];
-	  lapq += cubD[nk]*Gqt[n][j][i];	  
-	}
-	
-	lapqIII[kji] = lapq;
-      }
-    }
-  }
-}
-
-void axhelmReference(int Nq,
-		     const int numElements,
-		     dfloat lambda,
-		     const dfloat *  ggeo,
-		     const dfloat *  D,
-		     const dfloat *  solIn,
-		     dfloat *  solOut){
-
-  for(int e=0;e<numElements;++e)
-    axhelmElementReference(Nq, e, lambda, ggeo, D, solIn+e*Nq3, solOut+e*Nq3);
-  
-}
-
-
 int main(int argc, char **argv){
 
   if(argc<6){
-    printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL CPU|VOLTA [kernelVersion] [deviceID] [platformID]\n");
+    printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL CPU|VOLTA [nRepetitions] [kernelVersion]\n");
     return 1;
   }
 
@@ -163,21 +73,19 @@ int main(int argc, char **argv){
   if(argc>=6)
     arch.assign(argv[5]);
 
-  int kernelVersion = 0;
+  int Ntests = 100;
   if(argc>=7)
-    kernelVersion = atoi(argv[6]);
+    Ntests = atoi(argv[6]);
 
-  int deviceId = 0;
+  int kernelVersion = 0;
   if(argc>=8)
-    deviceId = atoi(argv[6]);
-  
-  int platformId = 0;
-  if(argc>=9)
-    platformId = atoi(argv[8]);
+    kernelVersion = atoi(argv[7]);
+
+  const int deviceId = 0;
+  const int platformId = 0;
 
   const int Nq = N+1;
   const int Np = Nq*Nq*Nq;
-  const int Ntests = 100;
   const dfloat lambda = 1.1;
   
   const dlong offset = Nelements*Np;
@@ -252,9 +160,9 @@ int main(int argc, char **argv){
     dfloat diff = fabs(q[n]-Aq[n]);
     maxDiff = (maxDiff<diff) ? diff:maxDiff;
   }
-  if (rank==0 && maxDiff > 5e-12) {
-    std::cout << "WARNING: Correctness check failed!" << maxDiff << "\n";
-  }
+  MPI_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPI_DFLOAT, MPI_SUM, MPI_COMM_WORLD);
+  if (rank==0)
+    std::cout << "Correctness check: maxError = " << maxDiff << "\n";
 
   // run kernel
   device.finish();
@@ -264,10 +172,11 @@ int main(int argc, char **argv){
   for(int test=0;test<Ntests;++test)
     axKernel(Nelements, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq);
 
+  device.finish();
   MPI_Barrier(MPI_COMM_WORLD);
+  const double elapsed = (MPI_Wtime() - start)/Ntests;
 
   // print statistics
-  const double elapsed = (MPI_Wtime() - start)/Ntests;
   const dfloat GDOFPerSecond = (size*Ndim*(N*N*N)*Nelements/elapsed)/1.e9;
   const long long bytesMoved = (Ndim*2*Np+7*Np)*sizeof(dfloat); // x, Mx, opa
   const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
@@ -278,6 +187,7 @@ int main(int argc, char **argv){
   if(rank==0) {
     std::cout << "MPItasks=" << size
               << " OMPthreads=" << Nthreads
+              << " NRepetitions=" << Ntests
               << " Ndim=" << Ndim
               << " N=" << N
               << " Nelements=" << size*Nelements

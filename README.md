@@ -6,18 +6,30 @@ It serves as a lightweight tool for performance analysis on high performance com
 The code uses the [CEED](https://ceed.exascaleproject.org/) software products [OCCA](https://github.com/libocca/occa) and [libParanumal](https://github.com/paranumal/libparanumal). 
 
 ### Available benchmarks
-* axhelm (local Helmholtz matrix-vector product)
-* nekBone (solving homogeneous Helmholtz equation using PCG+Jacobi)
+* axhelm
+* nekBone
 
 # Installation
 
-Just run 
+The suite can be built using 
 ```
 make
 ```
-to build the benchmarks. 
 
-## License
+or with enabled {CUDA,HIP,OPENCL} support
+
+```
+make OCCA_CUDA_ENABLED=1
+```
+
+Then, add the following environment variables to your shell (here bash):
+
+```
+export OCCA_DIR=<install dir>/3rdParty/occa
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$OCCA_DIR/lib
+```
+
+# #License
 nekRS is released under the BSD 3-clause license (see the LICENSE file).
 All new contributions must be made under the BSD 3-clause license.
 
