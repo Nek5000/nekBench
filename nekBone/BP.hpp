@@ -34,6 +34,7 @@ SOFTWARE.
 #include "mpi.h"
 #include "params.h"
 #include "mesh.h"
+#include "timer.hpp"
 
 // block size for reduction (hard coded)
 #define blockSize 1024

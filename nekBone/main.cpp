@@ -89,6 +89,9 @@ int main(int argc, char **argv){
   options.setArgs("BASIS", "NODAL");
   options.getArgs("KERNEL ID", kernelId);
 
+  int sync = 0;
+  if(options.compareArgs("TIMER SYNC", "TRUE")) sync = 1;
+
   int combineDot = 0;
   combineDot = 0; //options.compareArgs("COMBINE DOT PRODUCT", "TRUE");
 
@@ -106,6 +109,7 @@ int main(int argc, char **argv){
   kernelInfo["flags"].asObject();
 
   meshOccaSetup3D(mesh, options, kernelInfo);
+  timer::init(MPI_COMM_WORLD, mesh->device, sync); 
 
   dfloat lambda = 1;
   options.getArgs("LAMBDA", lambda);
@@ -194,26 +198,37 @@ int main(int argc, char **argv){
     double bw = (it*(NGbytes/(elapsed)));
     MPI_Allreduce(MPI_IN_PLACE, &bw, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
+    double etime[10];
+    etime[0] = timer::query("op", "HOST:MAX");
+    etime[1] = timer::query("Ax", "DEVICE:MAX");
+    etime[2] = timer::query("gs", "HOST:MAX");
+    etime[3] = timer::query("updatePCG", "HOST:MAX");
+    etime[4] = timer::query("preco", "HOST:MAX");
+
     if(mesh->rank==0){
-      printf("\ncorrectness check: globalMaxError = %g\n", globalMaxError);
+      printf("\ncorrectness check: maxError = %g\n", globalMaxError);
  
       int knlId = 0;
       options.getArgs("KERNEL ID", knlId);
 
       int Nthreads =  omp_get_max_threads();
-  
-      printf("\nMPItasks, OMPthreads, N, Nfields, Nelements, elapsed, iterations, GDOF/s/iter, BW GB/s, kernel Id\n"); 
-      printf("%d, %d, %d, %d, %d, %g, %d, %g, %g, %d\n",
-             mesh->size,
-             Nthreads,
-	     mesh->N,
-             BP->Nfields,
-	     globalNelements,
-	     elapsed,
-	     it,
-	     BP->Nfields*(it*(globalNdofs/elapsed))/1.e9,
-	     bw,
-	     knlId);
+      cout << "\nsummary\n" 
+           << "  MPItasks   : " << mesh->size << "\n"
+           << "  OMPthreads : " << Nthreads << "\n"
+           << "  polyN      : " << N << "\n"
+           << "  Nelements  : " << globalNelements << "\n"
+           << "  iterations : " << it << "\n"
+           << "  walltime   : " << elapsed << " s\n"
+           << "  throughput : " << BP->Nfields*(it*(globalNdofs/elapsed))/1.e9 << " GDOF/s/iter\n"
+           << "  bandwidth  : " << bw << " GB/s\n";
+
+      cout << "\ntimings\n" 
+           << "  operator   : " << etime[0] << " s\n"
+           << "  local Ax   : " << etime[1] << " s\n"
+           << "  gs         : " << etime[2] << " s\n"
+           << "  updatePCG  : " << etime[3] << " s\n"
+           << "  preco      : " << etime[4] << " s\n"
+           << endl;
     }
 
     if (options.compareArgs("VERBOSE", "TRUE")){

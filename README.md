@@ -3,7 +3,7 @@
 nekBench is a benchmark suite representing key kernels of nek5000 and nekRS.
 It serves as a lightweight tool for performance analysis on high performance computing architectures. 
 
-The code uses the [CEED](https://ceed.exascaleproject.org/) software products [OCCA](https://github.com/libocca/occa) and [libParanumal](https://github.com/paranumal/libparanumal). 
+The code uses the [CEED](https://ceed.exascaleproject.org/) software products [OCCA](https://github.com/libocca/occa) and [benchParanumal](https://github.com/paranumal/benchparanumal). 
 
 ### Available benchmarks
 * axhelm

@@ -68,18 +68,17 @@ int BPPCG(BP_t* BP, dfloat lambda,
   const dfloat TOL =  mymax(tol*tol*rdotr0,tol*tol);
 
 
-//  startOverall = BP->mesh->device.tagStream();
   for(iter=1;iter<=MAXIT;++iter){
 
     // z = Precon^{-1} r 
-//    startPreco = BP->mesh->device.tagStream();
+    timer::tic("preco");
     BPPreconditioner(BP, lambda, o_r, o_z);
-//    endPreco = BP->mesh->device.tagStream();
-     
+    timer::toc("preco");
+ 
     rdotz2 = rdotz1;
 
     // r.z
-//    startDot = BP->mesh->device.tagStream();
+    timer::tic("dot");
     rdotz1 = BPWeightedInnerProduct(BP, BP->o_invDegree, o_r, o_z); 
     
     if(flexible){
@@ -89,17 +88,15 @@ int BPPCG(BP_t* BP, dfloat lambda,
     else{
       beta = (iter==1) ? 0:rdotz1/rdotz2;
     }  
-//    endDot = BP->mesh->device.tagStream();
+    timer::toc("dot"); 
   
     // p = z + beta*p
-//    startPupdate = BP->mesh->device.tagStream();
     BPScaledAdd(BP, 1.f, o_z, beta, o_p);
-//    endPupdate = BP->mesh->device.tagStream();
 	
     // Ap and p.Ap
-//    startOp = BP->mesh->device.tagStream();
+    timer::tic("op"); 
     pAp = AxOperator(BP, lambda, o_p, o_Ap, dfloatString);
-//    endOp = BP->mesh->device.tagStream();
+    timer::toc("op"); 
     
     // alpha = r.z/p.Ap
     alpha = rdotz1/pAp;
@@ -107,10 +104,9 @@ int BPPCG(BP_t* BP, dfloat lambda,
     //  x <= x + alpha*p
     //  r <= r - alpha*A*p
     //  dot(r,r)
-
-//    startUpdate = BP->mesh->device.tagStream();
+    timer::tic("updatePCG"); 
     dfloat rdotr = BPUpdatePCG(BP, o_p, o_Ap, alpha, o_x, o_r);
-//    endUpdate = BP->mesh->device.tagStream();
+    timer::toc("updatePCG"); 
 
     if (verbose&&(mesh->rank==0)) {
 
@@ -233,16 +229,14 @@ dfloat AxOperator(BP_t *BP, dfloat lambda, occa::memory &o_q, occa::memory &o_Aq
   
   const dlong fieldOffset = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
 
-//  if(start)
-//    *start = BP->mesh->device.tagStream();
-
-    kernel(mesh->Nelements, fieldOffset, mesh->o_ggeo, mesh->o_D, lambda, o_q, o_Aq);
-
-//  if(end)
-//    *end = BP->mesh->device.tagStream();
+  timer::tic("Ax");
+  kernel(mesh->Nelements, fieldOffset, mesh->o_ggeo, mesh->o_D, lambda, o_q, o_Aq);
+  timer::toc("Ax");
   
+  timer::tic("gs");
   ogsGatherScatterMany(o_Aq, BP->Nfields, fieldOffset, ogsDfloat, ogsAdd, ogs);
-  
+  timer::toc("gs");
+ 
   dfloat pAp = 0;
   pAp = BPWeightedInnerProduct(BP, BP->o_invDegree, o_q, o_Aq);
   

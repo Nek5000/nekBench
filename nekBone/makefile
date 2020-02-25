@@ -3,11 +3,9 @@ ERROR:
 	@echo "ERROR:  Please use toplevel makefile"
 endif
 
-# libraries to be linked in
-LIBS	=  -L$(OGSDIR) -logs -L$(GSDIR)/lib -lgs -L$(OCCA_DIR)/lib -locca $(linkerFlags) $(BLASLAPACK_DIR)/libBlasLapack.a  $(LIBP_EXT_LIBS) -lgfortran -fopenmp
-
 INCLUDES = BP.h BPPrecon.h
 DEPS = $(INCLUDES) \
+$(HDRDIR)/timer.hpp \
 $(HDRDIR)/mesh.h \
 $(HDRDIR)/mesh2D.h \
 $(HDRDIR)/mesh3D.h \
@@ -15,17 +13,17 @@ $(OGSDIR)/ogs.hpp \
 
 
 # types of files we are going to construct rules for
-.SUFFIXES: .c .f .cu .cpp
+.SUFFIXES: .c .f .cpp
 
 # rule for .c files
 .c.o: $(DEPS)
-	$(CC) $(CFLAGS) -o $*.o -c $*.c $(paths)
+	$(CC) $(CFLAGS) -o $*.o -c $*.c 
 
 .cpp.o: $(DEPS)
-	$(CXX) $(CXXFLAGS) -o $*.o -c $*.cpp $(paths)
+	$(CXX) $(CXXFLAGS) -o $*.o -c $*.cpp
 
 .f.o: $(DEPS)
-	$(FC) $(CFLAGS) -o $*.o -c $*.f $(paths)
+	$(FC) $(CFLAGS) -o $*.o -c $*.f 
 
 # list of objects to be compiled
 AOBJS    = \
@@ -35,6 +33,7 @@ AOBJS    = \
 
 # library objects
 LOBJS = \
+../core/timer.o \
 ../core/meshSetup.o \
 ../core/meshBasis.o \
 ../core/setupAide.o
@@ -53,13 +52,13 @@ install:
 
 
 BP: $(AOBJS) $(LOBJS) libogs libblas
-	$(LD)  $(LDFLAGS)  -o nekBone $(COBJS) $(AOBJS) $(LOBJS) $(paths) $(LIBS)
+	$(LD)  -o nekBone $(COBJS) $(AOBJS) $(LOBJS) $(LDFLAGS)
 
 libogs:
-	$(MAKE) -C $(OGSDIR) -j lib
+	$(MAKE) -C $(OGSDIR) -j4 lib
 
 libblas:
-	$(MAKE) -C $(BLASLAPACK_DIR) -j lib
+	$(MAKE) -C $(BLASLAPACK_DIR) -j4 lib
 
 clean:
 	@rm -rf *.o ../core/*.o ./build

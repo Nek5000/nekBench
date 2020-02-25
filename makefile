@@ -29,11 +29,6 @@ flags += -DMPI_HLONG='MPI_LONG_LONG_INT'
 flags += -DhlongFormat='"%lld"'
 flags += -DUSE_OCCA_MEM_BYTE_ALIGN=$(NALIGN)
 
-export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR)  -D DBP='"./"' $(LIBP_OPT_FLAGS) -I$(OGSDIR)/include $(paths)
-
-export CXXFLAGS = -I. -DOCCA_VERSION_1_0 $(compilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR)  -D DBP='"./"' $(LIBP_OPT_FLAGS) -I$(OGSDIR)/include $(paths)
-
-
 export HDRDIR = $(CURDIR)/core
 export GSDIR  = $(CURDIR)/3rdParty/gslib/
 export OGSDIR = $(CURDIR)/3rdParty/ogs/
@@ -41,7 +36,14 @@ export BLASLAPACK_DIR = $(CURDIR)/3rdParty/BlasLapack
 
 NEKBONEDIR = ./nekBone 
 AXHELMDIR  = ./axhelm 
-OCCADIR  = ./3rd_party/occa 
+
+export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR) -I$(OGSDIR)/include  -D DBP='"./"' $(paths)
+
+export CXXFLAGS = -I. -DOCCA_VERSION_1_0 $(compilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR) -I$(OGSDIR)/include  -D DBP='"./"' $(paths)
+
+LDFLAGS = $(BLASLAPACK_DIR)/libBlasLapack.a -lgfortran -fopenmp
+LDFLAGS_OCCA = -L$(OCCA_DIR)/lib -locca
+LDFLAGS_GS = -L$(OGSDIR) -logs -L$(GSDIR)/lib -lgs 
 
 .PHONY: install axhelm nekBone all clean realclean
 
@@ -56,10 +58,10 @@ install:
 	@rm -rf $(PREFIX)/libgs.a
 
 axhelm:
-	$(MAKE) -C $(AXHELMDIR) 
+	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(AXHELMDIR) 
 
 nekBone:
-	$(MAKE) -C $(NEKBONEDIR)
+	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS_GS) $(LDFLAGS)" $(MAKE) -C $(NEKBONEDIR)
 
 occa:
 	$(MAKE) -j8 -C $(OCCA_DIR)

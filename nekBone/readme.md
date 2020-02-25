@@ -14,16 +14,7 @@ Tuned kernels for the following architectures are available:
 
 ### MPI+serial with native CPU kernel
 
-Set in setup.ini
-```
-[ARCH]
-CPU
-
-[THREAD MODEL]
-NATIVE+SERIAL
-```
-
-Now run
+Just run
 ```
 >OCCA_CXX='g++' OCCA_CXXFLAGS='-O3 -march=native -mtune=native' mpirun -np 48 -bind-to core ./nekBone nekBone.ini
 
@@ -47,9 +38,6 @@ N, Nfields, Nelements, elapsed, iterations, GDOF/s/iter, BW GB/s, kernel Id
 
 Set in setup.ini
 ```
-[ARCH]
-CPU
-
 [THREAD MODEL]
 NATIVE+OPENMP
 ```
