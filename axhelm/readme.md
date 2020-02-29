@@ -8,7 +8,7 @@ where A is the Laplace operator.
 # Usage
 
 ```
-./axhelm polynomialDegree Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL arch [kernelVersion] [deviceID] [platformID]
+./axhelm polynomialDegree Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL arch [nRepetitions] [kernelVersion] [deviceID] [platformID]
 ```
 Tuned kernels for the following architectures are available:
 * VOLTA (NVidia Pascal, Volta or Turing)
@@ -37,6 +37,6 @@ MPItasks=2 OMPthreads=24 Ndim=1 N=7 Nelements=8000 elapsed time=0.00120629 GDOF/
 
 ### Pured MPI with native CPU kernel
 ```
-OCCA_CXX='icc' OCCA_CXXFLAGS='-O3 -xCORE-AVX512 -qopt-zmm-usage=high' OCCA_LDFLAGS='-static-intel' mpirun -np 48 -bind-to core ./axhelm 7 1 166 NATIVE+SERIAL CPU
->MPItasks=48 OMPthreads=1 Ndim=1 N=7 Nelements=7920 elapsed time=0.00115478 GDOF/s=2.35245 GB/s=252.83 GFLOPS/s=400.314
+>OCCA_CXX='icc' OCCA_CXXFLAGS='-O3 -xCORE-AVX512 -qopt-zmm-usage=high' OCCA_LDFLAGS='-static-intel' mpirun -np 48 -bind-to core ./axhelm 7 1 166 NATIVE+SERIAL CPU
+MPItasks=48 OMPthreads=1 Ndim=1 N=7 Nelements=7920 elapsed time=0.00115478 GDOF/s=2.35245 GB/s=252.83 GFLOPS/s=400.314
 ```
