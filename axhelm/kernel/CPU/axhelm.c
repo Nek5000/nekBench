@@ -32,17 +32,12 @@ extern "C" void axhelm_v0(const dlong & Nelements,
 	               const dfloat * __restrict__ q ,
 	               dfloat * __restrict__ Aq ){
   
-  D    = (dfloat*)__builtin_assume_aligned(D, p_Nalign) ;
-  q    = (dfloat*)__builtin_assume_aligned(q, p_Nalign) ;
-  Aq   = (dfloat*)__builtin_assume_aligned(Aq, p_Nalign) ;
-  ggeo = (dfloat*)__builtin_assume_aligned(ggeo, p_Nalign) ;
-  
-  dfloat s_q  [p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
-  dfloat s_Gqr[p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
-  dfloat s_Gqs[p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
-  dfloat s_Gqt[p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
+  dfloat s_q  [p_Nq][p_Nq][p_Nq];
+  dfloat s_Gqr[p_Nq][p_Nq][p_Nq];
+  dfloat s_Gqs[p_Nq][p_Nq][p_Nq];
+  dfloat s_Gqt[p_Nq][p_Nq][p_Nq];
 
-  dfloat s_D[p_Nq][p_Nq]  __attribute__((aligned(p_Nalign)));
+  dfloat s_D[p_Nq][p_Nq];
 
   for(int j=0;j<p_Nq;++j){
     for(int i=0;i<p_Nq;++i){
@@ -50,16 +45,13 @@ extern "C" void axhelm_v0(const dlong & Nelements,
     }
   }
 
-  const int c_Np = p_Np;
-  const int p_N = p_Nq-1;
-
 #pragma omp parallel for private(s_q, s_Gqr, s_Gqs, s_Gqt) 
   for(dlong e=0; e<Nelements; ++e){
     const dlong element = e;
     for(int k = 0; k < p_Nq; k++) {
       for(int j=0;j<p_Nq;++j){
         for(int i=0;i<p_Nq;++i){
-          const dlong base = i + j*p_Nq + k*p_Nq*p_Nq + element*c_Np;
+          const dlong base = i + j*p_Nq + k*p_Nq*p_Nq + element*p_Np;
           const dfloat qbase = q[base];
           s_q[k][j][i] = qbase;
         }
@@ -69,7 +61,7 @@ extern "C" void axhelm_v0(const dlong & Nelements,
     for(int k=0;k<p_Nq;++k){
       for(int j=0;j<p_Nq;++j){
         for(int i=0;i<p_Nq;++i){
-          const dlong gbase = element*p_Nggeo*c_Np + k*p_Nq*p_Nq + j*p_Nq + i;
+          const dlong gbase = element*p_Nggeo*p_Np + k*p_Nq*p_Nq + j*p_Nq + i;
           const dfloat r_G00 = ggeo[gbase+p_G00ID*p_Np];
           const dfloat r_G01 = ggeo[gbase+p_G01ID*p_Np];
           const dfloat r_G11 = ggeo[gbase+p_G11ID*p_Np];
@@ -107,12 +99,11 @@ extern "C" void axhelm_v0(const dlong & Nelements,
           const dfloat r_Aq = r_GwJ*lambda*s_q[k][j][i];
           dfloat r_Aqr = 0, r_Aqs = 0, r_Aqt = 0;
 
-          for(int m = 0; m < p_Nq; m++)
+          for(int m = 0; m < p_Nq; m++) {
             r_Aqr += s_D[m][i]*s_Gqr[k][j][m];
-          for(int m = 0; m < p_Nq; m++)
             r_Aqs += s_D[m][j]*s_Gqs[k][m][i];
-          for(int m = 0; m < p_Nq; m++)
             r_Aqt += s_D[m][k]*s_Gqt[m][j][i];
+          }
 
           const dlong id = element*p_Np +k*p_Nq*p_Nq+ j*p_Nq + i;
           Aq[id] = r_Aqr + r_Aqs + r_Aqt +r_Aq;
@@ -130,26 +121,18 @@ extern "C" void axhelm_n3_v0(const dlong & Nelements,
                           const dfloat * __restrict__ q ,
                           dfloat * __restrict__ Aq ){
   
-  D      = (dfloat*)__builtin_assume_aligned(D, p_Nalign) ;
-  q      = (dfloat*)__builtin_assume_aligned(q, p_Nalign) ;
-  Aq     = (dfloat*)__builtin_assume_aligned(Aq, p_Nalign) ;
-  ggeo   = (dfloat*)__builtin_assume_aligned(ggeo, p_Nalign) ;
-  
-  dfloat s_q  [3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
-  dfloat s_Gqr[3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
-  dfloat s_Gqs[3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
-  dfloat s_Gqt[3][p_Nq][p_Nq][p_Nq] __attribute__((aligned(p_Nalign)));
+  dfloat s_q  [3][p_Nq][p_Nq][p_Nq];
+  dfloat s_Gqr[3][p_Nq][p_Nq][p_Nq];
+  dfloat s_Gqs[3][p_Nq][p_Nq][p_Nq];
+  dfloat s_Gqt[3][p_Nq][p_Nq][p_Nq];
 
-  dfloat s_D[p_Nq][p_Nq]  __attribute__((aligned(p_Nalign)));
+  dfloat s_D[p_Nq][p_Nq];
 
   for(int j=0;j<p_Nq;++j){
     for(int i=0;i<p_Nq;++i){
       s_D[j][i] = D[j*p_Nq+i];
     }
   }
-
-  const int c_Np = p_Np;
-  const int p_N = p_Nq-1;
 
 #pragma omp parallel for private(s_q, s_Gqr, s_Gqs, s_Gqt) 
   for(dlong e=0; e<Nelements; ++e){
@@ -159,7 +142,7 @@ extern "C" void axhelm_n3_v0(const dlong & Nelements,
     for(int k = 0; k < p_Nq; k++) {
       for(int j=0;j<p_Nq;++j){
         for(int i=0;i<p_Nq;++i){
-          const dlong base = i + j*p_Nq + k*p_Nq*p_Nq + element*c_Np;
+          const dlong base = i + j*p_Nq + k*p_Nq*p_Nq + element*p_Np;
             s_q[0][k][j][i] = q[base + 0*offset];
             s_q[1][k][j][i] = q[base + 1*offset];
             s_q[2][k][j][i] = q[base + 2*offset];
@@ -170,7 +153,7 @@ extern "C" void axhelm_n3_v0(const dlong & Nelements,
     for(int k=0;k<p_Nq;++k){
       for(int j=0;j<p_Nq;++j){
         for(int i=0;i<p_Nq;++i){
-          const dlong gbase = element*p_Nggeo*c_Np + k*p_Nq*p_Nq + j*p_Nq + i;
+          const dlong gbase = element*p_Nggeo*p_Np + k*p_Nq*p_Nq + j*p_Nq + i;
           const dfloat r_G00 = ggeo[gbase+p_G00ID*p_Np];
           const dfloat r_G01 = ggeo[gbase+p_G01ID*p_Np];
           const dfloat r_G11 = ggeo[gbase+p_G11ID*p_Np];
@@ -237,13 +220,11 @@ extern "C" void axhelm_n3_v0(const dlong & Nelements,
               r_Aqr0 += s_D[m][i]*s_Gqr[0][k][j][m];
               r_Aqr1 += s_D[m][i]*s_Gqr[1][k][j][m];
               r_Aqr2 += s_D[m][i]*s_Gqr[2][k][j][m];
-            }
-            for(int m = 0; m < p_Nq; m++){
+
               r_Aqs0 += s_D[m][j]*s_Gqs[0][k][m][i];
               r_Aqs1 += s_D[m][j]*s_Gqs[1][k][m][i];
               r_Aqs2 += s_D[m][j]*s_Gqs[2][k][m][i];
-            }
-            for(int m = 0; m < p_Nq; m++){
+
               r_Aqt0 += s_D[m][k]*s_Gqt[0][m][j][i];
               r_Aqt1 += s_D[m][k]*s_Gqt[1][m][j][i];
               r_Aqt2 += s_D[m][k]*s_Gqt[2][m][j][i];

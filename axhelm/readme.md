@@ -34,3 +34,9 @@ MPItasks=1 OMPthreads=1 Ndim=1 N=7 Nelements=8000 elapsed time=0.000395148 GDOF/
 >OMP_PLACES=cores OMP_PROC_BIND=close OMP_NUM_THREADS=24 OCCA_CXX='g++' OCCA_CXXFLAGS='-O3 -march=native -mtune=native -fopenmp' mpirun -np 2 -bind-to socket ./axhelm 7 1 4000 NATIVE+OPENMP CPU
 MPItasks=2 OMPthreads=24 Ndim=1 N=7 Nelements=8000 elapsed time=0.00120629 GDOF/s=2.27475 GB/s=244.479 GFLOPS/s=387.092
 ```
+
+### Pured MPI with native CPU kernel
+```
+OCCA_CXX='icc' OCCA_CXXFLAGS='-O3 -xCORE-AVX512 -qopt-zmm-usage=high' OCCA_LDFLAGS='-static-intel' mpirun -np 48 -bind-to core ./axhelm 7 1 166 NATIVE+SERIAL CPU
+>MPItasks=48 OMPthreads=1 Ndim=1 N=7 Nelements=7920 elapsed time=0.00115478 GDOF/s=2.35245 GB/s=252.83 GFLOPS/s=400.314
+```

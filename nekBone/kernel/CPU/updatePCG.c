@@ -35,12 +35,6 @@ void BPUpdatePCG(const dlong & N,
 		 dfloat * __restrict__ cpu_r,
 		 dfloat * __restrict__ redr){
 
-  cpu_p  = (dfloat*)__builtin_assume_aligned(cpu_p,  p_Nalign) ;
-  cpu_Ap = (dfloat*)__builtin_assume_aligned(cpu_Ap, p_Nalign) ;
-  cpu_x  = (dfloat*)__builtin_assume_aligned(cpu_x,  p_Nalign) ;
-  cpu_r  = (dfloat*)__builtin_assume_aligned(cpu_r,  p_Nalign) ;
-  cpu_invDegree = (dfloat*)__builtin_assume_aligned(cpu_invDegree,  p_Nalign) ;
-  
   dfloat rdotr = 0;
   const dlong Nelements = N/p_Np;
  
@@ -72,12 +66,6 @@ void BPMultipleUpdatePCG(
              dfloat * __restrict__ cpu_r,
              dfloat * __restrict__ redr){
 
-  cpu_p  = (dfloat*)__builtin_assume_aligned(cpu_p,  p_Nalign) ;
-  cpu_Ap = (dfloat*)__builtin_assume_aligned(cpu_Ap, p_Nalign) ;
-  cpu_x  = (dfloat*)__builtin_assume_aligned(cpu_x,  p_Nalign) ;
-  cpu_r  = (dfloat*)__builtin_assume_aligned(cpu_r,  p_Nalign) ;
-  cpu_invDegree = (dfloat*)__builtin_assume_aligned(cpu_invDegree,  p_Nalign) ;
-  
   dfloat rdotr = 0;
   const dlong Nelements = N/p_Np; 
   
