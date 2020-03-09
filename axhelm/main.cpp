@@ -73,7 +73,7 @@ int main(int argc, char **argv){
   if(argc>=6)
     arch.assign(argv[5]);
 
-  int Ntests = 100;
+  int Ntests = 1;
   if(argc>=7)
     Ntests = atoi(argv[6]);
 
