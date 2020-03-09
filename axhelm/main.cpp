@@ -145,8 +145,17 @@ int main(int argc, char **argv){
   occa::memory o_Aq    = device.malloc((Ndim*Np)*Nelements*sizeof(dfloat), Aq);
   occa::memory o_DrV   = device.malloc(Nq*Nq*sizeof(dfloat), DrV);
 
-  // warm up
-  axKernel(Nelements, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq);
+  // run kernel
+  device.finish();
+  MPI_Barrier(MPI_COMM_WORLD);
+  const double start = MPI_Wtime();
+
+  for(int test=0;test<Ntests;++test)
+    axKernel(Nelements, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq);
+
+  device.finish();
+  MPI_Barrier(MPI_COMM_WORLD);
+  const double elapsed = (MPI_Wtime() - start)/Ntests;
 
   // check for correctness
   for(int n=0;n<Ndim;++n){
@@ -163,18 +172,6 @@ int main(int argc, char **argv){
   MPI_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPI_DFLOAT, MPI_SUM, MPI_COMM_WORLD);
   if (rank==0)
     std::cout << "Correctness check: maxError = " << maxDiff << "\n";
-
-  // run kernel
-  device.finish();
-  MPI_Barrier(MPI_COMM_WORLD);
-  const double start = MPI_Wtime();
-
-  for(int test=0;test<Ntests;++test)
-    axKernel(Nelements, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq);
-
-  device.finish();
-  MPI_Barrier(MPI_COMM_WORLD);
-  const double elapsed = (MPI_Wtime() - start)/Ntests;
 
   // print statistics
   const dfloat GDOFPerSecond = (size*Ndim*(N*N*N)*Nelements/elapsed)/1.e9;
