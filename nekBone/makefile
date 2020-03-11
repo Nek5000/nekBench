@@ -3,6 +3,24 @@ ERROR:
 	@echo "ERROR:  Please use toplevel makefile"
 endif
 
+PROJ_DIR=$(CURDIR)
+include $(OCCA_DIR)/scripts/Makefile
+
+paths += -I$(HDRDIR)
+paths += -I$(GSDIR)/src
+paths += -I$(OGSDIR)
+paths += -L$(OCCA_DIR)/lib
+paths += -L$(GSDIR)/lib
+paths += -L$(OGSDIR)
+
+compilerFlags += $(DEFS)
+
+linkerFlags += -logs -lgs
+
+ifeq ($(USE_SYSTEM_BLASLAPACK),no)
+	linkerFlags += $(BLASLAPACK_DIR)/libBlasLapack.a
+endif
+
 INCLUDES = BP.h BPPrecon.h
 DEPS = $(INCLUDES) \
 $(HDRDIR)/timer.hpp \
@@ -17,13 +35,13 @@ $(OGSDIR)/ogs.hpp \
 
 # rule for .c files
 .c.o: $(DEPS)
-	$(CC) $(CFLAGS) -o $*.o -c $*.c 
+	$(cCompiler) $(cCompilerFlags) $(paths) -o $*.o -c $*.c 
 
 .cpp.o: $(DEPS)
-	$(CXX) $(CXXFLAGS) -o $*.o -c $*.cpp
+	$(compiler) $(compilerFlags) $(paths) -o $*.o -c $*.cpp
 
 .f.o: $(DEPS)
-	$(FC) $(CFLAGS) -o $*.o -c $*.f 
+	$(FC) $(cCompilerFlags) $(paths) -o $*.o -c $*.f 
 
 # list of objects to be compiled
 AOBJS    = \
@@ -50,19 +68,8 @@ install:
 	@cd $(CURDIR)	 
 	@mv nekBone $(PREFIX) 
 
-
-BP: $(AOBJS) $(LOBJS) libogs libblas
-	$(LD)  -o nekBone $(COBJS) $(AOBJS) $(LOBJS) $(LDFLAGS)
-
-libogs:
-	$(MAKE) -C $(OGSDIR) -j4 lib
-
-libblas:
-	$(MAKE) -C $(BLASLAPACK_DIR) -j4 lib
+BP: $(AOBJS) $(LOBJS)
+	$(compiler) $(compilerFlags) $(paths) $^ -o nekBone $(linkerFlags)
 
 clean:
 	@rm -rf *.o ../core/*.o ./build
-
-realclean: clean
-	@$(MAKE) -C $(OGSDIR) realclean
-	@CC=$(CC) make -C $(BLASLAPACK_DIR) clean

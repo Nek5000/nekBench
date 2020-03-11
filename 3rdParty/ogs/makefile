@@ -3,21 +3,34 @@ ERROR:
 	@echo "Error, environment variable [OCCA_DIR] is not set"
 endif
 
+PROJ_DIR=$(CURDIR)
 include ${OCCA_DIR}/scripts/Makefile
 
 # define variables
-OGSDIR  = ./include
-GSDIR  = ../../3rdParty/gslib
+OGSDIR  = $(CURDIR)
+GSDIR  ?= ../../3rdParty/gslib
 
 # set options for this machine
 # specify which compilers to use for c, fortran and linking
 
 # compiler flags to be used (set to compile with debugging on)
-CFLAGS += -I. -I$(GSDIR)/src -DDOGS='"${CURDIR}"' -DUSE_NEW_PINNED_MALLOC=1
-CXXFLAGS += -I. -I$(GSDIR)/src -DDOGS='"${CURDIR}"' -DUSE_NEW_PINNED_MALLOC=1
+
+paths += -I$(OGSDIR)
+paths += -I$(OGSDIR)/include
+paths += -I$(GSDIR)/src
+paths += -L$(OCCA_DIR)/lib
+paths += -L$(GSDIR)/lib
+
+cCompilerFlags += $(DEFS)
+cCompilerFlags += -DDOGS='"${CURDIR}"'
+cCompilerFlags += -DUSE_NEW_PINNED_MALLOC=1
+
+compilerFlags += $(DEFS)
+compilerFlags += -DDOGS='"${CURDIR}"' 
+compilerFlags += -DUSE_NEW_PINNED_MALLOC=1
 
 # libraries to be linked in
-LIBS	=   -L$(OCCA_DIR)/lib  $(links) -L$(GSDIR)/lib  -lgs 
+linkerFlags	+= -lgs 
 
 #-llapack -lblas
 
@@ -30,10 +43,10 @@ $(HDRDIR)/types.h
 
 # rule for .c files
 .c.o: $(DEPS)
-	$(CC) $(CFLAGS) -o $*.o -c $*.c $(paths)
+	$(cCompiler) -c $(cCompilerFlags) $(paths) $*.c -o $*.o
 
 .cpp.o: $(DEPS)
-	$(CXX) $(CXXFLAGS) -o $*.o -c $*.cpp $(paths)
+	$(compiler) -c $(compilerFlags) $(paths) $*.cpp -o $*.o
 
 # list of objects to be compiled
 OBJS    = \
@@ -62,28 +75,18 @@ COBJS = \
 ./src/ogsHostSetup.o
 
 
-lib:$(OBJS) gslibInterface
+lib:$(OBJS) gslibInterface $(COBJS)
 	ar -cr libogs.a $(OBJS) $(COBJS)
 
 gslibInterface:
-	CC=$(CC) $(MAKE) -C ../../3rdParty/gslib -j install
-	$(CC) $(CFLAGS) -c -o ./src/ogsHostGatherScatter.o     ./src/ogsHostGatherScatter.c     $(paths)
-	$(CC) $(CFLAGS) -c -o ./src/ogsHostGatherScatterVec.o  ./src/ogsHostGatherScatterVec.c  $(paths)
-	$(CC) $(CFLAGS) -c -o ./src/ogsHostGatherScatterMany.o ./src/ogsHostGatherScatterMany.c $(paths)
-	$(CC) $(CFLAGS) -c -o ./src/ogsHostGather.o        ./src/ogsHostGather.c        $(paths)
-	$(CC) $(CFLAGS) -c -o ./src/ogsHostGatherVec.o     ./src/ogsHostGatherVec.c     $(paths)
-	$(CC) $(CFLAGS) -c -o ./src/ogsHostGatherMany.o    ./src/ogsHostGatherMany.c    $(paths)
-	$(CC) $(CFLAGS) -c -o ./src/ogsHostScatter.o       ./src/ogsHostScatter.c       $(paths)
-	$(CC) $(CFLAGS) -c -o ./src/ogsHostScatterVec.o    ./src/ogsHostScatterVec.c    $(paths)
-	$(CC) $(CFLAGS) -c -o ./src/ogsHostScatterMany.o   ./src/ogsHostScatterMany.c   $(paths)
-	$(CC) $(CFLAGS) -c -o ./src/ogsHostSetup.o         ./src/ogsHostSetup.c         $(paths)
+	$(MAKE) -C ../../3rdParty/gslib -j install
 
 all: lib
 
 clean:
-	rm src/*.o libogs.a
+	rm -f src/*.o libogs.a
 
 realclean:
 	cd ../../3rdParty/gslib; make clean; cd ../../3rdParty/ogs
-	rm src/*.o libogs.a
+	rm -f src/*.o libogs.a
 

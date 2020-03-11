@@ -1,3 +1,11 @@
+ifndef OCCA_DIR
+ERROR:
+	@echo "Error, environment variable [OCCA_DIR] is not set"
+endif
+
+PROJ_DIR=$(CURDIR)
+include $(OCCA_DIR)/scripts/Makefile
+
 MPI ?= 1
 MPIIO ?= 1
 ADDUS ?= 1
@@ -58,8 +66,14 @@ G+=-DGLOBAL_LONG_LONG
 #G+=-DPRINT_MALLOCS=1
 #G+=-DGS_TIMING -DGS_BARRIER
 
-CCCMD=$(CC) $(CFLAGS) -I$(INCDIR) $(G)
-FCCMD=$(FC) $(FFLAGS)
+#CCCMD=$(CC) $(CFLAGS) -I$(INCDIR) $(G)
+#FCCMD=$(FC) $(FFLAGS)
+
+cCompilerFlags += $(G)
+paths += -I$(INCDIR)
+
+CCCMD=$(cCompiler) $(cCompilerFlags) $(paths)
+FCCMD=$(FC) $(cCompilerFlags) $(paths)
 
 LINKCMD=$(CC) $(CFLAGS) -I$(INCDIR) $(G) $^ -o $@ -L$(SRCDIR) \
         -l$(LIBNAME) -lm $(LDFLAGS)
