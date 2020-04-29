@@ -37,7 +37,7 @@ SOFTWARE.
 #include "timer.hpp"
 
 // block size for reduction (hard coded)
-#define blockSize 512
+#define blockSize 256
 
 
 typedef struct{
