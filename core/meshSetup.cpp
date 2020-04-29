@@ -1495,6 +1495,7 @@ void meshOccaPopulateDevice3D(mesh3D *mesh, setupAide &newOptions, occa::propert
   kernelInfo["defines"].asObject();
   kernelInfo["includes"].asArray();
   kernelInfo["header"].asArray();
+  kernelInfo["flags"].asArray();
  
   kernelInfo["defines/" "p_dim"]= 3;
   kernelInfo["defines/" "p_N"]= mesh->N;

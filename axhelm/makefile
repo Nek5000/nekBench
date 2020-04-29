@@ -12,7 +12,7 @@ endif
 
 all: axhelm install
 
-axhelm: main.cpp ${CORE_DIR}/meshBasis.cpp libblas
+axhelm: main.cpp kernelHelper.cpp ${CORE_DIR}/meshBasis.cpp libblas
 	$(CXX) $(CXXFLAGS) -o axhelm main.cpp ${CORE_DIR}/meshBasis.cpp $(linkerFlags) $(LDFLAGS)
 
 $(oPath)/%.o:$(sPath)/%.cpp $(wildcard $(subst $(sPath)/,$(iPath)/,$(<:.cpp=.hpp))) $(wildcard $(subst $(sPath)/,$(iPath)/,$(<:.cpp=.tpp)))

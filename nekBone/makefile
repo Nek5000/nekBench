@@ -3,7 +3,7 @@ ERROR:
 	@echo "ERROR:  Please use toplevel makefile"
 endif
 
-INCLUDES = BP.h BPPrecon.h
+INCLUDES = BP.h BPPrecon.h kernelHelper.cpp
 DEPS = $(INCLUDES) \
 $(HDRDIR)/timer.hpp \
 $(HDRDIR)/mesh.h \
