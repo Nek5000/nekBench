@@ -2,6 +2,7 @@
 #define OCCA_C_TYPES_HEADER
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
 
 #include <occa/c/defines.h>
@@ -19,7 +20,7 @@ typedef struct {
   int magicHeader;
   int type;
   occaUDim_t bytes;
-  char needsFree;
+  bool needsFree;
 
   union {
     uint8_t  uint8_;
@@ -54,6 +55,7 @@ typedef occaType occaProperties;
 //---[ Type Flags ]---------------------
 extern const int OCCA_UNDEFINED;
 extern const int OCCA_DEFAULT;
+extern const int OCCA_NULL;
 
 extern const int OCCA_PTR;
 
@@ -98,7 +100,7 @@ OCCA_LFUNC int OCCA_RFUNC occaIsDefault(occaType value);
 
 OCCA_LFUNC occaType OCCA_RFUNC occaPtr(void *value);
 
-OCCA_LFUNC occaType OCCA_RFUNC occaBool(int value);
+OCCA_LFUNC occaType OCCA_RFUNC occaBool(bool value);
 
 OCCA_LFUNC occaType OCCA_RFUNC occaInt8(int8_t value);
 OCCA_LFUNC occaType OCCA_RFUNC occaUInt8(uint8_t value);
@@ -129,13 +131,13 @@ OCCA_LFUNC occaType OCCA_RFUNC occaULong(unsigned long value);
 OCCA_LFUNC occaType OCCA_RFUNC occaFloat(float value);
 OCCA_LFUNC occaType OCCA_RFUNC occaDouble(double value);
 
-OCCA_LFUNC occaType OCCA_RFUNC occaStruct(void *value,
+OCCA_LFUNC occaType OCCA_RFUNC occaStruct(const void *value,
                                           occaUDim_t bytes);
 
 OCCA_LFUNC occaType OCCA_RFUNC occaString(const char *str);
 //======================================
 
-OCCA_LFUNC void OCCA_RFUNC occaFree(occaType value);
+OCCA_LFUNC void OCCA_RFUNC occaFree(occaType *value);
 
 OCCA_END_EXTERN_C
 

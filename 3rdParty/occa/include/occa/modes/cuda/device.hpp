@@ -9,12 +9,16 @@
 namespace occa {
   namespace cuda {
     class kernel;
+    class memory;
 
     class device : public occa::launchedModeDevice_t {
       friend class kernel;
 
     private:
       mutable hash_t hash_;
+
+      // We can't pass null, so we reuse a 1-byte buffer instead
+      memory *nullPtr;
 
     public:
       int archMajorVersion, archMinorVersion;
@@ -35,6 +39,8 @@ namespace occa {
       virtual hash_t kernelHash(const occa::properties &props) const;
 
       virtual lang::okl::withLauncher* createParser(const occa::properties &props) const;
+
+      void* getNullPtr();
 
       //---[ Stream ]-------------------
       virtual modeStream_t* createStream(const occa::properties &props);
@@ -59,7 +65,8 @@ namespace occa {
                                                    const occa::properties &kernelProps,
                                                    io::lock_t lock);
 
-      void setArchCompilerFlags(occa::properties &kernelProps);
+      void setArchCompilerFlags(const occa::properties &kernelProps,
+                                std::string &compilerFlags);
 
       void compileKernel(const std::string &hashDir,
                          const std::string &kernelName,

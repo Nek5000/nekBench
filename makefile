@@ -1,6 +1,3 @@
-export OCCA_DIR = $(CURDIR)/3rdParty/occa
-include ${OCCA_DIR}/scripts/Makefile
-
 export CC = mpicc
 export FC = mpif77
 export CXX = mpic++
@@ -9,10 +6,16 @@ export LD = mpic++
 export NALIGN ?= 64
 export PREFIX ?= $(CURDIR)/build
 
-export OCCA_CUDA_ENABLED ?= 0
-export OCCA_HIP_ENABLED ?= 0
-export OCCA_OPENCL_ENABLED ?= 0
-export OCCA_METAL_ENABLED ?= 0
+export OCCA_DIR = $(CURDIR)/3rdParty/occa
+export OCCA_CUDA_ENABLED=1
+export OCCA_HIP_ENABLED=1
+export OCCA_OPENCL_ENABLED=1
+export OCCA_METAL_ENABLED=0
+
+#export OCCA_INCLUDE_PATH="/usr/local/cuda/include"
+#export OCCA_LIBRARY_PATH="/usr/local/cuda/lib"
+
+include ${OCCA_DIR}/scripts/Makefile
 
 flags += -g
 flags += -Ddfloat=double
@@ -36,6 +39,7 @@ export BLASLAPACK_DIR = $(CURDIR)/3rdParty/BlasLapack
 
 NEKBONEDIR = ./nekBone 
 AXHELMDIR  = ./axhelm 
+BWDIR  = ./bw 
 
 export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR) -I$(OGSDIR)/include  -D DBP='"./"' $(paths)
 
@@ -45,9 +49,9 @@ LDFLAGS = $(BLASLAPACK_DIR)/libBlasLapack.a -lgfortran -fopenmp
 LDFLAGS_OCCA = -L$(OCCA_DIR)/lib -locca
 LDFLAGS_GS = -L$(OGSDIR) -logs -L$(GSDIR)/lib -lgs 
 
-.PHONY: install axhelm nekBone all clean realclean
+.PHONY: install bw axhelm nekBone all clean realclean
 
-all: occa axhelm nekBone install
+all: occa bw axhelm nekBone install
 	@if test -f ${PREFIX}/axhelm && test -f ${PREFIX}/nekBone; then \
 	echo ""; \
 	echo "compilation successful!"; \
@@ -56,6 +60,9 @@ all: occa axhelm nekBone install
 
 install:
 	@rm -rf $(PREFIX)/libgs.a
+
+bw:
+	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(BWDIR) 
 
 axhelm:
 	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(AXHELMDIR) 
@@ -70,8 +77,10 @@ occa:
 	@rm -rf ${PREFIX}/include
 
 clean:
+	@$(MAKE) -C $(NEKBONEDIR) clean
+	@$(MAKE) -C $(AXHELMDIR) clean
+
+realclean:
+	@$(MAKE) -C $(OCCA_DIR) clean
 	@$(MAKE) -C $(NEKBONEDIR) realclean
 	@$(MAKE) -C $(AXHELMDIR) realclean
-
-realclean: clean
-	@$(MAKE) -C $(OCCA_DIR) clean

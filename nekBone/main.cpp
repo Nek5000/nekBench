@@ -103,10 +103,10 @@ int main(int argc, char **argv){
  
   // set up
   occa::properties kernelInfo;
-  kernelInfo["defines"].asObject();
-  kernelInfo["includes"].asArray();
-  kernelInfo["header"].asArray();
-  kernelInfo["flags"].asObject();
+  //kernelInfo["defines"].asObject();
+  //kernelInfo["includes"].asArray();
+  //kernelInfo["header"].asArray();
+  //kernelInfo["flags"].asObject();
 
   meshOccaSetup3D(mesh, options, kernelInfo);
   timer::init(MPI_COMM_WORLD, mesh->device, sync); 
@@ -199,11 +199,10 @@ int main(int argc, char **argv){
     MPI_Allreduce(MPI_IN_PLACE, &bw, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
     double etime[10];
-    etime[0] = timer::query("op", "HOST:MAX");
-    etime[1] = timer::query("Ax", "DEVICE:MAX");
-    etime[2] = timer::query("gs", "HOST:MAX");
-    etime[3] = timer::query("updatePCG", "HOST:MAX");
-    etime[4] = timer::query("preco", "HOST:MAX");
+    etime[0] = timer::query("Ax", "DEVICE:MAX");
+    etime[1] = timer::query("gs", "HOST:MAX");
+    etime[2] = timer::query("updatePCG", "HOST:MAX");
+    etime[3] = timer::query("dotp", "HOST:MAX");
 
     if(mesh->rank==0){
       printf("\ncorrectness check: maxError = %g\n", globalMaxError);
@@ -223,11 +222,10 @@ int main(int argc, char **argv){
            << "  bandwidth  : " << bw << " GB/s\n";
 
       cout << "\ntimings\n" 
-           << "  operator   : " << etime[0] << " s\n"
-           << "  local Ax   : " << etime[1] << " s\n"
-           << "  gs         : " << etime[2] << " s\n"
-           << "  updatePCG  : " << etime[3] << " s\n"
-           << "  preco      : " << etime[4] << " s\n"
+           << "  Ax         : " << etime[0] << " s\n"
+           << "  gs         : " << etime[1] << " s\n"
+           << "  updatePCG  : " << etime[2] << " s\n"
+           << "  dotp       : " << etime[3] << " s\n"
            << endl;
     }
 

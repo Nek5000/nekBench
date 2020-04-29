@@ -1,3 +1,5 @@
+#include "setCompilerFlags.hpp"
+
 static occa::kernel loadAxKernel(occa::device device, const std::string threadModel,
                                  const std::string arch, std::string kernelName,
                                  int N, dlong Nelements){
@@ -12,8 +14,9 @@ static occa::kernel loadAxKernel(occa::device device, const std::string threadMo
   props["defines"].asObject();
   props["includes"].asArray();
   props["header"].asArray();
-  props["flags"].asObject();
 
+  setCompilerFlags(device, props);
+  
   props["defines/p_Nalign"] = USE_OCCA_MEM_BYTE_ALIGN;
 
   props["defines/p_Nq"] = Nq;
@@ -31,7 +34,7 @@ static occa::kernel loadAxKernel(occa::device device, const std::string threadMo
   props["defines/dfloat"] = dfloatString;
   props["defines/dlong"]  = dlongString;
 
-  props["okl"] = false;
+  props["okl/enabled"] = false;
 
   occa::kernel axKernel;
 
@@ -46,7 +49,7 @@ static occa::kernel loadAxKernel(occa::device device, const std::string threadMo
         props["defines/USE_OCCA_MEM_BYTE_ALIGN"] = USE_OCCA_MEM_BYTE_ALIGN;
         axKernel = device.buildKernel(filename + ".c", kernelName, props);
       } else { // fallback is okl
-        props["okl"] = true;
+        props["okl/enabled"] = true;
         axKernel = device.buildKernel(filename + ".okl", kernelName, props);
       }
     }

@@ -58,7 +58,7 @@ namespace occa {
                                                   const std::string &kernelName,
                                                   const hash_t kernelHash,
                                                   const occa::properties &kernelProps) {
-    bool usingOkl = kernelProps.get("okl", true);
+    bool usingOkl = kernelProps.get("okl/enabled", true);
 
     launchedModeKernel_t *kernel = (launchedModeKernel_t*) (
       buildKernel(filename,
@@ -72,7 +72,14 @@ namespace occa {
       std::vector<modeKernel_t*> &deviceKernels = kernel->deviceKernels;
       const int kernelCount = (int) deviceKernels.size();
       for (int i = 0; i < kernelCount; ++i) {
-        deviceKernels[i]->properties["type_validation"] = false;
+        modeKernel_t *deviceKernel = deviceKernels[i];
+
+        // The launchedKernel handles deleting the launcher + device kernels
+        removeKernelRef(deviceKernel);
+        deviceKernel->dontUseRefs();
+
+        // Some backends inject additional arguments
+        deviceKernel->properties["type_validation"] = false;
       }
     }
 
@@ -135,7 +142,7 @@ namespace occa {
       // Cache raw origin
       sourceFilename = (
         io::cacheFile(filename,
-                      kc::rawSourceFile,
+                      kc::cppRawSourceFile,
                       kernelHash,
                       assembleKernelHeader(kernelProps))
       );

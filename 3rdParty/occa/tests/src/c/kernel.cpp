@@ -23,7 +23,7 @@ int main(const int argc, const char **argv) {
   testInfo();
   testRun();
 
-  occaFree(addVectors);
+  occaFree(&addVectors);
 
   return 0;
 }
@@ -92,7 +92,7 @@ void testRun() {
                     "argKernel",
                     kernelProps)
   );
-  occaFree(kernelProps);
+  occaFree(&kernelProps);
 
   // Dummy dims
   occaDim outerDims, innerDims;
@@ -104,47 +104,49 @@ void testRun() {
                        outerDims,
                        innerDims);
 
-  int value = 0;
+  int value = 1;
   occaMemory mem = occaMalloc(1 * sizeof(int), &value, occaDefault);
-  value = 1;
+  value = 2;
   int *uvaPtr = (int*) occaUMalloc(1 * sizeof(int), &value, occaDefault);
 
-  int xy[2] = {12, 13};
-  std::string str = "fourteen";
+  int xy[2] = {13, 14};
+  std::string str = "fifteen";
 
   // Good argument types
   occaKernelRunN(
-    argKernel, 14,
+    argKernel, 15,
+    occaNull,
     mem,
     occaPtr(uvaPtr),
-    occaInt8(2),
-    occaUInt8(3),
-    occaInt16(4),
-    occaUInt16(5),
-    occaInt32(6),
-    occaUInt32(7),
-    occaInt64(8),
-    occaUInt64(9),
-    occaFloat(10.0),
-    occaDouble(11.0),
+    occaInt8(3),
+    occaUInt8(4),
+    occaInt16(5),
+    occaUInt16(6),
+    occaInt32(7),
+    occaUInt32(8),
+    occaInt64(9),
+    occaUInt64(10),
+    occaFloat(11.0),
+    occaDouble(12.0),
     occaStruct(xy, sizeof(xy)),
     occaString(str.c_str())
   );
 
   // Manual argument insertion
   occaKernelClearArgs(argKernel);
+  occaKernelPushArg(argKernel, occaNull);
   occaKernelPushArg(argKernel, mem);
   occaKernelPushArg(argKernel, occaPtr(uvaPtr));
-  occaKernelPushArg(argKernel, occaInt8(2));
-  occaKernelPushArg(argKernel, occaUInt8(3));
-  occaKernelPushArg(argKernel, occaInt16(4));
-  occaKernelPushArg(argKernel, occaUInt16(5));
-  occaKernelPushArg(argKernel, occaInt32(6));
-  occaKernelPushArg(argKernel, occaUInt32(7));
-  occaKernelPushArg(argKernel, occaInt64(8));
-  occaKernelPushArg(argKernel, occaUInt64(9));
-  occaKernelPushArg(argKernel, occaFloat(10.0));
-  occaKernelPushArg(argKernel, occaDouble(11.0));
+  occaKernelPushArg(argKernel, occaInt8(3));
+  occaKernelPushArg(argKernel, occaUInt8(4));
+  occaKernelPushArg(argKernel, occaInt16(5));
+  occaKernelPushArg(argKernel, occaUInt16(6));
+  occaKernelPushArg(argKernel, occaInt32(7));
+  occaKernelPushArg(argKernel, occaUInt32(8));
+  occaKernelPushArg(argKernel, occaInt64(9));
+  occaKernelPushArg(argKernel, occaUInt64(10));
+  occaKernelPushArg(argKernel, occaFloat(11.0));
+  occaKernelPushArg(argKernel, occaDouble(12.0));
   occaKernelPushArg(argKernel, occaStruct(xy, sizeof(xy)));
   occaKernelPushArg(argKernel, occaString(str.c_str()));
   occaKernelRunFromArgs(argKernel);

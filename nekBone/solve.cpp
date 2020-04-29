@@ -71,16 +71,13 @@ int BPPCG(BP_t* BP, dfloat lambda,
   for(iter=1;iter<=MAXIT;++iter){
 
     // z = Precon^{-1} r 
-    timer::tic("preco");
     BPPreconditioner(BP, lambda, o_r, o_z);
-    timer::toc("preco");
  
     rdotz2 = rdotz1;
 
     // r.z
-    timer::tic("dot");
     rdotz1 = BPWeightedInnerProduct(BP, BP->o_invDegree, o_r, o_z); 
-    
+ 
     if(flexible){
       dfloat zdotAp = BPWeightedInnerProduct(BP, BP->o_invDegree, o_z, o_Ap);  
       beta = -alpha*zdotAp/rdotz2;
@@ -88,15 +85,12 @@ int BPPCG(BP_t* BP, dfloat lambda,
     else{
       beta = (iter==1) ? 0:rdotz1/rdotz2;
     }  
-    timer::toc("dot"); 
-  
+ 
     // p = z + beta*p
     BPScaledAdd(BP, 1.f, o_z, beta, o_p);
 	
     // Ap and p.Ap
-    timer::tic("op"); 
     pAp = AxOperator(BP, lambda, o_p, o_Ap, dfloatString);
-    timer::toc("op"); 
     
     // alpha = r.z/p.Ap
     alpha = rdotz1/pAp;
@@ -104,9 +98,7 @@ int BPPCG(BP_t* BP, dfloat lambda,
     //  x <= x + alpha*p
     //  r <= r - alpha*A*p
     //  dot(r,r)
-    timer::tic("updatePCG"); 
     dfloat rdotr = BPUpdatePCG(BP, o_p, o_Ap, alpha, o_x, o_r);
-    timer::toc("updatePCG"); 
 
     if (verbose&&(mesh->rank==0)) {
 
@@ -119,7 +111,7 @@ int BPPCG(BP_t* BP, dfloat lambda,
     if(rdotr<=TOL && !fixedIterationCountFlag) break;
   }
 
-  return iter;
+  return iter-1;
 }
 
 void BPZeroMean(BP_t *BP, occa::memory &o_q){
@@ -161,6 +153,8 @@ dfloat BPUpdatePCG(BP_t *BP,
 			 occa::memory &o_p, occa::memory &o_Ap, const dfloat alpha,
 			 occa::memory &o_x, occa::memory &o_r){
 
+  timer::tic("updatePCG");
+
   setupAide &options = BP->options;
   
   int fixedIterationCountFlag = 0;
@@ -201,6 +195,7 @@ dfloat BPUpdatePCG(BP_t *BP,
   MPI_Allreduce(&rdotr1, &globalrdotr1, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
   rdotr1 = globalrdotr1;
 
+  timer::toc("updatePCG");
   return rdotr1;
 }
 
@@ -236,10 +231,9 @@ dfloat AxOperator(BP_t *BP, dfloat lambda, occa::memory &o_q, occa::memory &o_Aq
   timer::tic("gs");
   ogsGatherScatterMany(o_Aq, BP->Nfields, fieldOffset, ogsDfloat, ogsAdd, ogs);
   timer::toc("gs");
+
+  dfloat pAp = BPWeightedInnerProduct(BP, BP->o_invDegree, o_q, o_Aq);
  
-  dfloat pAp = 0;
-  pAp = BPWeightedInnerProduct(BP, BP->o_invDegree, o_q, o_Aq);
-  
   return pAp;
 }
 
@@ -305,7 +299,7 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
   occa::memory &o_tmp = BP->o_tmp;
   occa::memory &o_tmp2 = BP->o_tmp2;
 
-
+  timer::tic("dotp");
   if(BP->Nfields == 1)
     BP->weightedInnerProduct2Kernel(Ntotal, o_w, o_a, o_b, o_tmp);
   else
@@ -322,7 +316,7 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
     /* add a second sweep if Nblock>Ncutoff */
     dlong Ncutoff = 100;
     dlong Nfinal;
-    if(Nblock>Ncutoff){
+    if(Nblock>Ncutoff && 0){
   
       mesh->sumKernel(Nblock, o_tmp, o_tmp2);
   
@@ -337,7 +331,8 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
       Nfinal = Nblock;
   
     }    
-  
+
+ 
     for(dlong n=0;n<Nfinal;++n){
       wab += tmp[n];
     }
@@ -346,6 +341,7 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
   dfloat globalwab = 0;
   MPI_Allreduce(&wab, &globalwab, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
+  timer::toc("dotp");
   return globalwab;
 }
 

@@ -62,12 +62,9 @@ namespace occa {
       return (double) (ct.tv_sec + (1.0e-9 * ct.tv_nsec));
 #elif (OCCA_OS == OCCA_MACOS_OS)
 #  ifdef __clang__
-      uint64_t ct;
-      ct = mach_absolute_time();
+      uint64_t nanoseconds = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
 
-      const Nanoseconds ct2 = AbsoluteToNanoseconds(*(AbsoluteTime *) &ct);
-
-      return ((double) 1.0e-9) * ((double) ( *((uint64_t*) &ct2) ));
+      return 1.0e-9 * nanoseconds;
 #  else
       clock_serv_t cclock;
       host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
@@ -366,7 +363,14 @@ namespace occa {
 
     int getTID() {
 #if (OCCA_OS & (OCCA_LINUX_OS | OCCA_MACOS_OS))
-      return syscall(SYS_gettid);
+      #if OCCA_OS == OCCA_MACOS_OS & (MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_12)
+      uint64_t tid64;
+      pthread_threadid_np(NULL, &tid64);
+      pid_t tid = (pid_t)tid64;
+      #else
+      pid_t tid = syscall(SYS_gettid);
+      #endif
+      return tid;
 #else
       return GetCurrentThreadId();
 #endif
@@ -676,10 +680,7 @@ namespace occa {
             vendor_ = (1 << vendorBit);
           }
 
-          ss.str("");
-          ss << vendor_;
-
-          io::write(outFilename, ss.str());
+          io::write(outFilename, std::to_string(vendor_));
           io::markCachedFileComplete(hashDir, "output");
 
           return vendor_;
@@ -725,15 +726,27 @@ namespace occa {
       return "";
     }
 
-    void addCpp11Flags(const std::string &compiler, std::string &compilerFlags) {
-      addCpp11Flags(sys::compilerVendor(compiler), compilerFlags);
+    std::string compilerC99Flags(const std::string &compiler) {
+      return compilerC99Flags( sys::compilerVendor(compiler) );
     }
 
-    void addCpp11Flags(const int vendor_, std::string &compilerFlags) {
-      addCompilerFlags(
-        compilerFlags,
-        sys::compilerCpp11Flags(vendor_)
-      );
+    std::string compilerC99Flags(const int vendor_) {
+      if (vendor_ & (sys::vendor::GNU   |
+                     sys::vendor::LLVM  |
+                     sys::vendor::Intel |
+                     sys::vendor::HP    |
+                     sys::vendor::PGI   |
+                     sys::vendor::Pathscale)) {
+        return "-std=c99";
+      } else if (vendor_ & sys::vendor::Cray) {
+        return "-hstd=c99";
+      } else if (vendor_ & sys::vendor::IBM) {
+        return "-qlanglvl=stdc99";
+      } else if (vendor_ & sys::vendor::VisualStudio) {
+        return ""; // Defaults to C++14
+      }
+      OCCA_FORCE_ERROR("Could not find C99 compiler flags");
+      return "";
     }
 
     std::string compilerSharedBinaryFlags(const std::string &compiler) {
@@ -759,23 +772,39 @@ namespace occa {
       return "";
     }
 
-    void addSharedBinaryFlags(const std::string &compiler, std::string &compilerFlags) {
-      addSharedBinaryFlags(sys::compilerVendor(compiler), compilerFlags);
+    void addCompilerIncludeFlags(std::string &compilerFlags) {
+      strVector includeDirs = env::OCCA_INCLUDE_PATH;
+
+      const int count = (int) includeDirs.size();
+      for (int i = 0; i < count; ++i) {
+        includeDirs[i] = "-I" + includeDirs[i];
+      }
+
+      addCompilerFlags(compilerFlags, includeDirs);
     }
 
-    void addSharedBinaryFlags(const int vendor_, std::string &compilerFlags) {
-      addCompilerFlags(
-        compilerFlags,
-        sys::compilerSharedBinaryFlags(vendor_)
-      );
+    void addCompilerLibraryFlags(std::string &compilerFlags) {
+      strVector libraryDirs = env::OCCA_LIBRARY_PATH;
+
+      const int count = (int) libraryDirs.size();
+      for (int i = 0; i < count; ++i) {
+        libraryDirs[i] = "-L" + libraryDirs[i];
+      }
+
+      addCompilerFlags(compilerFlags, libraryDirs);
     }
 
     void addCompilerFlags(std::string &compilerFlags, const std::string &flags) {
-      strVector compilerFlagsVec = split(compilerFlags, ' ');
       const strVector flagsVec = split(flags, ' ');
+      addCompilerFlags(compilerFlags, flagsVec);
+    }
 
-      for (int i = 0; i < (int) flagsVec.size(); ++i) {
-        const std::string &flag = flagsVec[i];
+    void addCompilerFlags(std::string &compilerFlags, const strVector &flags) {
+      strVector compilerFlagsVec = split(compilerFlags, ' ');
+
+      const int flagCount = (int) flags.size();
+      for (int i = 0; i < flagCount; ++i) {
+        const std::string &flag = flags[i];
         if (indexOf(compilerFlagsVec, flag) < 0) {
           compilerFlagsVec.push_back(flag);
         }

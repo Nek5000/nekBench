@@ -32,6 +32,15 @@ namespace occa {
       return oType;
     }
 
+    occaType nullOccaType() {
+      occaType oType;
+      oType.magicHeader = OCCA_C_TYPE_MAGIC_HEADER;
+      oType.type = occa::c::typeType::null_;
+      oType.value.ptr = NULL;
+      oType.needsFree = false;
+      return oType;
+    }
+
     occaType newOccaType(void *value) {
       occaType oType;
       oType.magicHeader = OCCA_C_TYPE_MAGIC_HEADER;
@@ -429,6 +438,9 @@ namespace occa {
       case occa::c::typeType::memory: {
         return occa::kernelArg(occa::c::memory(value));
       }
+      case occa::c::typeType::null_: {
+        return occa::kernelArg(occa::null);
+      }
       default:
         OCCA_FORCE_ERROR("An invalid occaType or non-occaType argument was passed");
       }
@@ -526,6 +538,8 @@ namespace occa {
         return occa::c::json(value);
       case occa::c::typeType::properties:
         return occa::c::properties(value);
+      case occa::c::typeType::null_:
+        return occa::json(occa::json::null_);
       case occa::c::typeType::ptr:
         if (value.value.ptr == NULL) {
           return occa::json(occa::json::null_);
@@ -574,6 +588,8 @@ namespace occa {
           return dtype::double_;
         case occa::c::typeType::memory:
           return occa::c::memory(value).dtype();
+        case occa::c::typeType::null_:
+          return dtype::void_;
         case occa::c::typeType::ptr: {
           occa::modeMemory_t* mem = uvaToMemory(value.value.ptr);
           if (mem) {
@@ -593,6 +609,7 @@ OCCA_START_EXTERN_C
 //---[ Type Flags ]---------------------
 const int OCCA_UNDEFINED     = occa::c::typeType::undefined;
 const int OCCA_DEFAULT       = occa::c::typeType::default_;
+const int OCCA_NULL          = occa::c::typeType::null_;
 
 const int OCCA_PTR           = occa::c::typeType::ptr;
 
@@ -626,9 +643,9 @@ const int OCCA_PROPERTIES    = occa::c::typeType::properties;
 //======================================
 
 //---[ Globals & Flags ]----------------
-const occaType occaNull       = occa::c::newOccaType((void*) NULL);
 const occaType occaUndefined  = occa::c::undefinedOccaType();
 const occaType occaDefault    = occa::c::defaultOccaType();
+const occaType occaNull       = occa::c::nullOccaType();
 const occaUDim_t occaAllBytes = -1;
 //======================================
 
@@ -636,6 +653,10 @@ const occaUDim_t occaAllBytes = -1;
 OCCA_LFUNC int OCCA_RFUNC occaIsUndefined(occaType value) {
   return ((value.magicHeader == OCCA_C_TYPE_UNDEFINED_HEADER) ||
           (value.magicHeader != OCCA_C_TYPE_MAGIC_HEADER));
+}
+
+OCCA_LFUNC int OCCA_RFUNC occaIsNull(occaType value) {
+  return (value.type == occa::c::typeType::null_);
 }
 
 OCCA_LFUNC int OCCA_RFUNC occaIsDefault(occaType value) {
@@ -646,8 +667,8 @@ OCCA_LFUNC occaType OCCA_RFUNC occaPtr(void *value) {
   return occa::c::newOccaType(value);
 }
 
-OCCA_LFUNC occaType OCCA_RFUNC occaBool(int value) {
-  return occa::c::newOccaType((bool) value);
+OCCA_LFUNC occaType OCCA_RFUNC occaBool(bool value) {
+  return occa::c::newOccaType(value);
 }
 
 OCCA_LFUNC occaType OCCA_RFUNC occaInt8(int8_t value) {
@@ -724,7 +745,7 @@ OCCA_LFUNC occaType OCCA_RFUNC occaDouble(double value) {
   return occa::c::newOccaType(value);
 }
 
-OCCA_LFUNC occaType OCCA_RFUNC occaStruct(void *value,
+OCCA_LFUNC occaType OCCA_RFUNC occaStruct(const void *value,
                                           occaUDim_t bytes) {
   occaType oType;
   oType.magicHeader = OCCA_C_TYPE_MAGIC_HEADER;
@@ -746,56 +767,58 @@ OCCA_LFUNC occaType OCCA_RFUNC occaString(const char *str) {
 }
 //======================================
 
-OCCA_LFUNC void OCCA_RFUNC occaFree(occaType value) {
-  if (occaIsUndefined(value)) {
+OCCA_LFUNC void OCCA_RFUNC occaFree(occaType *value) {
+  occaType &valueRef = *value;
+
+  if (occaIsUndefined(valueRef)) {
     return;
   }
-  switch (value.type) {
+  switch (valueRef.type) {
   case occa::c::typeType::device: {
-    occa::c::device(value).free();
+    occa::c::device(valueRef).free();
     break;
   }
   case occa::c::typeType::kernel: {
-    occa::c::kernel(value).free();
+    occa::c::kernel(valueRef).free();
     break;
   }
   case occa::c::typeType::kernelBuilder: {
-    occa::c::kernelBuilder(value).free();
+    occa::c::kernelBuilder(valueRef).free();
     break;
   }
   case occa::c::typeType::memory: {
-    occa::c::memory(value).free();
+    occa::c::memory(valueRef).free();
     break;
   }
   case occa::c::typeType::stream: {
-    occa::c::stream(value).free();
+    occa::c::stream(valueRef).free();
     break;
   }
   case occa::c::typeType::streamTag: {
-    occa::c::streamTag(value).free();
+    occa::c::streamTag(valueRef).free();
     break;
   }
   case occa::c::typeType::dtype: {
-    delete &occa::c::dtype(value);
+    delete &occa::c::dtype(valueRef);
     break;
   }
   case occa::c::typeType::scope: {
-    delete &occa::c::scope(value);
+    delete &occa::c::scope(valueRef);
     break;
   }
   case occa::c::typeType::json: {
-    if (value.needsFree) {
-      delete &occa::c::json(value);
+    if (valueRef.needsFree) {
+      delete &occa::c::json(valueRef);
     }
     break;
   }
   case occa::c::typeType::properties: {
-    if (value.needsFree) {
-      delete &occa::c::properties(value);
+    if (valueRef.needsFree) {
+      delete &occa::c::properties(valueRef);
     }
     break;
   }}
-  value.magicHeader = occaUndefined.magicHeader;
+  valueRef.magicHeader = occaUndefined.magicHeader;
 }
 
 OCCA_END_EXTERN_C

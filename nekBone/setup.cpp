@@ -110,9 +110,9 @@ void solveSetup(BP_t *BP, dfloat lambda, occa::properties &kernelInfo){
   dlong Nblock  = mymax(1,(Ntotal+blockSize-1)/blockSize);
   dlong Nblock2 = mymax(1,(Nblock+blockSize-1)/blockSize);
 
-  dlong NthreadsUpdatePCG = 1024; // was 256
-  dlong NblocksUpdatePCG = mymin((Ntotal+NthreadsUpdatePCG-1)/NthreadsUpdatePCG, 640);
-  //  dlong NblocksUpdatePCG = (Ntotal+NthreadsUpdatePCG-1)/NthreadsUpdatePCG;x
+  dlong NthreadsUpdatePCG = 256;
+  //dlong NblocksUpdatePCG = mymin((Ntotal+NthreadsUpdatePCG-1)/NthreadsUpdatePCG, 32);
+  dlong NblocksUpdatePCG = (Ntotal+NthreadsUpdatePCG-1)/NthreadsUpdatePCG;
  
   BP->NthreadsUpdatePCG = NthreadsUpdatePCG;
   BP->NblocksUpdatePCG = NblocksUpdatePCG;
@@ -298,7 +298,7 @@ void solveSetup(BP_t *BP, dfloat lambda, occa::properties &kernelInfo){
       combineDot = 0; //options.compareArgs("COMBINE DOT PRODUCT", "TRUE");
 
       occa::properties props = kernelInfo;
-      if(strstr(threadModel.c_str(), "NATIVE")) props["okl"] = false;
+      if(strstr(threadModel.c_str(), "NATIVE")) props["okl/enabled"] = false;
 
       string fileName = DBP "/kernel/" + arch + "/updatePCG.okl";
       if(strstr(threadModel.c_str(), "NATIVE+SERIAL") || strstr(threadModel.c_str(), "NATIVE+OPENMP")) 

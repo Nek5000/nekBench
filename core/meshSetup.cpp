@@ -28,6 +28,7 @@ SOFTWARE.
 #include "omp.h"
 #include "mpi.h"
 #include "mesh.h"
+#include "setCompilerFlags.hpp"
 
 int findBestPeriodicMatch(dfloat xper, dfloat yper, dfloat zper,
 			  dfloat x1, dfloat y1, dfloat z1,
@@ -1491,7 +1492,10 @@ void meshOccaPopulateDevice3D(mesh3D *mesh, setupAide &newOptions, occa::propert
     mesh->device.malloc(mesh->Nelements*mesh->Np*sizeof(dlong),
                         mesh->localizedIds);
 
-  
+  kernelInfo["defines"].asObject();
+  kernelInfo["includes"].asArray();
+  kernelInfo["header"].asArray();
+ 
   kernelInfo["defines/" "p_dim"]= 3;
   kernelInfo["defines/" "p_N"]= mesh->N;
   kernelInfo["defines/" "p_Nq"]= mesh->N+1;
@@ -1539,13 +1543,7 @@ void meshOccaPopulateDevice3D(mesh3D *mesh, setupAide &newOptions, occa::propert
     kernelInfo["defines/" "dlong"]="long long int";
   }
 
-  if(mesh->device.mode()=="CUDA"){ // add backend compiler optimization for CUDA
-    kernelInfo["compiler_flags"] += " --ftz=true ";
-    kernelInfo["compiler_flags"] += " --prec-div=false ";
-    kernelInfo["compiler_flags"] += " --prec-sqrt=false ";
-    kernelInfo["compiler_flags"] += " --use_fast_math ";
-    kernelInfo["compiler_flags"] += " --fmad=true "; // compiler option for cuda
-  }
+  setCompilerFlags(mesh->device, kernelInfo);
 
   kernelInfo["defines/" "p_G00ID"]= G00ID;
   kernelInfo["defines/" "p_G01ID"]= G01ID;

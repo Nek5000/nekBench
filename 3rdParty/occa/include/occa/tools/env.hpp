@@ -10,12 +10,13 @@ namespace occa {
   properties& settings();
 
   namespace env {
-    extern std::string HOME, PWD;
+    extern std::string HOME, CWD;
     extern std::string PATH, LD_LIBRARY_PATH;
 
     extern std::string OCCA_DIR, OCCA_CACHE_DIR;
     extern size_t      OCCA_MEM_BYTE_ALIGN;
-    extern strVector   OCCA_PATH;
+    extern strVector   OCCA_INCLUDE_PATH;
+    extern strVector   OCCA_LIBRARY_PATH;
     extern bool        OCCA_COLOR_ENABLED;
 
     properties& baseSettings();

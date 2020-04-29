@@ -16,7 +16,8 @@
 namespace occa {
   namespace cuda {
     device::device(const occa::properties &properties_) :
-      occa::launchedModeDevice_t(properties_) {
+        occa::launchedModeDevice_t(properties_),
+        nullPtr(NULL) {
 
       if (!properties.has("wrapped")) {
         OCCA_ERROR("[CUDA] device not given a [device_id] integer",
@@ -54,10 +55,21 @@ namespace occa {
       kernelProps["compiler"] = compiler;
       kernelProps["compiler_flags"] = compilerFlags;
 
-      OCCA_CUDA_ERROR("Device: Getting CUDA Device Arch",
+#if CUDA_VERSION < 5000
+      OCCA_CUDA_ERROR("Device: Getting CUDA device arch",
                       cuDeviceComputeCapability(&archMajorVersion,
                                                 &archMinorVersion,
-                                                cuDevice) );
+                                                cuDevice));
+#else
+      OCCA_CUDA_ERROR("Device: Getting CUDA device major version",
+                      cuDeviceGetAttribute(&archMajorVersion,
+                                           CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR,
+                                           cuDevice));
+      OCCA_CUDA_ERROR("Device: Getting CUDA device minor version",
+                      cuDeviceGetAttribute(&archMinorVersion,
+                                           CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR,
+                                           cuDevice));
+#endif
 
       archMajorVersion = kernelProps.get("arch/major", archMajorVersion);
       archMinorVersion = kernelProps.get("arch/minor", archMinorVersion);
@@ -100,6 +112,14 @@ namespace occa {
 
     lang::okl::withLauncher* device::createParser(const occa::properties &props) const {
       return new lang::okl::cudaParser(props);
+    }
+
+    void* device::getNullPtr() {
+      if (!nullPtr) {
+        // Auto freed through ring garbage collection
+        nullPtr = (cuda::memory*) malloc(1, NULL, occa::properties());
+      }
+      return (void*) &(nullPtr->cuPtr);
     }
 
     //---[ Stream ]---------------------
@@ -218,13 +238,12 @@ namespace occa {
                         kernelProps);
     }
 
-    void device::setArchCompilerFlags(occa::properties &kernelProps) {
-      if (kernelProps.get<std::string>("compiler_flags").find("-arch=sm_") == std::string::npos) {
-        const int major = archMajorVersion;
-        const int minor = archMinorVersion;
-        std::stringstream ss;
-        ss << " -arch=sm_" << major << minor << ' ';
-        kernelProps["compiler_flags"] += ss.str();
+    void device::setArchCompilerFlags(const occa::properties &kernelProps,
+                                      std::string &compilerFlags) {
+      if (compilerFlags.find("-arch=sm_") == std::string::npos) {
+        compilerFlags += " -arch=sm_";
+        compilerFlags += std::to_string(archMajorVersion);
+        compilerFlags += std::to_string(archMinorVersion);
       }
     }
 
@@ -240,7 +259,16 @@ namespace occa {
       std::string binaryFilename = hashDir + kc::binaryFile;
       const std::string ptxBinaryFilename = hashDir + "ptx_binary.o";
 
-      setArchCompilerFlags(allProps);
+      const std::string compiler = allProps["compiler"];
+      std::string compilerFlags = allProps["compiler_flags"];
+      const bool compilingOkl = allProps.get("okl/enabled", true);
+
+      setArchCompilerFlags(allProps, compilerFlags);
+
+      if (!compilingOkl) {
+        sys::addCompilerIncludeFlags(compilerFlags);
+        sys::addCompilerLibraryFlags(compilerFlags);
+      }
 
       //---[ PTX Check Command ]--------
       std::stringstream command;
@@ -248,8 +276,8 @@ namespace occa {
         command << allProps["compiler_env_script"] << " && ";
       }
 
-      command << allProps["compiler"]
-              << ' ' << allProps["compiler_flags"]
+      command << compiler
+              << ' ' << compilerFlags
               << " -Xptxas -v,-dlcm=cg"
 #if (OCCA_OS == OCCA_WINDOWS_OS)
               << " -D OCCA_OS=OCCA_WINDOWS_OS -D _MSC_VER=1800"
@@ -277,7 +305,7 @@ namespace occa {
       //---[ Compiling Command ]--------
       command.str("");
       command << allProps["compiler"]
-              << ' ' << allProps["compiler_flags"]
+              << ' ' << compilerFlags
               << " -ptx"
 #if (OCCA_OS == OCCA_WINDOWS_OS)
               << " -D OCCA_OS=OCCA_WINDOWS_OS -D _MSC_VER=1800"
@@ -363,7 +391,6 @@ namespace occa {
                                       cuModule,
                                       cuFunction,
                                       kernelProps);
-        cuKernel->dontUseRefs();
         cuKernel->metadata = metadata;
         k.deviceKernels.push_back(cuKernel);
       }
@@ -396,7 +423,6 @@ namespace occa {
     modeMemory_t* device::malloc(const udim_t bytes,
                                  const void *src,
                                  const occa::properties &props) {
-
       if (props.get("mapped", false)) {
         return mappedAlloc(bytes, src, props);
       }
