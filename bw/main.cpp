@@ -15,7 +15,7 @@ int main(int argc, char **argv){
   MPI_Init(&argc, &argv);
 
   if(argc<2){
-    printf("Usage: ./launchLatency SERIAL|CUDA|OPENCL\n");
+    printf("Usage: ./bw SERIAL|CUDA|OPENCL\n");
     return 1;
   }
 

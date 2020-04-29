@@ -51,7 +51,7 @@ LDFLAGS_GS = -L$(OGSDIR) -logs -L$(GSDIR)/lib -lgs
 
 .PHONY: install bw axhelm nekBone all clean realclean
 
-all: occa bw axhelm nekBone install
+all: occa nekBone axhelm bw install
 	@if test -f ${PREFIX}/axhelm && test -f ${PREFIX}/nekBone; then \
 	echo ""; \
 	echo "compilation successful!"; \
