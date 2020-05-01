@@ -1,5 +1,5 @@
 This benchmark solves a 3D inhomogenous Helmholtz equation 
-on a deformed hexahedral spectral element mesh using Jacobi preconditioned conjuate gradients.
+on a deformed hexahedral spectral element mesh using conjuate gradients.
 
 # Usage
 

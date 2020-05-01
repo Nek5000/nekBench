@@ -1,3 +1,6 @@
+#########################################################
+# USER SETTINGS
+#########################################################
 export CC = mpicc
 export FC = mpif77
 export CXX = mpic++
@@ -6,15 +9,16 @@ export LD = mpic++
 export NALIGN ?= 64
 export PREFIX ?= $(CURDIR)/build
 
-export OCCA_DIR = $(CURDIR)/3rdParty/occa
 export OCCA_CUDA_ENABLED=1
-export OCCA_HIP_ENABLED=1
-export OCCA_OPENCL_ENABLED=1
+export OCCA_HIP_ENABLED=0
+export OCCA_OPENCL_ENABLED=0
 export OCCA_METAL_ENABLED=0
-
 #export OCCA_INCLUDE_PATH="/usr/local/cuda/include"
 #export OCCA_LIBRARY_PATH="/usr/local/cuda/lib"
 
+#########################################################
+
+export OCCA_DIR = $(CURDIR)/3rdParty/occa
 include ${OCCA_DIR}/scripts/Makefile
 
 flags += -g
@@ -41,13 +45,13 @@ NEKBONEDIR = ./nekBone
 AXHELMDIR  = ./axhelm 
 BWDIR  = ./bw 
 
-export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR) -I$(OGSDIR)/include  -D DBP='"./"' $(paths)
+export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR) -I$(OGSDIR)/include -DDOGS='"./gs"' -D DBP='"./"' $(paths)
 
-export CXXFLAGS = -I. -DOCCA_VERSION_1_0 $(compilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR) -I$(OGSDIR)/include  -D DBP='"./"' $(paths)
+export CXXFLAGS = -I. -DOCCA_VERSION_1_0 $(compilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR) -I$(OGSDIR)/include -DDOGS='"./gs"' -D DBP='"./"' $(paths)
 
-LDFLAGS = $(BLASLAPACK_DIR)/libBlasLapack.a -lgfortran -fopenmp
-LDFLAGS_OCCA = -L$(OCCA_DIR)/lib -locca
-LDFLAGS_GS = -L$(OGSDIR) -logs -L$(GSDIR)/lib -lgs 
+LDFLAGS = $(PREFIX)/blasLapack/lib/libBlasLapack.a -lgfortran -fopenmp
+LDFLAGS_OCCA = -L$(PREFIX)/occa/lib -locca
+LDFLAGS_GS = -L$(PREFIX)/gs/lib -logs -L$(PREFIX)/gs/lib -lgs 
 
 .PHONY: install bw axhelm nekBone all clean realclean
 
@@ -55,7 +59,11 @@ all: occa nekBone axhelm bw install
 	@if test -f ${PREFIX}/axhelm && test -f ${PREFIX}/nekBone; then \
 	echo ""; \
 	echo "compilation successful!"; \
+	echo ""; \
 	echo "install dir: ${PREFIX}"; \
+	echo "please set the following env-vars:"; \
+	echo "  export OCCA_DIR=${PREFIX}/occa"; \
+	echo "  export LD_LIBRARY_PATH=\$$LD_LIBRARY_PATH:\$$OCCA_DIR/lib"; \
 	fi
 
 install:
@@ -71,10 +79,7 @@ nekBone:
 	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS_GS) $(LDFLAGS)" $(MAKE) -C $(NEKBONEDIR)
 
 occa:
-	$(MAKE) -j8 -C $(OCCA_DIR)
-	@rm -rf ${PREFIX}/lib
-	@rm -rf ${PREFIX}/bin
-	@rm -rf ${PREFIX}/include
+	@PREFIX=$(PREFIX)/occa $(MAKE) -j8 -C $(OCCA_DIR)
 
 clean:
 	@$(MAKE) -C $(NEKBONEDIR) clean

@@ -7,7 +7,6 @@
 #include <unistd.h>
 #include "mpi.h"
 #include "occa.hpp"
-#include "meshBasis.hpp"
 #include "timer.hpp"
 #include "setCompilerFlags.hpp"
 

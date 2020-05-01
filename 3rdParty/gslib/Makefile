@@ -94,8 +94,8 @@ lib: $(GS) $(FWRAPPER) $(INTP) $(SRCDIR)/rand_elt_test.o
 	@ranlib $(SRCDIR)/lib$(LIBNAME).a
 
 install: lib
-	@mkdir -p $(INSTALL_ROOT) 2>/dev/null
-	@cp -v $(SRCDIR)/lib$(LIBNAME).a $(INSTALL_ROOT) 2>/dev/null
+	@mkdir -p $(INSTALL_ROOT)/lib 2>/dev/null
+	@cp -v $(SRCDIR)/lib$(LIBNAME).a $(INSTALL_ROOT)/lib 2>/dev/null
 
 tests: $(TESTS) $(FTESTS)
 

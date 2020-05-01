@@ -18,6 +18,8 @@ FCFLAGS = $(FCOPTIONS) $(OPTFLAGS)
 
 lib: $(OBJS)
 	$(AR) $(ARFLAGS) libBlasLapack.a *.o
+	@mkdir -p $(PREFIX)/lib
+	@cp libBlasLapack.a $(PREFIX)/lib
 
 clean:
 	rm -f *.o *.a

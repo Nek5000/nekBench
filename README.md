@@ -15,19 +15,8 @@ The suite can be built using
 ```
 make
 ```
+Please edit the makefile to customize build settings.
 
-or with enabled {CUDA,HIP,OPENCL} support
-
-```
-make OCCA_CUDA_ENABLED=1
-```
-
-Then, add the following environment variables to your shell (here bash):
-
-```
-export OCCA_DIR=<install dir>/3rdParty/occa
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$OCCA_DIR/lib
-```
 
 # #License
 nekRS is released under the BSD 3-clause license (see the LICENSE file).

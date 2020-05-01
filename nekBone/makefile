@@ -55,10 +55,10 @@ BP: $(AOBJS) $(LOBJS) libogs libblas
 	$(LD)  -o nekBone $(COBJS) $(AOBJS) $(LOBJS) $(LDFLAGS)
 
 libogs:
-	$(MAKE) -C $(OGSDIR) -j4 lib
+	@PREFIX=$(PREFIX)/gs $(MAKE) -C $(OGSDIR) -j4 lib 
 
 libblas:
-	$(MAKE) -C $(BLASLAPACK_DIR) -j4 lib
+	@PREFIX=$(PREFIX)/blasLapack $(MAKE) -C $(BLASLAPACK_DIR) -j4 lib
 
 clean:
 	@rm -rf *.o ../core/*.o ./build

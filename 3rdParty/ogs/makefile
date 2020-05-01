@@ -13,8 +13,8 @@ GSDIR  = ../../3rdParty/gslib
 # specify which compilers to use for c, fortran and linking
 
 # compiler flags to be used (set to compile with debugging on)
-CFLAGS += -I. -I$(GSDIR)/src -DDOGS='"${CURDIR}"' -DUSE_NEW_PINNED_MALLOC=1
-CXXFLAGS += -I. -I$(GSDIR)/src -DDOGS='"${CURDIR}"' -DUSE_NEW_PINNED_MALLOC=1
+CFLAGS += -I. -I$(GSDIR)/src -DUSE_NEW_PINNED_MALLOC=1
+CXXFLAGS += -I. -I$(GSDIR)/src -DUSE_NEW_PINNED_MALLOC=1
 
 # libraries to be linked in
 LIBS	=   -L$(OCCA_DIR)/lib  $(links) -L$(GSDIR)/lib  -lgs 
@@ -64,6 +64,8 @@ COBJS = \
 
 lib:$(OBJS) gslibInterface
 	ar -cr libogs.a $(OBJS) $(COBJS)
+	@cp -a ./okl $(PREFIX)
+	@cp libogs.a $(PREFIX)/lib
 
 gslibInterface:
 	CC=$(CC) $(MAKE) -C ../../3rdParty/gslib -j install
