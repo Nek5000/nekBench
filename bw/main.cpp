@@ -64,6 +64,8 @@ int main(int argc, char **argv){
 
   const int nWords = 100*1000*1000;
   double *u = (double*) calloc(nWords,sizeof(double));
+  props["mapped"] = true;
+  occa::memory h_u = device.malloc(nWords*sizeof(double), props);
   occa::memory o_a = device.malloc(nWords*sizeof(double), u);
   occa::memory o_b = device.malloc(nWords*sizeof(double), u);
   occa::memory o_c = device.malloc(nWords*sizeof(double), u);
@@ -91,13 +93,14 @@ int main(int argc, char **argv){
   std::cout << "\n";
 
   Ntests = 100;
-  for(int i=0; i<6; ++i) {
-    int N[] = {1, 4000, 8000, 2000*512, 4000*512, 8000*512};
+  for(int i=0; i<7; ++i) {
+    int N[] = {1, 2000, 4000, 8000, 2000*512, 4000*512, 8000*512};
     const long long int bytes = N[i]*sizeof(double);
+    void *ptr = h_u.ptr(props);
     device.finish();
     timer::reset("memcpyDH");
     timer::tic("memcpyDH");
-    for(int test=0;test<Ntests;++test) o_a.copyTo(u, bytes);
+    for(int test=0;test<Ntests;++test) o_a.copyTo(ptr, bytes);
     device.finish();
     timer::toc("memcpyDH");
     const double elapsed = timer::query("memcpyDH", "HOST:MAX")/Ntests;
