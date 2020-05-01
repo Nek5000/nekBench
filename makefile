@@ -37,8 +37,8 @@ flags += -DhlongFormat='"%lld"'
 flags += -DUSE_OCCA_MEM_BYTE_ALIGN=$(NALIGN)
 
 export HDRDIR = $(CURDIR)/core
-export GSDIR  = $(CURDIR)/3rdParty/gslib/
-export OGSDIR = $(CURDIR)/3rdParty/ogs/
+export GSDIR = $(CURDIR)/3rdParty/gslib
+export OGSDIR = $(CURDIR)/3rdParty/ogs
 export BLASLAPACK_DIR = $(CURDIR)/3rdParty/BlasLapack
 
 NEKBONEDIR = ./nekBone 
@@ -53,7 +53,7 @@ LDFLAGS = $(PREFIX)/blasLapack/lib/libBlasLapack.a -lgfortran -fopenmp
 LDFLAGS_OCCA = -L$(PREFIX)/occa/lib -locca
 LDFLAGS_GS = -L$(PREFIX)/gs/lib -logs -L$(PREFIX)/gs/lib -lgs 
 
-.PHONY: install bw axhelm nekBone all clean realclean
+.PHONY: install bw axhelm nekBone all clean realclean libblas libogs
 
 all: occa nekBone axhelm bw install
 	@if test -f ${PREFIX}/axhelm && test -f ${PREFIX}/nekBone; then \
@@ -67,25 +67,33 @@ all: occa nekBone axhelm bw install
 	fi
 
 install:
-	@rm -rf $(PREFIX)/libgs.a
 
 bw:
 	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(BWDIR) 
 
-axhelm:
+axhelm: libblas
 	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(AXHELMDIR) 
 
-nekBone:
+nekBone: libogs libblas
 	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS_GS) $(LDFLAGS)" $(MAKE) -C $(NEKBONEDIR)
 
 occa:
 	@PREFIX=$(PREFIX)/occa $(MAKE) -j8 -C $(OCCA_DIR)
 
+libogs:
+	@PREFIX=$(PREFIX)/gs $(MAKE) -C $(OGSDIR) -j4 lib
+
+libblas:
+	@PREFIX=$(PREFIX)/blasLapack $(MAKE) -C $(BLASLAPACK_DIR) -j4 lib
+
 clean:
 	@$(MAKE) -C $(NEKBONEDIR) clean
 	@$(MAKE) -C $(AXHELMDIR) clean
+	@$(MAKE) -C $(BWDIR) clean
 
-realclean:
+realclean: clean
+	@rm -rf core/*.o
 	@$(MAKE) -C $(OCCA_DIR) clean
-	@$(MAKE) -C $(NEKBONEDIR) realclean
-	@$(MAKE) -C $(AXHELMDIR) realclean
+	@$(MAKE) -C $(OGSDIR) clean
+	@$(MAKE) -C $(GSDIR) clean
+	@$(MAKE) -C $(BLASLAPACK_DIR) clean

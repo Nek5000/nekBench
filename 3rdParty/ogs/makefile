@@ -64,11 +64,13 @@ COBJS = \
 
 lib:$(OBJS) gslibInterface
 	ar -cr libogs.a $(OBJS) $(COBJS)
-	@cp -a ./okl $(PREFIX)
-	@cp libogs.a $(PREFIX)/lib
+	mkdir -p $(PREFIX)
+	mkdir -p $(PREFIX)/lib
+	cp -a okl $(PREFIX)
+	cp libogs.a $(PREFIX)/lib
 
 gslibInterface:
-	CC=$(CC) $(MAKE) -C ../../3rdParty/gslib -j install
+	CC=$(CC) $(MAKE) -C ../../3rdParty/gslib -j lib install 
 	$(CC) $(CFLAGS) -c -o ./src/ogsHostGatherScatter.o     ./src/ogsHostGatherScatter.c     $(paths)
 	$(CC) $(CFLAGS) -c -o ./src/ogsHostGatherScatterVec.o  ./src/ogsHostGatherScatterVec.c  $(paths)
 	$(CC) $(CFLAGS) -c -o ./src/ogsHostGatherScatterMany.o ./src/ogsHostGatherScatterMany.c $(paths)
@@ -83,9 +85,9 @@ gslibInterface:
 all: lib
 
 clean:
-	rm src/*.o libogs.a
+	rm -rf src/*.o libogs.a
 
 realclean:
 	cd ../../3rdParty/gslib; make clean; cd ../../3rdParty/ogs
-	rm src/*.o libogs.a
+	rm -rf src/*.o libogs.a
 

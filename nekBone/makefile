@@ -10,7 +10,7 @@ $(HDRDIR)/mesh.h \
 $(HDRDIR)/mesh2D.h \
 $(HDRDIR)/mesh3D.h \
 $(OGSDIR)/ogs.hpp \
-
+${CORE_DIR}/setCompilerFlags.hpp \
 
 # types of files we are going to construct rules for
 .SUFFIXES: .c .f .cpp
@@ -51,18 +51,8 @@ install:
 	@mv nekBone $(PREFIX) 
 
 
-BP: $(AOBJS) $(LOBJS) libogs libblas
+BP: $(AOBJS) $(LOBJS)
 	$(LD)  -o nekBone $(COBJS) $(AOBJS) $(LOBJS) $(LDFLAGS)
 
-libogs:
-	@PREFIX=$(PREFIX)/gs $(MAKE) -C $(OGSDIR) -j4 lib 
-
-libblas:
-	@PREFIX=$(PREFIX)/blasLapack $(MAKE) -C $(BLASLAPACK_DIR) -j4 lib
-
 clean:
-	@rm -rf *.o ../core/*.o ./build
-
-realclean: clean
-	@$(MAKE) -C $(OGSDIR) realclean
-	@CC=$(CC) make -C $(BLASLAPACK_DIR) clean
+	@rm -rf *.o

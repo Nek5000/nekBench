@@ -12,7 +12,7 @@ endif
 
 all: axhelm install
 
-axhelm: main.cpp kernelHelper.cpp ${CORE_DIR}/meshBasis.cpp libblas
+axhelm: main.cpp kernelHelper.cpp ${CORE_DIR}/meshBasis.cpp ${CORE_DIR}/setCompilerFlags.hpp
 	$(CXX) $(CXXFLAGS) -o axhelm main.cpp ${CORE_DIR}/meshBasis.cpp $(linkerFlags) $(LDFLAGS)
 
 $(oPath)/%.o:$(sPath)/%.cpp $(wildcard $(subst $(sPath)/,$(iPath)/,$(<:.cpp=.hpp))) $(wildcard $(subst $(sPath)/,$(iPath)/,$(<:.cpp=.tpp)))
@@ -23,11 +23,5 @@ install:
 	@cd kernel && find . -type f -name "*" -exec install -D {} $(PREFIX)/kernel/{} \; && cd ..
 	@mv axhelm $(PREFIX) 
 
-libblas:
-	@cd ../3rdParty/BlasLapack; $(MAKE) -j4 lib
-
 clean:
-	@rm -f ${PROJ_DIR}/axhelm
-
-realclean: clean
-	@$(MAKE) -C $(BLASLAPACK_DIR) clean
+	@rm -rf *.o

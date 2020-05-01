@@ -12,7 +12,7 @@ endif
 
 all: bw install
 
-bw: main.cpp ${CORE_DIR}/timer.cpp
+bw: main.cpp ${CORE_DIR}/timer.cpp ${CORE_DIR}/setCompilerFlags.hpp
 	$(CXX) $(CXXFLAGS) -o bw main.cpp ${CORE_DIR}/timer.cpp $(linkerFlags) $(LDFLAGS)
 
 $(oPath)/%.o:$(sPath)/%.cpp $(wildcard $(subst $(sPath)/,$(iPath)/,$(<:.cpp=.hpp))) $(wildcard $(subst $(sPath)/,$(iPath)/,$(<:.cpp=.tpp)))
@@ -24,4 +24,4 @@ install:
 	@mv bw $(PREFIX) 
 
 clean:
-	@rm -f ${PROJ_DIR}/bw
+	@rm -rf *.o
