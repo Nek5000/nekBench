@@ -85,7 +85,7 @@ int main(int argc, char **argv){
       timer::toc("triad");
       double elapsed = timer::query("triad", "HOST:MAX")/Ntests;
       std::cout << "triad stream: "
-                << N[i] << ", "
+                << N[i] << " words, "
                 << elapsed << " s, "
                 << bytes/elapsed << " bytes/s\n";
     }
@@ -107,7 +107,7 @@ int main(int argc, char **argv){
       timer::toc("triad");
       double elapsed = timer::query("triad", "HOST:MAX")/Ntests;
       std::cout << "triad stream subBuffer: "
-                << N[i] << ", "
+                << N[i] << " words, "
                 << elapsed << " s, "
                 << bytes/elapsed << " bytes/s\n";
     }
@@ -135,7 +135,7 @@ int main(int argc, char **argv){
       device.finish();
       timer::toc("memcpyDH");
       const double elapsed = timer::query("memcpyDH", "HOST:MAX")/Ntests;
-      std::cout << "D->H copy " <<  bytes << " bytes, " 
+      std::cout << "D->H memcpy " <<  N[i] << " words, " 
                 << elapsed << " s, "
                 << bytes/elapsed << " bytes/s\n"; 
     }
@@ -146,7 +146,7 @@ int main(int argc, char **argv){
   std::cout << "\n";
 
   {
-    const int Ntests = 10000;
+    const int Ntests = 20000;
     const int N[] = {1000*512, 2000*512, 4000*512, 8000*512};
     const int Nsize = sizeof(N)/sizeof(int); 
     const int nWords = N[sizeof(N)/sizeof(N[0]) - 1];
@@ -162,9 +162,9 @@ int main(int argc, char **argv){
       device.finish();
       timer::toc("memcpyDD");
       const double elapsed = timer::query("memcpyDD", "HOST:MAX")/Ntests;
-      std::cout << "D->D copy " <<  bytes << " bytes, " 
+      std::cout << "D->D memcpy " <<  N[i] << " words, " 
                 << elapsed << " s, "
-                << bytes/elapsed << " bytes/s\n"; 
+                << 2*bytes/elapsed << " bytes/s\n"; 
     }
     o_a.free();
     o_b.free();

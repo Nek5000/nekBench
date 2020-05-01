@@ -104,7 +104,7 @@ void solveSetup(BP_t *BP, dfloat lambda, occa::properties &kernelInfo){
   BP->knlId = knlId;
   
   dlong Ntotal = mesh->Np*mesh->Nelements;
-  /dlong Nhalo  = mesh->Np*mesh->totalHaloPairs;
+  dlong Nhalo  = mesh->Np*mesh->totalHaloPairs;
   dlong Nall   = (Ntotal + Nhalo)*BP->Nfields;
 
   dlong Nblock  = mymax(1,(Ntotal+blockSize-1)/blockSize);
