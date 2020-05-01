@@ -52,10 +52,10 @@ int BPPCG(BP_t* BP, dfloat lambda,
   dfloat alpha = 0, beta = 0;
 
   /*aux variables */
-  occa::memory o_p   = BP->o_solveWorkspace + 0*BP->offsetSolveWorkspace*sizeof(dfloat);
-  occa::memory o_z   = BP->o_solveWorkspace + 1*BP->offsetSolveWorkspace*sizeof(dfloat);
-  occa::memory o_Ap  = BP->o_solveWorkspace + 2*BP->offsetSolveWorkspace*sizeof(dfloat);
-  occa::memory o_Ax  = BP->o_solveWorkspace + 3*BP->offsetSolveWorkspace*sizeof(dfloat);
+  occa::memory &o_p   = BP->o_solveWorkspace[0];
+  occa::memory &o_z   = BP->o_solveWorkspace[1];
+  occa::memory &o_Ap  = BP->o_solveWorkspace[2];
+  occa::memory &o_Ax  = BP->o_solveWorkspace[3];
 
   // compute A*x
   dfloat pAp = AxOperator(BP, lambda, o_x, o_Ax, dfloatString); 

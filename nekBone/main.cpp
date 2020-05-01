@@ -130,12 +130,11 @@ int main(int argc, char **argv){
     int Ntests = 1;
     it = 0;
 
+    mesh->device.finish();  
     MPI_Barrier(mesh->comm);
     double elapsed = MPI_Wtime();
     for(int test=0;test<Ntests;++test){
-//      startTags[test] = mesh->device.tagStream();
       it += solve(BP, lambda, tol, BP->o_r, BP->o_x, &opElapsed);
-//      stopTags[test] = mesh->device.tagStream();
     }
     mesh->device.finish();  
     MPI_Barrier(mesh->comm);
@@ -144,7 +143,7 @@ int main(int argc, char **argv){
     hlong globalNelements, localNelements=mesh->Nelements;
     MPI_Reduce(&localNelements, &globalNelements, 1, MPI_HLONG, MPI_SUM, 0, mesh->comm);
   
-    hlong globalNdofs = mesh->Nlocalized;
+    hlong globalNdofs = pow(mesh->N,3)*mesh->Nelements; // mesh->Nlocalized;
     MPI_Allreduce(MPI_IN_PLACE, &globalNdofs, 1, MPI_HLONG, MPI_SUM, mesh->comm);
  
     // copy solution from DEVICE to HOST

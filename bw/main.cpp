@@ -9,6 +9,7 @@
 #include "occa.hpp"
 #include "meshBasis.hpp"
 #include "timer.hpp"
+#include "setCompilerFlags.hpp"
 
 int main(int argc, char **argv){
 
@@ -58,18 +59,21 @@ int main(int argc, char **argv){
   props["includes"].asArray();
   props["header"].asArray();
   props["flags"].asObject();
+  setCompilerFlags(device, props);
   occa::kernel triadKernel = device.buildKernel("kernel/triad.okl", "triad", props);
-  double *u = (double*) calloc(1e8,sizeof(double));
-  occa::memory o_a = device.malloc(1e8*sizeof(double), u);
-  occa::memory o_b = device.malloc(1e8*sizeof(double), u);
-  occa::memory o_c = device.malloc(1e8*sizeof(double), u);
+
+  const int nWords = 100*1000*1000;
+  double *u = (double*) calloc(nWords,sizeof(double));
+  occa::memory o_a = device.malloc(nWords*sizeof(double), u);
+  occa::memory o_b = device.malloc(nWords*sizeof(double), u);
+  occa::memory o_c = device.malloc(nWords*sizeof(double), u);
 
   timer::init(MPI_COMM_WORLD, device, 0);
 
-  int N[] = {1, 1000*512, 2000*512, 4000*512};
   int Ntests = 1000;
-  for(int test=0;test<Ntests;++test) triadKernel(N[0], 1.0, o_a, o_b, o_c);
-  for(int i=0; i<4; ++i) { 
+  for(int test=0;test<Ntests;++test) triadKernel(1000, 1.0, o_a, o_b, o_c);
+  for(int i=0; i<5; ++i) { 
+    int N[] = {1, 1000*512, 2000*512, 4000*512, 8000*512};
     long long int bytes = 3*N[i]*sizeof(double);
     device.finish();
     timer::reset("triad");
@@ -87,8 +91,9 @@ int main(int argc, char **argv){
   std::cout << "\n";
 
   Ntests = 100;
-  for(int i=0; i<8; ++i) {
-    const long long int bytes = pow(10,i)*sizeof(double);
+  for(int i=0; i<6; ++i) {
+    int N[] = {1, 4000, 8000, 2000*512, 4000*512, 8000*512};
+    const long long int bytes = N[i]*sizeof(double);
     device.finish();
     timer::reset("memcpyDH");
     timer::tic("memcpyDH");
@@ -103,9 +108,10 @@ int main(int argc, char **argv){
 
   std::cout << "\n";
 
-  Ntests = 1000;
-  for(int i=0; i<9; ++i) {
-    const long long int bytes = pow(10,i)*sizeof(double);
+  Ntests = 10000;
+  for(int i=0; i<4; ++i) {
+    int N[] = {1000*512, 2000*512, 4000*512, 8000*512};
+    const long long int bytes = N[i]*sizeof(double);
     device.finish();
     timer::reset("memcpyDD");
     timer::tic("memcpyDD");

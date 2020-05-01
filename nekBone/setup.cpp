@@ -104,7 +104,7 @@ void solveSetup(BP_t *BP, dfloat lambda, occa::properties &kernelInfo){
   BP->knlId = knlId;
   
   dlong Ntotal = mesh->Np*mesh->Nelements;
-  dlong Nhalo  = mesh->Np*mesh->totalHaloPairs;
+  /dlong Nhalo  = mesh->Np*mesh->totalHaloPairs;
   dlong Nall   = (Ntotal + Nhalo)*BP->Nfields;
 
   dlong Nblock  = mymax(1,(Ntotal+blockSize-1)/blockSize);
@@ -119,11 +119,20 @@ void solveSetup(BP_t *BP, dfloat lambda, occa::properties &kernelInfo){
 
   BP->NsolveWorkspace = 4;
   BP->offsetSolveWorkspace = Nall;
-  const int PAGESIZE = 4096; // default is 4kB
+
+/*
+  const int PAGESIZE = 512; // in bytes
   const int pageW = PAGESIZE/sizeof(dfloat);
   if (BP->offsetSolveWorkspace%pageW) BP->offsetSolveWorkspace = (BP->offsetSolveWorkspace + 1)*pageW;
-  BP->solveWorkspace = (dfloat*) calloc(BP->offsetSolveWorkspace*BP->NsolveWorkspace, sizeof(dfloat));
-  BP->o_solveWorkspace  = mesh->device.malloc(BP->offsetSolveWorkspace*BP->NsolveWorkspace*sizeof(dfloat), BP->solveWorkspace);
+  dfloat *scratch = (dfloat*) calloc(BP->offsetSolveWorkspace*BP->NsolveWorkspace, sizeof(dfloat));
+  occa::memory o_scratch = mesh->device.malloc(BP->offsetSolveWorkspace*BP->NsolveWorkspace*sizeof(dfloat), scratch);
+*/
+
+  BP->o_solveWorkspace = new occa::memory[BP->NsolveWorkspace];
+  for(int wk=0;wk<BP->NsolveWorkspace;++wk) {
+    BP->o_solveWorkspace[wk] = mesh->device.malloc(Nall*sizeof(dfloat), BP->solveWorkspace);
+    //BP->o_solveWorkspace[wk] = o_scratch.slice(wk*BP->offsetSolveWorkspace*sizeof(dfloat));
+  }
 
 /*
   if(options.compareArgs("PRECONDITIONER", "JACOBI"){
