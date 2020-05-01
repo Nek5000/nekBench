@@ -52,7 +52,7 @@ int main(int argc, char **argv){
   device.setup(deviceConfigString);
   occa::env::OCCA_MEM_BYTE_ALIGN = USE_OCCA_MEM_BYTE_ALIGN;
 
- std::cout << "active occa mode: " << device.mode() << "\n";
+  std::cout << "active occa mode: " << device.mode() << "\n\n";
 
   occa::properties props;
   props["defines"].asObject();
@@ -62,72 +62,113 @@ int main(int argc, char **argv){
   setCompilerFlags(device, props);
   occa::kernel triadKernel = device.buildKernel("kernel/triad.okl", "triad", props);
 
-  const int nWords = 100*1000*1000;
-  double *u = (double*) calloc(nWords,sizeof(double));
-  props["mapped"] = true;
-  occa::memory h_u = device.malloc(nWords*sizeof(double), props);
-  occa::memory o_a = device.malloc(nWords*sizeof(double), u);
-  occa::memory o_b = device.malloc(nWords*sizeof(double), u);
-  occa::memory o_c = device.malloc(nWords*sizeof(double), u);
-
   timer::init(MPI_COMM_WORLD, device, 0);
+  
+  {
+    const int Ntests = 1000;
+    const int N[] = {1, 1000*512, 2000*512, 4000*512, 8000*512};
+    const int Nsize = sizeof(N)/sizeof(int); 
+    const int nWords = N[sizeof(N)/sizeof(N[0]) - 1];
+    occa::memory o_a = device.malloc(nWords*sizeof(double));
+    occa::memory o_b = device.malloc(nWords*sizeof(double));
+    occa::memory o_c = device.malloc(nWords*sizeof(double));
 
-  int Ntests = 1000;
-  for(int test=0;test<Ntests;++test) triadKernel(1000, 1.0, o_a, o_b, o_c);
-  for(int i=0; i<5; ++i) { 
-    int N[] = {1, 1000*512, 2000*512, 4000*512, 8000*512};
-    long long int bytes = 3*N[i]*sizeof(double);
-    device.finish();
-    timer::reset("triad");
-    timer::tic("triad");
-    for(int test=0;test<Ntests;++test) triadKernel(N[i], 1.0, o_a, o_b, o_c);
-    device.finish();
-    timer::toc("triad");
-    double elapsed = timer::query("triad", "HOST:MAX")/Ntests;
-    std::cout << "triad stream: "
-              << N[i] << ", "
-              << elapsed << " s, "
-              << bytes/elapsed << " bytes/s\n";
+    for(int test=0;test<Ntests;++test) triadKernel(1000, 1.0, o_a, o_b, o_c);
+
+    for(int i=0; i<Nsize; ++i) { 
+      long long int bytes = 3*N[i]*sizeof(double);
+      device.finish();
+      timer::reset("triad");
+      timer::tic("triad");
+      for(int test=0;test<Ntests;++test) triadKernel(N[i], 1.0, o_a, o_b, o_c);
+      device.finish();
+      timer::toc("triad");
+      double elapsed = timer::query("triad", "HOST:MAX")/Ntests;
+      std::cout << "triad stream: "
+                << N[i] << ", "
+                << elapsed << " s, "
+                << bytes/elapsed << " bytes/s\n";
+    }
+    o_a.free();
+    o_b.free();
+    o_c.free();
+
+    occa::memory o_wrk = device.malloc(3*nWords*sizeof(double));
+    o_a = o_wrk + 0*nWords*sizeof(double);
+    o_b = o_wrk + 1*nWords*sizeof(double);
+    o_c = o_wrk + 2*nWords*sizeof(double);
+    for(int i=0; i<Nsize; ++i) { 
+      long long int bytes = 3*N[i]*sizeof(double);
+      device.finish();
+      timer::reset("triad");
+      timer::tic("triad");
+      for(int test=0;test<Ntests;++test) triadKernel(N[i], 1.0, o_a, o_b, o_c);
+      device.finish();
+      timer::toc("triad");
+      double elapsed = timer::query("triad", "HOST:MAX")/Ntests;
+      std::cout << "triad stream subBuffer: "
+                << N[i] << ", "
+                << elapsed << " s, "
+                << bytes/elapsed << " bytes/s\n";
+    }
+    o_wrk.free();
   }
 
   std::cout << "\n";
 
-  Ntests = 100;
-  for(int i=0; i<7; ++i) {
-    int N[] = {1, 2000, 4000, 8000, 2000*512, 4000*512, 8000*512};
-    const long long int bytes = N[i]*sizeof(double);
-    void *ptr = h_u.ptr(props);
-    device.finish();
-    timer::reset("memcpyDH");
-    timer::tic("memcpyDH");
-    for(int test=0;test<Ntests;++test) o_a.copyTo(ptr, bytes);
-    device.finish();
-    timer::toc("memcpyDH");
-    const double elapsed = timer::query("memcpyDH", "HOST:MAX")/Ntests;
-    std::cout << "D->H copy " <<  bytes << " bytes, " 
-              << elapsed << " s, "
-              << bytes/elapsed << " bytes/s\n"; 
+  {
+    const int Ntests = 100;
+    const int N[] = {1, 2000, 4000, 8000, 2000*512, 4000*512, 8000*512};
+    const int Nsize = sizeof(N)/sizeof(int);
+    const int nWords = N[sizeof(N)/sizeof(N[0]) - 1];
+    props["mapped"] = true;
+    occa::memory h_u = device.malloc(nWords*sizeof(double), props);
+    occa::memory o_a = device.malloc(nWords*sizeof(double));
+
+    for(int i=0; i<Nsize; ++i) {
+      const long long int bytes = N[i]*sizeof(double);
+      void *ptr = h_u.ptr(props);
+      device.finish();
+      timer::reset("memcpyDH");
+      timer::tic("memcpyDH");
+      for(int test=0;test<Ntests;++test) o_a.copyTo(ptr, bytes);
+      device.finish();
+      timer::toc("memcpyDH");
+      const double elapsed = timer::query("memcpyDH", "HOST:MAX")/Ntests;
+      std::cout << "D->H copy " <<  bytes << " bytes, " 
+                << elapsed << " s, "
+                << bytes/elapsed << " bytes/s\n"; 
+    }
+    h_u.free();
+    o_a.free();
   }
 
   std::cout << "\n";
 
-  Ntests = 10000;
-  for(int i=0; i<4; ++i) {
-    int N[] = {1000*512, 2000*512, 4000*512, 8000*512};
-    const long long int bytes = N[i]*sizeof(double);
-    device.finish();
-    timer::reset("memcpyDD");
-    timer::tic("memcpyDD");
-    for(int test=0;test<Ntests;++test) o_a.copyTo(o_b, bytes);
-    device.finish();
-    timer::toc("memcpyDD");
-    const double elapsed = timer::query("memcpyDD", "HOST:MAX")/Ntests;
-    std::cout << "D->D copy " <<  bytes << " bytes, " 
-              << elapsed << " s, "
-              << bytes/elapsed << " bytes/s\n"; 
+  {
+    const int Ntests = 10000;
+    const int N[] = {1000*512, 2000*512, 4000*512, 8000*512};
+    const int Nsize = sizeof(N)/sizeof(int); 
+    const int nWords = N[sizeof(N)/sizeof(N[0]) - 1];
+    occa::memory o_a = device.malloc(nWords*sizeof(double));
+    occa::memory o_b = device.malloc(nWords*sizeof(double));
+ 
+    for(int i=0; i<Nsize; ++i) {
+      const long long int bytes = N[i]*sizeof(double);
+      device.finish();
+      timer::reset("memcpyDD");
+      timer::tic("memcpyDD");
+      for(int test=0;test<Ntests;++test) o_a.copyTo(o_b, bytes);
+      device.finish();
+      timer::toc("memcpyDD");
+      const double elapsed = timer::query("memcpyDD", "HOST:MAX")/Ntests;
+      std::cout << "D->D copy " <<  bytes << " bytes, " 
+                << elapsed << " s, "
+                << bytes/elapsed << " bytes/s\n"; 
+    }
+    o_a.free();
+    o_b.free();
   }
-
-
 
   MPI_Finalize();
   exit(0);
