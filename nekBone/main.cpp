@@ -130,7 +130,7 @@ int main(int argc, char **argv){
     int Ntests = 1;
     it = 0;
 
-    if(mesh->rank==0) cout << "\nrunning ...";
+    if(mesh->rank==0) cout << "\nrunning solver ...";
     mesh->device.finish();  
     MPI_Barrier(mesh->comm);
     double elapsed = MPI_Wtime();
