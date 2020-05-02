@@ -3,13 +3,14 @@ ERROR:
 	@echo "ERROR:  Please use toplevel makefile"
 endif
 
-INCLUDES = BP.h BPPrecon.h kernelHelper.cpp
+INCLUDES = BP.h BPPrecon.h 
 DEPS = $(INCLUDES) \
 $(HDRDIR)/timer.hpp \
 $(HDRDIR)/mesh.h \
 $(HDRDIR)/mesh2D.h \
 $(HDRDIR)/mesh3D.h \
 $(OGSDIR)/ogs.hpp \
+${CORE_DIR}/$(AXHELMDIR)/kernelHelper.cpp \
 ${CORE_DIR}/setCompilerFlags.hpp \
 
 # types of files we are going to construct rules for

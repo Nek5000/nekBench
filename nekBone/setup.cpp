@@ -31,7 +31,7 @@ SOFTWARE.
 
 void reportMemoryUsage(occa::device &device, const char *mess);
 
-BP_t *setup(mesh_t *mesh, dfloat lambda, occa::properties &kernelInfo, setupAide &options){
+BP_t *setup(mesh_t *mesh, dfloat lambda1, occa::properties &kernelInfo, setupAide &options){
 
   BP_t *BP = new BP_t();
 
@@ -46,10 +46,12 @@ BP_t *setup(mesh_t *mesh, dfloat lambda, occa::properties &kernelInfo, setupAide
   BP->mesh = mesh;
   BP->options = options;
 
-  solveSetup(BP, lambda, kernelInfo);
+  solveSetup(BP, lambda1, kernelInfo);
 
   const dlong Ndof = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
+  const dlong fieldOffset = Ndof;
   const dlong Nall = BP->Nfields*Ndof;
+
   BP->r   = (dfloat*) calloc(Nall,   sizeof(dfloat));
   BP->x   = (dfloat*) calloc(Nall,   sizeof(dfloat));
   BP->q   = (dfloat*) calloc(Nall,   sizeof(dfloat));
@@ -72,7 +74,7 @@ BP_t *setup(mesh_t *mesh, dfloat lambda, occa::properties &kernelInfo, setupAide
 	
 	// mass projection rhs
 	BP->r[fldid] =
-	  (3.*M_PI*M_PI*mode*mode+lambda)*JW*cos(mode*M_PI*xn)*cos(mode*M_PI*yn)*cos(mode*M_PI*zn);
+	  (3.*M_PI*M_PI*mode*mode+lambda1)*JW*cos(mode*M_PI*xn)*cos(mode*M_PI*yn)*cos(mode*M_PI*zn);
 
 	BP->x[fldid] = 0;
       }
@@ -81,7 +83,14 @@ BP_t *setup(mesh_t *mesh, dfloat lambda, occa::properties &kernelInfo, setupAide
 
   BP->o_r = mesh->device.malloc(Nall*sizeof(dfloat), BP->r);
   BP->o_x = mesh->device.malloc(Nall*sizeof(dfloat), BP->x);
-  
+ 
+  BP->lambda = (dfloat*) calloc(2*fieldOffset, sizeof(dfloat));
+  for(int i=0; i<fieldOffset; i++) {
+    BP->lambda[i]        = 1.0;
+    BP->lambda[i+fieldOffset] = lambda1;
+  }
+  BP->o_lambda = mesh->device.malloc(2*fieldOffset*sizeof(dfloat), BP->lambda);
+ 
   char *suffix = strdup("Hex3D");
   
   if(options.compareArgs("DISCRETIZATION","CONTINUOUS"))
@@ -94,7 +103,7 @@ BP_t *setup(mesh_t *mesh, dfloat lambda, occa::properties &kernelInfo, setupAide
 }
 
 
-void solveSetup(BP_t *BP, dfloat lambda, occa::properties &kernelInfo){
+void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
 
   mesh_t *mesh = BP->mesh;
   setupAide options = BP->options;
@@ -186,7 +195,7 @@ void solveSetup(BP_t *BP, dfloat lambda, occa::properties &kernelInfo){
   BP->NelementsGlobal = NelementsGlobal;
 
   //check all the bounaries for a Dirichlet
-  bool allNeumann = (lambda==0) ? true :false;
+  bool allNeumann = (lambda1==0) ? true :false;
   BP->allNeumannPenalty = 1.;
   hlong localElements = (hlong) mesh->Nelements;
   hlong totalElements = 0;

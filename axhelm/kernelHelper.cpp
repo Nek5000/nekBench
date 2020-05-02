@@ -33,8 +33,9 @@ static occa::kernel loadAxKernel(occa::device device, const std::string threadMo
   props["defines/dlong"]  = dlongString;
 
   occa::kernel axKernel;
-
-  std::string filename = "kernel/" + arch + "/axhelm";
+  
+  std::string root(DBP);
+  std::string filename = root + "kernel/" + arch + "/axhelm";
   for (int r=0;r<2;r++){
     if ((r==0 && rank==0) || (r==1 && rank>0)) {
       if(strstr(threadModel.c_str(), "NATIVE+CUDA")){

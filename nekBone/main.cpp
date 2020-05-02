@@ -27,7 +27,7 @@
 #include "omp.h"
 #include "BP.hpp"
 
-int solve(BP_t *BP, dfloat lambda, dfloat tol, occa::memory &o_r, occa::memory &o_x, double *opElapsed){
+int solve(BP_t *BP, occa::memory &o_lambda, dfloat tol, occa::memory &o_r, occa::memory &o_x, double *opElapsed){
   mesh_t *mesh = BP->mesh;
   setupAide options = BP->options;
 
@@ -41,7 +41,7 @@ int solve(BP_t *BP, dfloat lambda, dfloat tol, occa::memory &o_r, occa::memory &
     BPZeroMean(BP, o_r);
   
   if(options.compareArgs("KRYLOV SOLVER", "PCG"))
-    Niter = BPPCG(BP, lambda, o_r, o_x, tol, maxIter, opElapsed);
+    Niter = BPPCG(BP, o_lambda, o_r, o_x, tol, maxIter, opElapsed);
 
   if(BP->allNeumann) 
     BPZeroMean(BP, o_x);
@@ -111,10 +111,10 @@ int main(int argc, char **argv){
   meshOccaSetup3D(mesh, options, kernelInfo);
   timer::init(MPI_COMM_WORLD, mesh->device, sync); 
 
-  dfloat lambda = 1;
-  options.getArgs("LAMBDA", lambda);
+  dfloat lambda1 = 1;
+  options.getArgs("LAMBDA", lambda1);
   
-  BP_t *BP = setup(mesh, lambda, kernelInfo, options);
+  BP_t *BP = setup(mesh, lambda1, kernelInfo, options);
 
   dlong Ndofs = BP->Nfields*mesh->Np*mesh->Nelements;
  
@@ -130,14 +130,16 @@ int main(int argc, char **argv){
     int Ntests = 1;
     it = 0;
 
+    if(mesh->rank==0) cout << "\nrunning ...";
     mesh->device.finish();  
     MPI_Barrier(mesh->comm);
     double elapsed = MPI_Wtime();
     for(int test=0;test<Ntests;++test){
-      it += solve(BP, lambda, tol, BP->o_r, BP->o_x, &opElapsed);
+      it += solve(BP, BP->o_lambda, tol, BP->o_r, BP->o_x, &opElapsed);
     }
     mesh->device.finish();  
     MPI_Barrier(mesh->comm);
+    if(mesh->rank==0) cout << " done\n";
     elapsed = MPI_Wtime() - elapsed; 
 
     hlong globalNelements, localNelements=mesh->Nelements;
@@ -153,7 +155,7 @@ int main(int argc, char **argv){
     for(dlong fld=0;fld<BP->Nfields;++fld){
     for(dlong e=0;e<mesh->Nelements;++e){
       for(int n=0;n<mesh->Np;++n){
-	dlong   id = e*mesh->Np+n;
+	dlong  id = e*mesh->Np+n;
 	dfloat xn = mesh->x[id];
 	dfloat yn = mesh->y[id];
 	dfloat zn = mesh->z[id];
@@ -161,9 +163,9 @@ int main(int argc, char **argv){
 	dfloat exact;
 	double mode = 1.0;
 	// hard coded to match the RHS used in BPSetup
-	exact = (3.*M_PI*M_PI*mode*mode+lambda)*cos(mode*M_PI*xn)*cos(mode*M_PI*yn)*cos(mode*M_PI*zn);
-	exact /= (3.*mode*mode*M_PI*M_PI+lambda);
-	dfloat error = fabs(exact-BP->q[id+fld*offset]);
+	exact = (3.*M_PI*M_PI*mode*mode+lambda1)*cos(mode*M_PI*xn)*cos(mode*M_PI*yn)*cos(mode*M_PI*zn);
+	exact /= (3.*mode*mode*M_PI*M_PI+lambda1);
+	dfloat error = fabs(exact - BP->q[id+fld*offset]);
 	maxError = mymax(maxError, error);
       }
     }
@@ -204,7 +206,7 @@ int main(int argc, char **argv){
     etime[3] = timer::query("dotp", "HOST:MAX");
 
     if(mesh->rank==0){
-      printf("\ncorrectness check: maxError = %g\n", globalMaxError);
+      printf("correctness check: maxError = %g\n", globalMaxError);
  
       int knlId = 0;
       options.getArgs("KERNEL ID", knlId);

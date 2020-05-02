@@ -26,7 +26,7 @@ SOFTWARE.
 
 #include "BP.hpp"
 
-int BPPCG(BP_t* BP, dfloat lambda,
+int BPPCG(BP_t* BP, occa::memory &o_lambda,
 	  occa::memory &o_r, occa::memory &o_x, 
 	  const dfloat tol, const int MAXIT,
 	  double *opElapsed){
@@ -58,7 +58,7 @@ int BPPCG(BP_t* BP, dfloat lambda,
   occa::memory &o_Ax  = BP->o_solveWorkspace[3];
 
   // compute A*x
-  dfloat pAp = AxOperator(BP, lambda, o_x, o_Ax, dfloatString); 
+  dfloat pAp = AxOperator(BP, o_lambda, o_x, o_Ax, dfloatString); 
   
   // subtract r = b - A*x
   BPScaledAdd(BP, -1.f, o_Ax, 1.f, o_r);
@@ -71,7 +71,7 @@ int BPPCG(BP_t* BP, dfloat lambda,
   for(iter=1;iter<=MAXIT;++iter){
 
     // z = Precon^{-1} r 
-    BPPreconditioner(BP, lambda, o_r, o_z);
+    BPPreconditioner(BP, o_lambda, o_r, o_z);
  
     rdotz2 = rdotz1;
 
@@ -90,7 +90,7 @@ int BPPCG(BP_t* BP, dfloat lambda,
     BPScaledAdd(BP, 1.f, o_z, beta, o_p);
 	
     // Ap and p.Ap
-    pAp = AxOperator(BP, lambda, o_p, o_Ap, dfloatString);
+    pAp = AxOperator(BP, o_lambda, o_p, o_Ap, dfloatString);
     
     // alpha = r.z/p.Ap
     alpha = rdotz1/pAp;
@@ -201,19 +201,22 @@ dfloat BPUpdatePCG(BP_t *BP,
 
 #include "../axhelm/kernelHelper.cpp"
 
-void BPPreconditioner(BP_t *BP, dfloat lambda, occa::memory &o_r, occa::memory &o_z){
+void BPPreconditioner(BP_t *BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z){
   mesh_t *mesh = BP->mesh;
   setupAide &options = BP->options;
 
   if(options.compareArgs("PRECONDITIONER", "JACOBI")) {
     //dlong Ntotal = mesh->Np*mesh->Nelements; 
     //BP->dotMultiplyKernel(Ntotal, o_r, BP->o_invDiagA, o_z);
+    cout << "Jacobi preconditioner not available yet!\n";
+    exit(1); 
+  } else {
     dlong Ndof = mesh->Nelements*mesh->Np*BP->Nfields;
     BP->vecCopyKernel(Ndof, o_r, o_z);
   }
 }
 
-dfloat AxOperator(BP_t *BP, dfloat lambda, occa::memory &o_q, occa::memory &o_Aq,
+dfloat AxOperator(BP_t *BP, occa::memory &o_lambda, occa::memory &o_q, occa::memory &o_Aq,
 		  const char *precision){
 
   mesh_t *mesh = BP->mesh;
@@ -225,7 +228,7 @@ dfloat AxOperator(BP_t *BP, dfloat lambda, occa::memory &o_q, occa::memory &o_Aq
   const dlong fieldOffset = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
 
   timer::tic("Ax");
-  kernel(mesh->Nelements, fieldOffset, mesh->o_ggeo, mesh->o_D, lambda, o_q, o_Aq);
+  kernel(mesh->Nelements, fieldOffset, mesh->o_ggeo, mesh->o_D, o_lambda, o_q, o_Aq);
   timer::toc("Ax");
   
   timer::tic("gs");

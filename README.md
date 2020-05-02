@@ -13,7 +13,7 @@ The code uses the [CEED](https://ceed.exascaleproject.org/) software products [O
 
 The suite can be built using 
 ```
-make
+make <INSTALLDIR=$HOME/nb>
 ```
 Please edit the makefile to customize build settings.
 

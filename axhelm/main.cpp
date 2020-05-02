@@ -86,7 +86,6 @@ int main(int argc, char **argv){
 
   const int Nq = N+1;
   const int Np = Nq*Nq*Nq;
-  const dfloat lambda = 1.1;
   
   const dlong offset = Nelements*Np;
 
@@ -140,10 +139,18 @@ int main(int argc, char **argv){
   dfloat *q    = drandAlloc((Ndim*Np)*Nelements);
   dfloat *Aq   = drandAlloc((Ndim*Np)*Nelements);
 
-  occa::memory o_ggeo  = device.malloc(Np*Nelements*p_Nggeo*sizeof(dfloat), ggeo);
-  occa::memory o_q     = device.malloc((Ndim*Np)*Nelements*sizeof(dfloat), q);
-  occa::memory o_Aq    = device.malloc((Ndim*Np)*Nelements*sizeof(dfloat), Aq);
-  occa::memory o_DrV   = device.malloc(Nq*Nq*sizeof(dfloat), DrV);
+  occa::memory o_ggeo   = device.malloc(Np*Nelements*p_Nggeo*sizeof(dfloat), ggeo);
+  occa::memory o_q      = device.malloc((Ndim*Np)*Nelements*sizeof(dfloat), q);
+  occa::memory o_Aq     = device.malloc((Ndim*Np)*Nelements*sizeof(dfloat), Aq);
+  occa::memory o_DrV    = device.malloc(Nq*Nq*sizeof(dfloat), DrV);
+
+  const dfloat lambda1 = 1.1;
+  dfloat *lambda = (dfloat*) calloc(2*offset, sizeof(dfloat));
+  for(int i=0; i<offset; i++) {
+    lambda[i]        = 1.0;
+    lambda[i+offset] = lambda1;
+  }
+  occa::memory o_lambda = device.malloc(2*offset*sizeof(dfloat), lambda);
 
   // run kernel
   device.finish();
@@ -151,7 +158,7 @@ int main(int argc, char **argv){
   const double start = MPI_Wtime();
 
   for(int test=0;test<Ntests;++test)
-    axKernel(Nelements, offset, o_ggeo, o_DrV, lambda, o_q, o_Aq);
+    axKernel(Nelements, offset, o_ggeo, o_DrV, o_lambda, o_q, o_Aq);
 
   device.finish();
   MPI_Barrier(MPI_COMM_WORLD);
@@ -161,7 +168,7 @@ int main(int argc, char **argv){
   for(int n=0;n<Ndim;++n){
     dfloat *x = q + n*offset;
     dfloat *Ax = Aq + n*offset; 
-    axhelmReference(Nq, Nelements, lambda, ggeo, DrV, x, Ax);
+    axhelmReference(Nq, Nelements, lambda1, ggeo, DrV, x, Ax);
   }
   o_Aq.copyTo(q);
   dfloat maxDiff = 0;
@@ -175,12 +182,12 @@ int main(int argc, char **argv){
 
   // print statistics
   const dfloat GDOFPerSecond = (size*Ndim*(N*N*N)*Nelements/elapsed)/1.e9;
-  const long long bytesMoved = (Ndim*2*Np+7*Np)*sizeof(dfloat); // x, Mx, opa
+  const long long bytesMoved = (Ndim*2*Np+7*Np+2*Np)*sizeof(dfloat); // x, Mx, opa, lambda
   const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
   double flopCount = Ndim*Np*12*Nq;
-  if(Ndim == 1) flopCount += 18*Np;
-  if(Ndim == 3) flopCount += 57*Np;
-  double gflops = (flopCount*size*Nelements/elapsed)/1.e9;
+  if(Ndim == 1) flopCount += 22*Np;
+  if(Ndim == 3) flopCount += 69*Np;
+  double gflops = (size*flopCount*Nelements/elapsed)/1.e9;
   if(rank==0) {
     std::cout << "MPItasks=" << size
               << " OMPthreads=" << Nthreads

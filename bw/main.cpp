@@ -59,7 +59,7 @@ int main(int argc, char **argv){
   props["header"].asArray();
   props["flags"].asObject();
   setCompilerFlags(device, props);
-  occa::kernel triadKernel = device.buildKernel("kernel/triad.okl", "triad", props);
+  occa::kernel triadKernel = device.buildKernel(DBP "kernel/triad.okl", "triad", props);
 
   timer::init(MPI_COMM_WORLD, device, 0);
   

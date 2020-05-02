@@ -82,7 +82,7 @@ typedef struct {
   dfloat *q;
   
   // HOST shadow copies
-  dfloat *x, *r;
+  dfloat *x, *r, *lambda;
   dfloat *solveWorkspace;
   dfloat *tmp;
   
@@ -99,7 +99,7 @@ typedef struct {
   occa::stream defaultStream;
   occa::stream dataStream;
 
-  occa::memory o_q, o_x, o_r;
+  occa::memory o_q, o_x, o_r, o_lambda;
   occa::memory o_invDiagA;
 
   occa::memory o_gr; // gathered RHS
@@ -188,14 +188,14 @@ void BPInterimHaloExchange(BP_t *BP, occa::memory &o_q, int Nentries, dfloat *se
 void BPEndHaloExchange(BP_t *BP, occa::memory &o_q, int Nentries, dfloat *recvBuffer);
 
 //Linear solvers
-int BPPCG   (BP_t* BP, dfloat lambda, occa::memory &o_r, occa::memory &o_x, const dfloat tol, const int MAXIT, double *opElapsed);
+int BPPCG   (BP_t* BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_x, const dfloat tol, const int MAXIT, double *opElapsed);
 
 void BPScaledAdd(BP_t *BP, dfloat alpha, occa::memory &o_a, dfloat beta, occa::memory &o_b);
 dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b);
 
-dfloat AxOperator(BP_t *BP, dfloat lambda, occa::memory &o_q, occa::memory &o_Aq, const char *precision);
+dfloat AxOperator(BP_t *BP, occa::memory &o_lambda, occa::memory &o_q, occa::memory &o_Aq, const char *precision);
 
-void BPPreconditioner(BP_t *BP, dfloat lambda, occa::memory &o_r, occa::memory &o_z);
+void BPPreconditioner(BP_t *BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z);
 
 dfloat BPWeightedNorm2(BP_t *BP, occa::memory &o_w, occa::memory &o_a);
 
