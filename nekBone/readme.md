@@ -17,7 +17,7 @@ Tuned kernels for the following architectures are available:
 
 ### MPI+OpenMP with native CPU kernels
 
-Set in setup.ini
+Set in nekBone.ini
 ```
 [ARCH]
 CPU
@@ -57,4 +57,5 @@ timings
   Ax         : 9.51866 s
   gs         : 7.09125 s
   updatePCG  : 4.01666 s
-  dotp       : 4.67891 s```
+  dotp       : 4.67891 s
+```
