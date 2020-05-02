@@ -6,11 +6,13 @@ It serves as a lightweight tool for performance analysis on high performance com
 The code uses the [CEED](https://ceed.exascaleproject.org/) software products [OCCA](https://github.com/libocca/occa) and [benchParanumal](https://github.com/paranumal/benchparanumal). 
 
 ### Available benchmarks
+* bw
+* gs (not available yet)
 * axhelm
 * nekBone
-* bw
+* conv (not available yet)
 
-# Installation
+## Installation
 
 The suite can be built using 
 ```
@@ -19,7 +21,7 @@ make <INSTALLDIR=$HOME/nb>
 Please edit the makefile to customize build settings.
 
 
-# #License
+## License
 nekRS is released under the BSD 3-clause license (see the LICENSE file).
 All new contributions must be made under the BSD 3-clause license.
 
