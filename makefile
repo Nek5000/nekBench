@@ -48,6 +48,7 @@ export BLASLAPACK_DIR = $(CURDIR)/3rdParty/BlasLapack
 export NEKBONEDIR = $(CURDIR)/nekBone 
 export AXHELMDIR  = $(CURDIR)/axhelm 
 export BWDIR  = $(CURDIR)/bw 
+export ADVDIR  = $(CURDIR)/adv 
 
 export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR) -I$(OGSDIR)/include -DDOGS='"$(PREFIX)/gs/"' -D DBP='"$(PREFIX)/"' $(paths)
 
@@ -57,9 +58,9 @@ LDFLAGS = $(PREFIX)/blasLapack/lib/libBlasLapack.a -lgfortran -fopenmp
 LDFLAGS_OCCA = -L$(PREFIX)/occa/lib -locca
 LDFLAGS_GS = -L$(PREFIX)/gs/lib -logs -L$(PREFIX)/gs/lib -lgs 
 
-.PHONY: install bw axhelm nekBone all clean realclean libblas libogs
+.PHONY: install bw axhelm adv nekBone all clean realclean libblas libogs
 
-all: occa nekBone axhelm bw install
+all: occa nekBone axhelm bw adv install
 	@if test -f ${PREFIX}/axhelm && test -f ${PREFIX}/nekBone; then \
 	echo ""; \
 	echo "install dir: ${PREFIX}"; \
@@ -75,6 +76,9 @@ install:
 
 bw:
 	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(BWDIR) 
+
+adv:
+	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(ADVDIR) 
 
 axhelm: libblas
 	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(AXHELMDIR) 

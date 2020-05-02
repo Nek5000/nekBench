@@ -33,12 +33,9 @@ SOFTWARE.
 #include "mpi.h"
 #include "occa.hpp"
 #include "meshBasis.hpp"
-
 #include "kernelHelper.cpp"
-#include "axhelmReference.cpp"
 
-
-static occa::kernel axKernel;
+static occa::kernel kernel;
 
 dfloat *drandAlloc(int N){
 
@@ -54,7 +51,7 @@ dfloat *drandAlloc(int N){
 int main(int argc, char **argv){
 
   if(argc<6){
-    printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL CPU|VOLTA [nRepetitions] [kernelVersion]\n");
+    printf("Usage: ./adv N cubN numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL CPU|VOLTA [nRepetitions] [kernelVersion]\n");
     return 1;
   }
 
@@ -64,7 +61,7 @@ int main(int argc, char **argv){
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
   const int N = atoi(argv[1]);
-  const int Ndim = atoi(argv[2]);
+  const int cubN = atoi(argv[2]);
   const dlong Nelements = atoi(argv[3]);
   std::string threadModel;
   threadModel.assign(strdup(argv[4]));
@@ -85,16 +82,11 @@ int main(int argc, char **argv){
   const int platformId = 0;
 
   const int Nq = N+1;
+  const int cubNq = cubN+1;
   const int Np = Nq*Nq*Nq;
+  const int cubNp = cubNq*cubNq*cubNq;
   
   const dlong offset = Nelements*Np;
-
-  const int assembled = 0;
-
-  // build element nodes and operators
-  dfloat *rV, *wV, *DrV;
-  meshJacobiGQ(0,0,N, &rV, &wV);
-  meshDmatrix1D(N, Nq, rV, &DrV);
 
   // build device
   occa::device device;
@@ -128,78 +120,74 @@ int main(int argc, char **argv){
   }
 
   // load kernel
-  std::string kernelName = "axhelm";
-  if(assembled) kernelName = "axhelm_partial"; 
-  if(Ndim > 1) kernelName += "_n" + std::to_string(Ndim);
+  std::string kernelName = "advCubatureHex3D";
   kernelName += "_v" + std::to_string(kernelVersion);
-  axKernel = loadAxKernel(device, threadModel, arch, kernelName, N, Nelements);
+  kernel = loadKernel(device, threadModel, arch, kernelName, N, cubN, Nelements);
 
   // populate device arrays
-  dfloat *ggeo = drandAlloc(Np*Nelements*p_Nggeo);
-  dfloat *q    = drandAlloc((Ndim*Np)*Nelements);
-  dfloat *Aq   = drandAlloc((Ndim*Np)*Nelements);
+  dfloat *vgeo           = drandAlloc(Np*Nelements*p_Nvgeo);
+  dfloat *cubvgeo        = drandAlloc(cubNp*Nelements*p_Nvgeo);
+  dfloat *cubDiffInterpT = drandAlloc(3*cubNp*Nelements);
+  dfloat *cubInterpT     = drandAlloc(Np*cubNp);
+  dfloat *cubProjectT    = drandAlloc(Np*cubNp);
+  dfloat *u              = drandAlloc(3*Np*Nelements);
+  dfloat *adv            = drandAlloc(3*Np*Nelements);
 
-  occa::memory o_ggeo   = device.malloc(Np*Nelements*p_Nggeo*sizeof(dfloat), ggeo);
-  occa::memory o_q      = device.malloc((Ndim*Np)*Nelements*sizeof(dfloat), q);
-  occa::memory o_Aq     = device.malloc((Ndim*Np)*Nelements*sizeof(dfloat), Aq);
-  occa::memory o_DrV    = device.malloc(Nq*Nq*sizeof(dfloat), DrV);
-
-  const dfloat lambda1 = 1.1;
-  dfloat *lambda = (dfloat*) calloc(2*offset, sizeof(dfloat));
-  for(int i=0; i<offset; i++) {
-    lambda[i]        = 1.0;
-    lambda[i+offset] = lambda1;
-  }
-  occa::memory o_lambda = device.malloc(2*offset*sizeof(dfloat), lambda);
+  occa::memory o_vgeo           = device.malloc(Np*Nelements*p_Nvgeo*sizeof(dfloat), vgeo);
+  occa::memory o_cubvgeo        = device.malloc(cubNp*Nelements*p_Nvgeo*sizeof(dfloat), cubvgeo);
+  occa::memory o_cubDiffInterpT = device.malloc(3*cubNp*Nelements*sizeof(dfloat), cubDiffInterpT);
+  occa::memory o_cubInterpT     = device.malloc(Np*cubNp*sizeof(dfloat), cubInterpT);
+  occa::memory o_cubProjectT    = device.malloc(Np*cubNp*sizeof(dfloat), cubProjectT);
+  occa::memory o_u              = device.malloc(3*Np*Nelements*sizeof(dfloat), u);
+  occa::memory o_adv             = device.malloc(3*Np*Nelements*sizeof(dfloat), adv);
 
   // run kernel
-  axKernel(Nelements, offset, o_ggeo, o_DrV, o_lambda, o_q, o_Aq);
+  kernel(
+       Nelements,
+       o_vgeo,
+       o_cubvgeo,
+       o_cubDiffInterpT,
+       o_cubInterpT,
+       o_cubProjectT,
+       offset,
+       o_u,
+       o_adv);
   device.finish();
   MPI_Barrier(MPI_COMM_WORLD);
   const double start = MPI_Wtime();
-
-  for(int test=0;test<Ntests;++test)
-    axKernel(Nelements, offset, o_ggeo, o_DrV, o_lambda, o_q, o_Aq);
-
+  for(int test=0;test<Ntests;++test) {
+    kernel(
+         Nelements,
+         o_vgeo,
+         o_cubvgeo,
+         o_cubDiffInterpT,
+         o_cubInterpT,
+         o_cubProjectT,
+         offset,
+         o_u,
+         o_adv);
+  }
   device.finish();
   MPI_Barrier(MPI_COMM_WORLD);
   const double elapsed = (MPI_Wtime() - start)/Ntests;
 
-  // check for correctness
-  for(int n=0;n<Ndim;++n){
-    dfloat *x = q + n*offset;
-    dfloat *Ax = Aq + n*offset; 
-    axhelmReference(Nq, Nelements, lambda1, ggeo, DrV, x, Ax);
-  }
-  o_Aq.copyTo(q);
-  dfloat maxDiff = 0;
-  for(int n=0;n<Ndim*Np*Nelements;++n){
-    dfloat diff = fabs(q[n]-Aq[n]);
-    maxDiff = (maxDiff<diff) ? diff:maxDiff;
-  }
-  MPI_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPI_DFLOAT, MPI_SUM, MPI_COMM_WORLD);
-  if (rank==0)
-    std::cout << "Correctness check: maxError = " << maxDiff << "\n";
-
   // print statistics
-  const dfloat GDOFPerSecond = (size*Ndim*(N*N*N)*Nelements/elapsed)/1.e9;
-  const long long bytesMoved = (Ndim*2*Np+7*Np+2*Np)*sizeof(dfloat); // x, Mx, opa, lambda
-  const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
-  double flopCount = Ndim*Np*12*Nq;
-  if(Ndim == 1) flopCount += 22*Np;
-  if(Ndim == 3) flopCount += 69*Np;
-  double gflops = (size*flopCount*Nelements/elapsed)/1.e9;
+  const dfloat GDOFPerSecond = (size*(N*N*N)*Nelements/elapsed)/1.e9;
+//  const long long bytesMoved = ?; 
+//  const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
+//  double flopCount = ?;
+//  double gflops = (size*flopCount*Nelements/elapsed)/1.e9;
   if(rank==0) {
     std::cout << "MPItasks=" << size
               << " OMPthreads=" << Nthreads
               << " NRepetitions=" << Ntests
-              << " Ndim=" << Ndim
               << " N=" << N
+              << " cubN=" << cubN
               << " Nelements=" << size*Nelements
               << " elapsed time=" << elapsed
               << " GDOF/s=" << GDOFPerSecond
-              << " GB/s=" << bw
-              << " GFLOPS/s=" << gflops
+              //<< " GB/s=" << bw
+              //<< " GFLOPS/s=" << gflops
               << "\n";
   } 
 

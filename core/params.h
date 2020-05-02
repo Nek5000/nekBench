@@ -62,3 +62,4 @@
 #define p_G12ID 5
 #define p_G22ID 6
 #define p_Nggeo 7
+#define p_Nvgeo 12

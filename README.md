@@ -10,7 +10,7 @@ The code uses the [CEED](https://ceed.exascaleproject.org/) software products [O
 * gs (not available yet)
 * axhelm
 * nekBone
-* conv (not available yet)
+* adv
 
 ## Installation
 
@@ -22,7 +22,7 @@ Please edit the makefile to customize build settings.
 
 
 ## License
-nekRS is released under the BSD 3-clause license (see the LICENSE file).
+nekBench is released under the BSD 3-clause license (see the LICENSE file).
 All new contributions must be made under the BSD 3-clause license.
 
 ## Acknowledgment
