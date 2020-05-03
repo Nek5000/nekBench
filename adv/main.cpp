@@ -129,7 +129,6 @@ int main(int argc, char **argv){
   dfloat *cubvgeo        = drandAlloc(cubNp*Nelements*p_Nvgeo);
   dfloat *cubDiffInterpT = drandAlloc(3*cubNp*Nelements);
   dfloat *cubInterpT     = drandAlloc(Np*cubNp);
-  dfloat *cubProjectT    = drandAlloc(Np*cubNp);
   dfloat *u              = drandAlloc(3*Np*Nelements);
   dfloat *adv            = drandAlloc(3*Np*Nelements);
 
@@ -137,7 +136,6 @@ int main(int argc, char **argv){
   occa::memory o_cubvgeo        = device.malloc(cubNp*Nelements*p_Nvgeo*sizeof(dfloat), cubvgeo);
   occa::memory o_cubDiffInterpT = device.malloc(3*cubNp*Nelements*sizeof(dfloat), cubDiffInterpT);
   occa::memory o_cubInterpT     = device.malloc(Np*cubNp*sizeof(dfloat), cubInterpT);
-  occa::memory o_cubProjectT    = device.malloc(Np*cubNp*sizeof(dfloat), cubProjectT);
   occa::memory o_u              = device.malloc(3*Np*Nelements*sizeof(dfloat), u);
   occa::memory o_adv             = device.malloc(3*Np*Nelements*sizeof(dfloat), adv);
 
@@ -148,7 +146,6 @@ int main(int argc, char **argv){
        o_cubvgeo,
        o_cubDiffInterpT,
        o_cubInterpT,
-       o_cubProjectT,
        offset,
        o_u,
        o_adv);
@@ -162,7 +159,6 @@ int main(int argc, char **argv){
          o_cubvgeo,
          o_cubDiffInterpT,
          o_cubInterpT,
-         o_cubProjectT,
          offset,
          o_u,
          o_adv);

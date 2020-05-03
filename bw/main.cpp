@@ -116,7 +116,6 @@ int main(int argc, char **argv){
   std::cout << "\n";
 
   {
-    const int Ntests = 100;
     const int N[] = {1, 2000, 4000, 8000, 2000*512, 4000*512, 8000*512};
     const int Nsize = sizeof(N)/sizeof(int);
     const int nWords = N[sizeof(N)/sizeof(N[0]) - 1];
@@ -125,6 +124,8 @@ int main(int argc, char **argv){
     occa::memory o_a = device.malloc(nWords*sizeof(double));
 
     for(int i=0; i<Nsize; ++i) {
+      int Ntests = 5000;
+      if(N[i] > 10000) Ntests = 100; 
       const long long int bytes = N[i]*sizeof(double);
       void *ptr = h_u.ptr(props);
       device.finish();

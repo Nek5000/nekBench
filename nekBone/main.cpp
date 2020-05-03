@@ -100,7 +100,7 @@ int main(int argc, char **argv){
   // set up mesh
   mesh = meshSetupBoxHex3D(N, cubN, options);
   mesh->elementType = elementType;
- 
+
   // set up
   occa::properties kernelInfo;
   //kernelInfo["defines"].asObject();
@@ -115,7 +115,15 @@ int main(int argc, char **argv){
   options.getArgs("LAMBDA", lambda1);
   
   BP_t *BP = setup(mesh, lambda1, kernelInfo, options);
-
+  if (options.compareArgs("VERBOSE", "TRUE")){
+    fflush(stdout);
+    MPI_Barrier(mesh->comm);
+    printf("rank %d has %d internal elements and %d non-internal elements\n",
+           mesh->rank,
+           mesh->NinternalElements,
+           mesh->NnotInternalElements);
+  }
+ 
   dlong Ndofs = BP->Nfields*mesh->Np*mesh->Nelements;
  
   // convergence tolerance
@@ -175,27 +183,23 @@ int main(int argc, char **argv){
 
     // print statistics 
     double NGbytes;
-    int combineDot = 0; //options.compareArgs("COMBINE DOT PRODUCT", "TRUE");
     int useInvDeg = 1;
 
     double Nbytes = Ndofs*sizeof(dfloat);
     double gbytesPCG = 7.*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
     double gbytesCopy = Nbytes/1.e9;
-    double gbytesOp = (7+2*BP->Nfields)*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
+    double gbytesOp = (2+7+2*BP->Nfields)*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
     double gbytesDot = (2*BP->Nfields+1)*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
-    double gbytesPupdate =  3*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
-    if(!combineDot)
-      gbytesOp += 3*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
+    double gbytesPupdate = 3*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
  
     if(options.compareArgs("KRYLOV SOLVER", "PCG"))
       // z=r, z.r/deg, p=z+beta*p, A*p (p in/Ap out), [x=x+alpha*p, r=r-alpha*Ap, r.r./deg]
       NGbytes = mesh->Nlocalized*((BP->Nfields*(2+2+3+2+3+3+1)+2*useInvDeg)/1.e9);  
             
-    if(!combineDot) NGbytes += (BP->Nfields*2+useInvDeg)*(mesh->Nlocalized/1.e9);  // z.Az/deg
-
     NGbytes += mesh->Nelements*(mesh->Nggeo*mesh->Np/1.e9);
-
+    NGbytes += mesh->Nelements*(2*mesh->Np/1.e9); // lambda
     NGbytes *= sizeof(dfloat);
+
     double bw = (it*(NGbytes/(elapsed)));
     MPI_Allreduce(MPI_IN_PLACE, &bw, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
@@ -213,14 +217,14 @@ int main(int argc, char **argv){
 
       int Nthreads =  omp_get_max_threads();
       cout << "\nsummary\n" 
-           << "  MPItasks   : " << mesh->size << "\n"
-           << "  OMPthreads : " << Nthreads << "\n"
-           << "  polyN      : " << N << "\n"
-           << "  Nelements  : " << globalNelements << "\n"
-           << "  iterations : " << it << "\n"
-           << "  walltime   : " << elapsed << " s\n"
-           << "  throughput : " << BP->Nfields*(it*(globalNdofs/elapsed))/1.e9 << " GDOF/s/iter\n"
-           << "  bandwidth  : " << bw << " GB/s\n";
+           << "  MPItasks     : " << mesh->size << "\n"
+           << "  OMPthreads   : " << Nthreads << "\n"
+           << "  polyN        : " << N << "\n"
+           << "  Nelements    : " << globalNelements << "\n"
+           << "  iterations   : " << it << "\n"
+           << "  elapsed time : " << elapsed << " s\n"
+           << "  throughput   : " << BP->Nfields*(it*(globalNdofs/elapsed))/1.e9 << " GDOF/s/iter\n"
+           << "  bandwidth    : " << bw << " GB/s\n";
 
       cout << "\ntimings\n" 
            << "  Ax         : " << etime[0] << " s\n"
@@ -230,16 +234,7 @@ int main(int argc, char **argv){
            << endl;
     }
 
-    if (options.compareArgs("VERBOSE", "TRUE")){
-      fflush(stdout);
-      MPI_Barrier(mesh->comm);
-      printf("rank %d has %d internal elements and %d non-internal elements\n",
-	     mesh->rank,
-	     mesh->NinternalElements,
-	     mesh->NnotInternalElements);
-      MPI_Barrier(mesh->comm);
-    }
-  
+ 
   }  
   MPI_Finalize();
   return 0;
