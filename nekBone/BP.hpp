@@ -52,6 +52,7 @@ typedef struct{
 
 typedef struct {
 
+  int profiling;
   int BPid;
   int knlId;
   

@@ -9,6 +9,7 @@ The code uses the [CEED](https://ceed.exascaleproject.org/) software products [O
 * bw
 * gs (not available yet)
 * axhelm
+* dot
 * nekBone
 * adv
 

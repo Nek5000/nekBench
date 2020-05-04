@@ -1,29 +1,3 @@
-/*
-
-  The MIT License (MIT)
-
-  Copyright (c) 2017 Tim Warburton, Noel Chalmers, Jesse Chan, Ali Karakus
-
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files (the "Software"), to deal
-  in the Software without restriction, including without limitation the rights
-  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-  copies of the Software, and to permit persons to whom the Software is
-  furnished to do so, subject to the following conditions:
-
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
-
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-  SOFTWARE.
-
-*/
-
 #include "omp.h"
 #include "BP.hpp"
 
@@ -89,10 +63,7 @@ int main(int argc, char **argv){
   options.setArgs("BASIS", "NODAL");
   options.getArgs("KERNEL ID", kernelId);
 
-  int sync = 0;
-  if(options.compareArgs("TIMER SYNC", "TRUE")) sync = 1;
-
-  int combineDot = 0;
+ int combineDot = 0;
   combineDot = 0; //options.compareArgs("COMBINE DOT PRODUCT", "TRUE");
 
   mesh_t *mesh;
@@ -109,7 +80,6 @@ int main(int argc, char **argv){
   //kernelInfo["flags"].asObject();
 
   meshOccaSetup3D(mesh, options, kernelInfo);
-  timer::init(MPI_COMM_WORLD, mesh->device, sync); 
 
   dfloat lambda1 = 1;
   options.getArgs("LAMBDA", lambda1);
@@ -123,6 +93,12 @@ int main(int argc, char **argv){
            mesh->NinternalElements,
            mesh->NnotInternalElements);
   }
+
+  BP->profiling = 0;
+  if(options.compareArgs("PROFILING", "TRUE")) BP->profiling =1;
+  int sync = 0;
+  if(options.compareArgs("TIMER SYNC", "TRUE")) sync = 1;
+  if(BP->profiling) timer::init(MPI_COMM_WORLD, mesh->device, sync); 
  
   dlong Ndofs = BP->Nfields*mesh->Np*mesh->Nelements;
  
@@ -204,10 +180,12 @@ int main(int argc, char **argv){
     MPI_Allreduce(MPI_IN_PLACE, &bw, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
     double etime[10];
-    etime[0] = timer::query("Ax", "DEVICE:MAX");
-    etime[1] = timer::query("gs", "HOST:MAX");
-    etime[2] = timer::query("updatePCG", "HOST:MAX");
-    etime[3] = timer::query("dotp", "HOST:MAX");
+    if(BP->profiling) {
+      etime[0] = timer::query("Ax", "DEVICE:MAX");
+      etime[1] = timer::query("gs", "HOST:MAX");
+      etime[2] = timer::query("updatePCG", "HOST:MAX");
+      etime[3] = timer::query("dotp", "HOST:MAX");
+    }
 
     if(mesh->rank==0){
       printf("correctness check: maxError = %g\n", globalMaxError);
@@ -217,21 +195,24 @@ int main(int argc, char **argv){
 
       int Nthreads =  omp_get_max_threads();
       cout << "\nsummary\n" 
-           << "  MPItasks     : " << mesh->size << "\n"
-           << "  OMPthreads   : " << Nthreads << "\n"
-           << "  polyN        : " << N << "\n"
+           << "  MPItasks     : " << mesh->size << "\n";
+      if(options.compareArgs("THREAD MODEL", "OPENMP")) 
+           cout <<  "  OMPthreads   : " << Nthreads << "\n";
+      cout << "  polyN        : " << N << "\n"
            << "  Nelements    : " << globalNelements << "\n"
            << "  iterations   : " << it << "\n"
            << "  elapsed time : " << elapsed << " s\n"
            << "  throughput   : " << BP->Nfields*(it*(globalNdofs/elapsed))/1.e9 << " GDOF/s/iter\n"
            << "  bandwidth    : " << bw << " GB/s\n";
 
-      cout << "\ntimings\n" 
-           << "  Ax         : " << etime[0] << " s\n"
-           << "  gs         : " << etime[1] << " s\n"
-           << "  updatePCG  : " << etime[2] << " s\n"
-           << "  dotp       : " << etime[3] << " s\n"
-           << endl;
+      if(BP->profiling) {
+        cout << "\nbreakdown\n" 
+             << "  local Ax  : " << etime[0] << " s\n"
+             << "  gs        : " << etime[1] << " s\n"
+             << "  updatePCG : " << etime[2] << " s\n"
+             << "  dot       : " << etime[3] << " s\n"
+             << endl;
+      }
     }
 
  

@@ -1,9 +1,9 @@
-This benchmark computes the Helmholtz matrix-vector product on deformed hexhedral spectral elements with variable coefficients 
-
+This benchmark computes the Helmholtz matrix-vector product
 ```
 AU = lambda0*[A]u + lambda1*[B]u
 ```
-where A is the Laplace operator.
+on deformed hexhedral spectral elements where A is the Laplace operator.
+Note, this benchmark is similar to CEED BK5 but different due to diagonal term [B] and the variable coefficients. 
 
 # Usage
 

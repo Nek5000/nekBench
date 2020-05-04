@@ -9,6 +9,10 @@
 #include "meshBasis.hpp"
 #include "kernelHelper.cpp"
 
+int kernelVersion = 0;
+occa::memory o_tmp;
+occa::memory o_tmp2;
+dfloat *tmp;
 static occa::kernel kernel;
 
 dfloat *drandAlloc(int N){
@@ -22,10 +26,34 @@ dfloat *drandAlloc(int N){
   return v;
 }
 
+dfloat weightedInnerProduct(dlong N, dlong Ncutoff, int Nblock, occa::memory &o_w, 
+                            occa::memory &o_a, occa::memory &o_b, int global){
+
+  dfloat globalwab = 0;
+  kernel(N, o_w, o_a, o_b, o_tmp);
+
+//  if(Nblock>Ncutoff){ /* add a second sweep if Nblock>Ncutoff */
+//    sumKernel(Nblock, o_tmp, o_tmp2);
+//    o_tmp2.copyTo(tmp);
+//  }
+//  else{
+//    o_tmp.copyTo(tmp);
+//  }    
+
+  o_tmp.copyTo(tmp);
+  dfloat wab = 0;
+  for(dlong n=0;n<Nblock;++n) wab += tmp[n];
+
+  if(global) MPI_Allreduce(&wab, &globalwab, 1, MPI_DFLOAT, MPI_SUM, MPI_COMM_WORLD);
+   
+  return globalwab;
+}
+
+
 int main(int argc, char **argv){
 
   if(argc<6){
-    printf("Usage: ./adv N cubN numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL CPU|VOLTA [nRepetitions] [kernelVersion]\n");
+    printf("Usage: ./dot global N numElements blockSize [NATIVE|OKL]+SERIAL|CUDA|OPENCL CPU|VOLTA [nRepetitions] [kernelVersion]\n");
     return 1;
   }
 
@@ -34,31 +62,29 @@ int main(int argc, char **argv){
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-  const int N = atoi(argv[1]);
-  const int cubN = atoi(argv[2]);
+  const int global = atoi(argv[1]);
+  const int N = atoi(argv[2]);
   const dlong Nelements = atoi(argv[3]);
+  const int blockSize = atoi(argv[4]);
   std::string threadModel;
-  threadModel.assign(strdup(argv[4]));
+  threadModel.assign(strdup(argv[5]));
 
   std::string arch("");
-  if(argc>=6)
-    arch.assign(argv[5]);
+  if(argc>=7)
+    arch.assign(argv[6]);
 
   int Ntests = 1;
-  if(argc>=7)
-    Ntests = atoi(argv[6]);
-
-  int kernelVersion = 0;
   if(argc>=8)
-    kernelVersion = atoi(argv[7]);
+    Ntests = atoi(argv[7]);
+
+  if(argc>=9)
+    kernelVersion = atoi(argv[8]);
 
   const int deviceId = 0;
   const int platformId = 0;
 
   const int Nq = N+1;
-  const int cubNq = cubN+1;
   const int Np = Nq*Nq*Nq;
-  const int cubNp = cubNq*cubNq*cubNq;
   
   const dlong offset = Nelements*Np;
 
@@ -94,57 +120,43 @@ int main(int argc, char **argv){
   }
 
   // load kernel
-  std::string kernelName = "advCubatureHex3D";
+  std::string kernelName = "weightedInnerProduct2";
   kernelName += "_v" + std::to_string(kernelVersion);
-  kernel = loadKernel(device, threadModel, arch, kernelName, N, cubN, Nelements);
+  kernel = loadKernel(device, threadModel, arch, kernelName, N, Nelements, blockSize);
 
   // populate device arrays
-  dfloat *vgeo           = drandAlloc(Np*Nelements*p_Nvgeo);
-  dfloat *cubvgeo        = drandAlloc(cubNp*Nelements*p_Nvgeo);
-  dfloat *cubDiffInterpT = drandAlloc(3*cubNp*Nelements);
-  dfloat *cubInterpT     = drandAlloc(Np*cubNp);
-  dfloat *u              = drandAlloc(3*Np*Nelements);
-  dfloat *adv            = drandAlloc(3*Np*Nelements);
+  dfloat *a = drandAlloc(Np*Nelements);
+  dfloat *b = drandAlloc(Np*Nelements);
+  dfloat *c = drandAlloc(Np*Nelements);
 
-  occa::memory o_vgeo           = device.malloc(Np*Nelements*p_Nvgeo*sizeof(dfloat), vgeo);
-  occa::memory o_cubvgeo        = device.malloc(cubNp*Nelements*p_Nvgeo*sizeof(dfloat), cubvgeo);
-  occa::memory o_cubDiffInterpT = device.malloc(3*cubNp*Nelements*sizeof(dfloat), cubDiffInterpT);
-  occa::memory o_cubInterpT     = device.malloc(Np*cubNp*sizeof(dfloat), cubInterpT);
-  occa::memory o_u              = device.malloc(3*Np*Nelements*sizeof(dfloat), u);
-  occa::memory o_adv             = device.malloc(3*Np*Nelements*sizeof(dfloat), adv);
+  occa::memory o_a = device.malloc(Np*Nelements*sizeof(dfloat), a);
+  occa::memory o_b = device.malloc(Np*Nelements*sizeof(dfloat), a);
+  occa::memory o_c = device.malloc(Np*Nelements*sizeof(dfloat), a);
+
+  int Nblock  = ((Nelements*Np)+blockSize-1)/blockSize;
+  if(Nblock < 1) Nblock = 1;
+  if(rank == 0) std::cout << "blockSize: " << Nblock << "\n";
+
+  tmp = drandAlloc(Nblock);
+  o_tmp = device.malloc(Nblock*sizeof(dfloat), tmp);
+  o_tmp2 = device.malloc(Nblock*sizeof(dfloat), tmp);
 
   // run kernel
-  kernel(
-       Nelements,
-       o_vgeo,
-       o_cubvgeo,
-       o_cubDiffInterpT,
-       o_cubInterpT,
-       offset,
-       o_u,
-       o_adv);
+  weightedInnerProduct(Nelements*Np, 0, Nblock, o_c, o_a, o_b, global);   
   device.finish();
   MPI_Barrier(MPI_COMM_WORLD);
   const double start = MPI_Wtime();
   for(int test=0;test<Ntests;++test) {
-    kernel(
-         Nelements,
-         o_vgeo,
-         o_cubvgeo,
-         o_cubDiffInterpT,
-         o_cubInterpT,
-         offset,
-         o_u,
-         o_adv);
+    weightedInnerProduct(Nelements*Np, 0, Nblock, o_c, o_a, o_b, global);   
   }
   device.finish();
   MPI_Barrier(MPI_COMM_WORLD);
   const double elapsed = (MPI_Wtime() - start)/Ntests;
 
   // print statistics
-  const dfloat GDOFPerSecond = (size*(N*N*N)*Nelements/elapsed)/1.e9;
-  //  const long long bytesMoved = ?; 
-  //  const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
+  double GDOFPerSecond = size*(Nelements*N*N*N)/elapsed/1.e9;
+  const long long bytesMoved = 3*Np; 
+  const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
   //  double flopCount = ?;
   //  double gflops = (size*flopCount*Nelements/elapsed)/1.e9;
   if(rank==0) {
@@ -152,12 +164,11 @@ int main(int argc, char **argv){
               << " OMPthreads=" << Nthreads
               << " NRepetitions=" << Ntests
               << " N=" << N
-              << " cubN=" << cubN
               << " Nelements=" << size*Nelements
+              << " blockSize=" << blockSize
               << " elapsed time=" << elapsed
               << " GDOF/s=" << GDOFPerSecond
-              //<< " GB/s=" << bw
-              //<< " GFLOPS/s=" << gflops
+              << " GB/s=" << bw
               << "\n";
   } 
 

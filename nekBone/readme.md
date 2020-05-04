@@ -2,7 +2,8 @@ This benchmark solves a 3D inhomogenous Helmholtz equation
 ```
 lambda0*[A]u + lambda1*[B]u = f
 ```
-on a deformed hexahedral spectral element mesh using conjuate gradients.
+on a deformed hexahedral spectral element mesh using Jacobi preconditioned conjuate gradients.
+Note, this benchmark is different fomr the old nekBone or CEED BP5 due to diagnoal term [B], the variable coefficients.
 
 # Usage
 

@@ -153,7 +153,7 @@ dfloat BPUpdatePCG(BP_t *BP,
 			 occa::memory &o_p, occa::memory &o_Ap, const dfloat alpha,
 			 occa::memory &o_x, occa::memory &o_r){
 
-  timer::tic("updatePCG");
+  if(BP->profiling) timer::tic("updatePCG");
 
   setupAide &options = BP->options;
   
@@ -195,7 +195,7 @@ dfloat BPUpdatePCG(BP_t *BP,
   MPI_Allreduce(&rdotr1, &globalrdotr1, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
   rdotr1 = globalrdotr1;
 
-  timer::toc("updatePCG");
+  if(BP->profiling) timer::toc("updatePCG");
   return rdotr1;
 }
 
@@ -227,13 +227,13 @@ dfloat AxOperator(BP_t *BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
   
   const dlong fieldOffset = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
 
-  timer::tic("Ax");
+  if(BP->profiling) timer::tic("Ax");
   kernel(mesh->Nelements, fieldOffset, mesh->o_ggeo, mesh->o_D, o_lambda, o_q, o_Aq);
-  timer::toc("Ax");
+  if(BP->profiling) timer::toc("Ax");
   
-  timer::tic("gs");
+  if(BP->profiling) timer::tic("gs");
   ogsGatherScatterMany(o_Aq, BP->Nfields, fieldOffset, ogsDfloat, ogsAdd, ogs);
-  timer::toc("gs");
+  if(BP->profiling) timer::toc("gs");
 
   dfloat pAp = BPWeightedInnerProduct(BP, BP->o_invDegree, o_q, o_Aq);
  
@@ -290,6 +290,7 @@ dfloat BPWeightedNorm2(BP_t *BP, occa::memory &o_w, occa::memory &o_a){
 
 dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b){
 
+  if(BP->profiling) timer::tic("dotp");
   setupAide &options = BP->options;
 
   mesh_t *mesh = BP->mesh;
@@ -302,7 +303,6 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
   occa::memory &o_tmp = BP->o_tmp;
   occa::memory &o_tmp2 = BP->o_tmp2;
 
-  timer::tic("dotp");
   if(BP->Nfields == 1)
     BP->weightedInnerProduct2Kernel(Ntotal, o_w, o_a, o_b, o_tmp);
   else
@@ -317,24 +317,17 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
     wab = tmp[0];
   } else {
     /* add a second sweep if Nblock>Ncutoff */
-    dlong Ncutoff = 100;
+    dlong Ncutoff = 1000;
     dlong Nfinal;
     if(Nblock>Ncutoff && 0){
-  
       mesh->sumKernel(Nblock, o_tmp, o_tmp2);
-  
       o_tmp2.copyTo(tmp);
-  
       Nfinal = Nblock2;
-          
     }
     else{
       o_tmp.copyTo(tmp);
-      
       Nfinal = Nblock;
-  
     }    
-
  
     for(dlong n=0;n<Nfinal;++n){
       wab += tmp[n];
@@ -344,7 +337,7 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
   dfloat globalwab = 0;
   MPI_Allreduce(&wab, &globalwab, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
-  timer::toc("dotp");
+  if(BP->profiling) timer::toc("dotp");
   return globalwab;
 }
 

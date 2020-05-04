@@ -49,6 +49,7 @@ export NEKBONEDIR = $(CURDIR)/nekBone
 export AXHELMDIR  = $(CURDIR)/axhelm 
 export BWDIR  = $(CURDIR)/bw 
 export ADVDIR  = $(CURDIR)/adv 
+export DOTDIR  = $(CURDIR)/dot 
 
 export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR) -I$(OGSDIR)/include -DDOGS='"$(PREFIX)/gs/"' -D DBP='"$(PREFIX)/"' $(paths)
 
@@ -58,10 +59,10 @@ LDFLAGS = $(PREFIX)/blasLapack/lib/libBlasLapack.a -lgfortran -fopenmp
 LDFLAGS_OCCA = -L$(PREFIX)/occa/lib -locca
 LDFLAGS_GS = -L$(PREFIX)/gs/lib -logs -L$(PREFIX)/gs/lib -lgs 
 
-.PHONY: install bw axhelm adv nekBone all clean realclean libblas libogs
+.PHONY: install bw dot axhelm adv nekBone all clean realclean libblas libogs
 
-all: occa nekBone axhelm bw adv install
-	@if test -f ${PREFIX}/axhelm && test -f ${PREFIX}/nekBone; then \
+all: occa nekBone axhelm bw dot adv install
+	@rm -rf $(PREFIX)/blasLapack \
 	echo ""; \
 	echo "install dir: ${PREFIX}"; \
 	echo "please set the following env-vars:"; \
@@ -69,13 +70,15 @@ all: occa nekBone axhelm bw adv install
 	echo "  export LD_LIBRARY_PATH=\$$LD_LIBRARY_PATH:\$$OCCA_DIR/lib"; \
 	echo ""; \
 	echo "compilation successful!"; \
-	echo ""; \
-	fi
+	echo "";
 
 install:
 
 bw:
 	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(BWDIR) 
+
+dot:
+	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(DOTDIR) 
 
 adv:
 	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(ADVDIR) 
