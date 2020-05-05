@@ -652,6 +652,18 @@ SOFTWARE.
 }
 
 
+@kernel void vecInv(const dlong N,        /* Length of vector */
+		    @restrict dfloat *v)  /* Array of vector data */
+{
+  for (dlong n = 0; n < N; n +=p_blockSize; @outer(0)) {
+    for (dlong i = n; i < (n +p_blockSize); i++; @inner(0)) {
+      if (i < N)
+        v[i] = 1/v[i];
+    }
+  }
+}
+
+
 /* Sets v = 0. */
 @kernel void vecZero(const dlong N,        /* Length of vector */
 		     @restrict dfloat *v)  /* Array of vector data */

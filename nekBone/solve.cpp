@@ -169,14 +169,13 @@ dfloat BPUpdatePCG(BP_t *BP,
   // r <= r - alpha*A*p
   // dot(r,r)
 
-  const dlong offset = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
   const dlong Nlocal = mesh->Nelements*mesh->Np;
 
   if(BP->Nfields==1)
     BP->updatePCGKernel(Nlocal, BP->NblocksUpdatePCG,
 			BP->o_invDegree, o_p, o_Ap, alpha, o_x, o_r, BP->o_tmpNormr);
   else
-    BP->updateMultiplePCGKernel(Nlocal, offset, BP->NblocksUpdatePCG,
+    BP->updateMultiplePCGKernel(Nlocal, BP->fieldOffset, BP->NblocksUpdatePCG,
 				BP->o_invDegree, o_p, o_Ap, alpha, o_x, o_r, BP->o_tmpNormr);
 
   BP->o_tmpNormr.copyTo(BP->tmpNormr);
@@ -201,15 +200,31 @@ dfloat BPUpdatePCG(BP_t *BP,
 
 #include "../axhelm/kernelHelper.cpp"
 
+void updateJacobi(BP_t *BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z){
+
+  mesh_t *mesh = BP->mesh;
+  const dlong Nlocal = mesh->Np*mesh->Nelements;
+
+  BP->updateJacobiKernel(mesh->Nelements,
+                         BP->fieldOffset,
+                         BP->o_mapB,
+                         mesh->o_ggeo,
+                         mesh->o_D,
+                         o_lambda,
+                         BP->o_invDiagA);
+
+  const dfloat one = 1.0;
+  ogsGatherScatter(BP->o_invDiagA, ogsDfloat, ogsAdd, BP->ogs);
+  BP->vecInvKernel(Nlocal, BP->o_invDiagA);
+  BP->dotMultiplyKernel(Nlocal, o_r, BP->o_invDiagA, o_z);
+}
+
 void BPPreconditioner(BP_t *BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z){
   mesh_t *mesh = BP->mesh;
   setupAide &options = BP->options;
 
   if(options.compareArgs("PRECONDITIONER", "JACOBI")) {
-    //dlong Ntotal = mesh->Np*mesh->Nelements; 
-    //BP->dotMultiplyKernel(Ntotal, o_r, BP->o_invDiagA, o_z);
-    cout << "Jacobi preconditioner not available yet!\n";
-    exit(1); 
+    updateJacobi(BP, o_lambda, o_r, o_z);   
   } else {
     dlong Ndof = mesh->Nelements*mesh->Np*BP->Nfields;
     BP->vecCopyKernel(Ndof, o_r, o_z);
@@ -298,7 +313,6 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
   dlong Nblock = BP->Nblock;
   dlong Nblock2 = BP->Nblock2;
   dlong Ntotal = mesh->Nelements*mesh->Np;
-  const dlong offset = Ntotal;
 
   occa::memory &o_tmp = BP->o_tmp;
   occa::memory &o_tmp2 = BP->o_tmp2;
@@ -306,7 +320,7 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
   if(BP->Nfields == 1)
     BP->weightedInnerProduct2Kernel(Ntotal, o_w, o_a, o_b, o_tmp);
   else
-    BP->weightedMultipleInnerProduct2Kernel(Ntotal, offset, o_w, o_a, o_b, o_tmp);
+    BP->weightedMultipleInnerProduct2Kernel(Ntotal, BP->fieldOffset, o_w, o_a, o_b, o_tmp);
 
   int serial = options.compareArgs("THREAD MODEL", "SERIAL");
   int omp = options.compareArgs("THREAD MODEL", "OPENMP");

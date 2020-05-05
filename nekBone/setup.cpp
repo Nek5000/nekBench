@@ -49,7 +49,7 @@ BP_t *setup(mesh_t *mesh, dfloat lambda1, occa::properties &kernelInfo, setupAid
   solveSetup(BP, lambda1, kernelInfo);
 
   const dlong Ndof = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
-  const dlong fieldOffset = Ndof;
+  BP->fieldOffset = Ndof;
   const dlong Nall = BP->Nfields*Ndof;
 
   BP->r   = (dfloat*) calloc(Nall,   sizeof(dfloat));
@@ -84,12 +84,12 @@ BP_t *setup(mesh_t *mesh, dfloat lambda1, occa::properties &kernelInfo, setupAid
   BP->o_r = mesh->device.malloc(Nall*sizeof(dfloat), BP->r);
   BP->o_x = mesh->device.malloc(Nall*sizeof(dfloat), BP->x);
  
-  BP->lambda = (dfloat*) calloc(2*fieldOffset, sizeof(dfloat));
-  for(int i=0; i<fieldOffset; i++) {
+  BP->lambda = (dfloat*) calloc(2*Nall, sizeof(dfloat));
+  for(int i=0; i<BP->fieldOffset; i++) {
     BP->lambda[i]        = 1.0;
-    BP->lambda[i+fieldOffset] = lambda1;
+    BP->lambda[i+BP->fieldOffset] = lambda1;
   }
-  BP->o_lambda = mesh->device.malloc(2*fieldOffset*sizeof(dfloat), BP->lambda);
+  BP->o_lambda = mesh->device.malloc(2*Nall*sizeof(dfloat), BP->lambda);
  
   char *suffix = strdup("Hex3D");
   
@@ -143,14 +143,12 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
     //BP->o_solveWorkspace[wk] = o_scratch.slice(wk*BP->offsetSolveWorkspace*sizeof(dfloat));
   }
 
-/*
-  if(options.compareArgs("PRECONDITIONER", "JACOBI"){
-    dfloat *invDiagA = (dfloat*) calloc(Nall, sizeof(dfloat));
-    BPBuildJacobi(BP, lambda, &invDiagA);  
-    BP->o_invDiagA = device.malloc(Nall*sizeof(dfloat), BP->invDiagA);
-    free(invDiagA);
+  if(options.compareArgs("PRECONDITIONER", "JACOBI")){
+    BP->o_invDiagA = mesh->device.malloc(Nall*sizeof(dfloat));
+    int *mapB = (int*) calloc(Nall, sizeof(int));
+    BP->o_mapB = mesh->device.malloc(Nall*sizeof(int), mapB);
+    free(mapB);
   }
-*/
 
   BP->tmp  = (dfloat*) calloc(Nblock, sizeof(dfloat));
   //  BP->tmp2 = (dfloat*) calloc(Nblock2, sizeof(dfloat));
@@ -268,6 +266,12 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
 
       BP->vecCopyKernel =
           mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecCopy", kernelInfo);
+
+      BP->vecInvKernel =
+          mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecInv", kernelInfo);
+
+      BP->updateJacobiKernel =
+          mesh->device.buildKernel(DBP "/kernel/updateJacobi.okl", "updateJacobi", kernelInfo);
 
 /*
       BP->vecAtomicGatherKernel =

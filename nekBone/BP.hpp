@@ -59,6 +59,8 @@ typedef struct {
   int dim;
   int elementType; // number of edges (3=tri, 4=quad, 6=tet, 12=hex)
   int Nfields;
+
+  dlong fieldOffset;
   
   mesh_t *mesh;
 
@@ -100,6 +102,7 @@ typedef struct {
   occa::stream defaultStream;
   occa::stream dataStream;
 
+  occa::memory o_mapB;
   occa::memory o_q, o_x, o_r, o_lambda;
   occa::memory o_invDiagA;
 
@@ -126,7 +129,7 @@ typedef struct {
 
   occa::kernel *BPKernel;
 
-  occa::kernel filterKernel;
+  occa::kernel updateJacobiKernel;
 
   occa::kernel innerProductKernel;
 
@@ -147,7 +150,8 @@ typedef struct {
   
   occa::kernel norm2Kernel;
   occa::kernel multipleNorm2Kernel;
-  
+ 
+  occa::kernel vecInvKernel;
   occa::kernel vecZeroKernel;
   occa::kernel vecScaleKernel;
   occa::kernel vecCopyKernel;
