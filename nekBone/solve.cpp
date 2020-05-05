@@ -25,6 +25,8 @@ SOFTWARE.
 */
 
 #include "BP.hpp"
+void updateJacobi(BP_t *BP, occa::memory &o_lambda, occa::memory &o_invDiagA);
+
 
 int BPPCG(BP_t* BP, occa::memory &o_lambda,
 	  occa::memory &o_r, occa::memory &o_x, 
@@ -67,6 +69,9 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
 
   const dfloat TOL =  mymax(tol*tol*rdotr0,tol*tol);
 
+  if(BP->profiling) timer::tic("preco");
+  if(options.compareArgs("PRECONDITIONER", "JACOBI")) updateJacobi(BP, o_lambda, BP->o_invDiagA); 
+  if(BP->profiling) timer::toc("preco");
 
   for(iter=1;iter<=MAXIT;++iter){
 
@@ -200,7 +205,7 @@ dfloat BPUpdatePCG(BP_t *BP,
 
 #include "../axhelm/kernelHelper.cpp"
 
-void updateJacobi(BP_t *BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z){
+void updateJacobi(BP_t *BP, occa::memory &o_lambda, occa::memory &o_invDiagA){
 
   mesh_t *mesh = BP->mesh;
   const dlong Nlocal = mesh->Np*mesh->Nelements;
@@ -211,12 +216,11 @@ void updateJacobi(BP_t *BP, occa::memory &o_lambda, occa::memory &o_r, occa::mem
                          mesh->o_ggeo,
                          mesh->o_D,
                          o_lambda,
-                         BP->o_invDiagA);
+                         o_invDiagA);
 
   const dfloat one = 1.0;
-  ogsGatherScatter(BP->o_invDiagA, ogsDfloat, ogsAdd, BP->ogs);
-  BP->vecInvKernel(Nlocal, BP->o_invDiagA);
-  BP->dotMultiplyKernel(Nlocal, o_r, BP->o_invDiagA, o_z);
+  ogsGatherScatter(o_invDiagA, ogsDfloat, ogsAdd, BP->ogs);
+  BP->vecInvKernel(Nlocal, o_invDiagA);
 }
 
 void BPPreconditioner(BP_t *BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z){
@@ -225,7 +229,8 @@ void BPPreconditioner(BP_t *BP, occa::memory &o_lambda, occa::memory &o_r, occa:
 
   if(BP->profiling) timer::tic("preco");
   if(options.compareArgs("PRECONDITIONER", "JACOBI")) {
-    updateJacobi(BP, o_lambda, o_r, o_z);   
+    const dlong Nlocal = mesh->Np*mesh->Nelements; 
+    BP->dotMultiplyKernel(Nlocal, o_r, BP->o_invDiagA, o_z);
   } else {
     dlong Ndof = mesh->Nelements*mesh->Np*BP->Nfields;
     BP->vecCopyKernel(Ndof, o_r, o_z);
@@ -276,22 +281,17 @@ dfloat BPWeightedNorm2(BP_t *BP, occa::memory &o_w, occa::memory &o_a){
     BP->weightedMultipleNorm2Kernel(Ntotal, Ntotal, o_w, o_a, o_tmp);
 
   /* add a second sweep if Nblock>Ncutoff */
-  dlong Ncutoff = 100;
+  dlong Ncutoff = 1000;
   dlong Nfinal;
   if(Nblock>Ncutoff){
-
     mesh->sumKernel(Nblock, o_tmp, o_tmp2);
-
     o_tmp2.copyTo(tmp);
-
     Nfinal = Nblock2;
 	
   }
   else{
     o_tmp.copyTo(tmp);
-    
     Nfinal = Nblock;
-
   }    
 
   dfloat wa2 = 0;
@@ -335,7 +335,7 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
     /* add a second sweep if Nblock>Ncutoff */
     dlong Ncutoff = 1000;
     dlong Nfinal;
-    if(Nblock>Ncutoff && 0){
+    if(Nblock>Ncutoff){
       mesh->sumKernel(Nblock, o_tmp, o_tmp2);
       o_tmp2.copyTo(tmp);
       Nfinal = Nblock2;

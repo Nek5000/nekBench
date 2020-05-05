@@ -111,55 +111,58 @@ int main(int argc, char **argv){
   {
     BP->BPid = bpid;
     double opElapsed = 0;
-    int Ntests = 1;
-    it = 0;
+    int Ntests = 10;
+    options.getArgs("NREPETITIONS", Ntests);
+
+    // warm up  + correctness check
+    it = solve(BP, BP->o_lambda, tol, BP->o_r, BP->o_x, &opElapsed);
+    BP->o_x.copyTo(BP->q);
+    const dlong offset = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs); 
+    dfloat maxError = 0;
+    for(dlong fld=0;fld<BP->Nfields;++fld){
+      for(dlong e=0;e<mesh->Nelements;++e){
+        for(int n=0;n<mesh->Np;++n){
+          dlong  id = e*mesh->Np+n;
+          dfloat xn = mesh->x[id];
+          dfloat yn = mesh->y[id];
+          dfloat zn = mesh->z[id];
+        
+          dfloat exact;
+          double mode = 1.0;
+          // hard coded to match the RHS used in BPSetup
+          exact = (3.*M_PI*M_PI*mode*mode+lambda1)*cos(mode*M_PI*xn)*cos(mode*M_PI*yn)*cos(mode*M_PI*zn);
+          exact /= (3.*mode*mode*M_PI*M_PI+lambda1);
+          dfloat error = fabs(exact - BP->q[id+fld*offset]);
+          maxError = mymax(maxError, error);
+        }
+      }
+    }
+    dfloat globalMaxError = 0;
+    MPI_Allreduce(&maxError, &globalMaxError, 1, MPI_DFLOAT, MPI_MAX, mesh->comm);
+    if(mesh->rank==0) printf("correctness check: maxError = %g\n", globalMaxError);
 
     if(mesh->rank==0) cout << "\nrunning solver ...";
     mesh->device.finish();  
     MPI_Barrier(mesh->comm);
     double elapsed = MPI_Wtime();
     for(int test=0;test<Ntests;++test){
-      it += solve(BP, BP->o_lambda, tol, BP->o_r, BP->o_x, &opElapsed);
+      it = solve(BP, BP->o_lambda, tol, BP->o_r, BP->o_x, &opElapsed);
     }
     mesh->device.finish();  
     MPI_Barrier(mesh->comm);
     if(mesh->rank==0) cout << " done\n";
-    elapsed = MPI_Wtime() - elapsed; 
+    elapsed = (MPI_Wtime() - elapsed)/Ntests; 
+
+
+    // print statistics 
+    double NGbytes;
+    int useInvDeg = 1;
 
     hlong globalNelements, localNelements=mesh->Nelements;
     MPI_Reduce(&localNelements, &globalNelements, 1, MPI_HLONG, MPI_SUM, 0, mesh->comm);
   
     hlong globalNdofs = pow(mesh->N,3)*mesh->Nelements; // mesh->Nlocalized;
     MPI_Allreduce(MPI_IN_PLACE, &globalNdofs, 1, MPI_HLONG, MPI_SUM, mesh->comm);
- 
-    // copy solution from DEVICE to HOST
-    BP->o_x.copyTo(BP->q);
-    const dlong offset = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs); 
-    dfloat maxError = 0;
-    for(dlong fld=0;fld<BP->Nfields;++fld){
-    for(dlong e=0;e<mesh->Nelements;++e){
-      for(int n=0;n<mesh->Np;++n){
-	dlong  id = e*mesh->Np+n;
-	dfloat xn = mesh->x[id];
-	dfloat yn = mesh->y[id];
-	dfloat zn = mesh->z[id];
-      
-	dfloat exact;
-	double mode = 1.0;
-	// hard coded to match the RHS used in BPSetup
-	exact = (3.*M_PI*M_PI*mode*mode+lambda1)*cos(mode*M_PI*xn)*cos(mode*M_PI*yn)*cos(mode*M_PI*zn);
-	exact /= (3.*mode*mode*M_PI*M_PI+lambda1);
-	dfloat error = fabs(exact - BP->q[id+fld*offset]);
-	maxError = mymax(maxError, error);
-      }
-    }
-    }
-    dfloat globalMaxError = 0;
-    MPI_Allreduce(&maxError, &globalMaxError, 1, MPI_DFLOAT, MPI_MAX, mesh->comm);
-
-    // print statistics 
-    double NGbytes;
-    int useInvDeg = 1;
 
     double Nbytes = Ndofs*sizeof(dfloat);
     double gbytesPCG = 7.*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
@@ -189,8 +192,6 @@ int main(int argc, char **argv){
     }
 
     if(mesh->rank==0){
-      printf("correctness check: maxError = %g\n", globalMaxError);
- 
       int knlId = 0;
       options.getArgs("KERNEL ID", knlId);
 
@@ -202,7 +203,8 @@ int main(int argc, char **argv){
       cout << "  polyN        : " << N << "\n"
            << "  Nelements    : " << globalNelements << "\n"
            << "  iterations   : " << it << "\n"
-           << "  elapsed time : " << elapsed << " s\n"
+           << "  Nrepetitions : " << Ntests << "\n"
+           << "  elapsed time : " << Ntests*elapsed << " s\n"
            << "  throughput   : " << BP->Nfields*(it*(globalNdofs/elapsed))/1.e9 << " GDOF/s/iter\n"
            << "  bandwidth    : " << bw << " GB/s\n";
 
@@ -216,7 +218,6 @@ int main(int argc, char **argv){
              << endl;
       }
     }
-
  
   }  
   MPI_Finalize();
