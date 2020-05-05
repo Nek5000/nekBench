@@ -184,7 +184,8 @@ int main(int argc, char **argv){
       etime[0] = timer::query("Ax", "DEVICE:MAX");
       etime[1] = timer::query("gs", "HOST:MAX");
       etime[2] = timer::query("updatePCG", "HOST:MAX");
-      etime[3] = timer::query("dotp", "HOST:MAX");
+      etime[3] = timer::query("dot", "HOST:MAX");
+      etime[4] = timer::query("preco", "DEVICE:MAX");
     }
 
     if(mesh->rank==0){
@@ -211,6 +212,7 @@ int main(int argc, char **argv){
              << "  gs        : " << etime[1] << " s\n"
              << "  updatePCG : " << etime[2] << " s\n"
              << "  dot       : " << etime[3] << " s\n"
+             << "  preco     : " << etime[4] << " s\n"
              << endl;
       }
     }

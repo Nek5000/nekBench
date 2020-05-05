@@ -223,12 +223,14 @@ void BPPreconditioner(BP_t *BP, occa::memory &o_lambda, occa::memory &o_r, occa:
   mesh_t *mesh = BP->mesh;
   setupAide &options = BP->options;
 
+  if(BP->profiling) timer::tic("preco");
   if(options.compareArgs("PRECONDITIONER", "JACOBI")) {
     updateJacobi(BP, o_lambda, o_r, o_z);   
   } else {
     dlong Ndof = mesh->Nelements*mesh->Np*BP->Nfields;
     BP->vecCopyKernel(Ndof, o_r, o_z);
   }
+  if(BP->profiling) timer::toc("preco");
 }
 
 dfloat AxOperator(BP_t *BP, occa::memory &o_lambda, occa::memory &o_q, occa::memory &o_Aq,
@@ -305,7 +307,7 @@ dfloat BPWeightedNorm2(BP_t *BP, occa::memory &o_w, occa::memory &o_a){
 
 dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b){
 
-  if(BP->profiling) timer::tic("dotp");
+  if(BP->profiling) timer::tic("dot");
   setupAide &options = BP->options;
 
   mesh_t *mesh = BP->mesh;
@@ -351,7 +353,7 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
   dfloat globalwab = 0;
   MPI_Allreduce(&wab, &globalwab, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
-  if(BP->profiling) timer::toc("dotp");
+  if(BP->profiling) timer::toc("dot");
   return globalwab;
 }
 
