@@ -26,6 +26,9 @@ $(OGSDIR)/ogs.hpp
 
 # list of objects to be compiled
 AOBJS    = \
+./osu_util.o \
+./osu_util_mpi.o \
+./osu_multi_lat.o \
 ./main.o \
 
 # library objects

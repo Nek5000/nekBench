@@ -8,7 +8,9 @@
 #include "mesh.h"
 #include "timer.hpp"
 
-#include "osu_latency.inc"
+#include "osu_multi_lat.h"
+
+static void printMeshPartitionStatistics(mesh_t *mesh);
 
 int main(int argc, char **argv){
 
@@ -54,11 +56,13 @@ int main(int argc, char **argv){
   options.setArgs("POLYNOMIAL DEGREE", std::to_string(N));
 
   mesh_t *mesh = meshSetupBoxHex3D(N, 0, options);
+  printMeshPartitionStatistics(mesh);
   mesh->elementType = HEXAHEDRA;
   occa::properties kernelInfo;
   meshOccaSetup3D(mesh, options, kernelInfo);
 
-  osu_latency();
+  if(mesh->rank == 0) cout << "\n";
+  osu_multi_latency(0,argv);
   if(mesh->rank == 0) cout << "\n";
 
   const dlong Nlocal = mesh->Nelements*mesh->Np; 
@@ -77,12 +81,12 @@ int main(int argc, char **argv){
 
   mesh->device.finish();
   MPI_Barrier(MPI_COMM_WORLD);
-  const double elapsed = (MPI_Wtime() - start)/Ntests;
+  const double elapsed = MPI_Wtime() - start;
 
   if(mesh->rank==0){
     int Nthreads =  omp_get_max_threads();
     cout << "\nsummary\n"
-         << "  MPItasks     : " << mesh->size << "\n";
+         << "  MPItasks         : " << mesh->size << "\n";
     if(options.compareArgs("THREAD MODEL", "OPENMP"))
       cout << "  OMPthreads       : " << Nthreads << "\n";
     cout << "  polyN            : " << N << "\n"
@@ -93,4 +97,46 @@ int main(int argc, char **argv){
 
   MPI_Finalize();
   return 0;
+}
+
+void printMeshPartitionStatistics(mesh_t *mesh){
+
+  /* get MPI rank and size */
+  int rank, size;
+  rank = mesh->rank;
+  size = mesh->size;
+  
+  /* now gather statistics on connectivity between processes */
+  int *comms = (int*) calloc(size, sizeof(int));
+  int Ncomms = 0;
+  
+  /* count elements with neighbors on each other rank ranks */
+  for(dlong e=0;e<mesh->Nelements;++e){
+    for(int f=0;f<mesh->Nfaces;++f){
+      if(mesh->EToP[e*mesh->Nfaces+f]!=-1){
+        ++comms[mesh->EToP[e*mesh->Nfaces+f]];
+        ++Ncomms;
+      } 
+    } 
+  } 
+  
+  int Nmessages = 0;
+  for(int r=0;r<size;++r)
+    if(comms[r]>0)
+      ++Nmessages;
+      
+  for(int r=0;r<size;++r){
+    MPI_Barrier(mesh->comm);
+    if(r==rank){
+      fflush(stdout);
+      printf("r: %02d [", rank);
+      for(int s=0;s<size;++s){
+        printf(" %04d", comms[s]);
+      }
+      printf("] (Nelements=" dlongFormat ", Nmessages=%d, Ncomms=%d)\n", mesh->Nelements,Nmessages, Ncomms);
+      fflush(stdout);
+    } 
+  } 
+  
+  free(comms);
 }
