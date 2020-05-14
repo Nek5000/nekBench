@@ -28,7 +28,7 @@ dfloat *drandAlloc(int N){
 int main(int argc, char **argv){
 
   if(argc<6){
-    printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL CPU|VOLTA [nRepetitions] [kernelVersion]\n");
+    printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|HIP|OPENCL CPU|VOLTA [nRepetitions] [kernelVersion]\n");
     return 1;
   }
 

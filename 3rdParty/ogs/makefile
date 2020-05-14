@@ -90,4 +90,3 @@ clean:
 realclean:
 	cd ../../3rdParty/gslib; make clean; cd ../../3rdParty/ogs
 	rm -rf src/*.o libogs.a
-

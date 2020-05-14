@@ -7,7 +7,7 @@ The code uses the [CEED](https://ceed.exascaleproject.org/) software products [O
 
 ### Available benchmarks
 * bw
-* gs (not available yet)
+* gs
 * axhelm
 * dot
 * nekBone

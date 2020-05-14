@@ -8,7 +8,7 @@ export LD = mpic++
 
 export NALIGN ?= 64
 
-export OCCA_CUDA_ENABLED=1
+export OCCA_CUDA_ENABLED=0
 export OCCA_HIP_ENABLED=0
 export OCCA_OPENCL_ENABLED=0
 export OCCA_METAL_ENABLED=0
@@ -42,26 +42,28 @@ flags += -DhlongFormat='"%lld"'
 flags += -DUSE_OCCA_MEM_BYTE_ALIGN=$(NALIGN)
 
 export HDRDIR = $(CURDIR)/core
-export GSDIR = $(CURDIR)/3rdParty/gslib
-export OGSDIR = $(CURDIR)/3rdParty/ogs
+export LIBGSDIR = $(CURDIR)/3rdParty/gslib
+export OLIBGSDIR = $(CURDIR)/3rdParty/ogs
 export BLASLAPACK_DIR = $(CURDIR)/3rdParty/BlasLapack
 export NEKBONEDIR = $(CURDIR)/nekBone 
 export AXHELMDIR  = $(CURDIR)/axhelm 
 export BWDIR  = $(CURDIR)/bw 
 export ADVDIR  = $(CURDIR)/adv 
 export DOTDIR  = $(CURDIR)/dot 
+export GSDIR  = $(CURDIR)/gs 
 
-export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR) -I$(OGSDIR)/include -DDOGS='"$(PREFIX)/gs/"' -D DBP='"$(PREFIX)/"' $(paths)
+export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(OLIBGSDIR) -I$(OLIBGSDIR)/include -DDOGS='"$(PREFIX)/libgs/"' -D DBP='"$(PREFIX)/"' $(paths)
 
-export CXXFLAGS = -I. -DOCCA_VERSION_1_0 $(compilerFlags) $(flags) -I$(HDRDIR) -I$(OGSDIR) -I$(OGSDIR)/include -DDOGS='"$(PREFIX)/gs/"' -D DBP='"$(PREFIX)/"' $(paths)
+export CXXFLAGS = -I. -DOCCA_VERSION_1_0 $(compilerFlags) $(flags) -I$(HDRDIR) -I$(OLIBGSDIR) -I$(OLIBGSDIR)/include -DDOGS='"$(PREFIX)/libgs/"' -D DBP='"$(PREFIX)/"' $(paths)
 
-LDFLAGS = $(PREFIX)/blasLapack/lib/libBlasLapack.a -lgfortran -fopenmp
+LDFLAGS = -lgfortran -fopenmp
+LDFLAGS_BLAS = $(PREFIX)/blasLapack/lib/libBlasLapack.a
 LDFLAGS_OCCA = -L$(PREFIX)/occa/lib -locca
-LDFLAGS_GS = -L$(PREFIX)/gs/lib -logs -L$(PREFIX)/gs/lib -lgs 
+LDFLAGS_GS = -L$(PREFIX)/libgs/lib -logs -L$(PREFIX)/libgs/lib -lgs 
 
-.PHONY: install bw dot axhelm adv nekBone all clean realclean libblas libogs
+.PHONY: install bw dot axhelm adv gs nekBone all clean realclean libblas libogs
 
-all: occa nekBone axhelm bw dot adv install
+all: occa nekBone axhelm bw dot adv gs install
 	@rm -rf $(PREFIX)/blasLapack \
 	echo ""; \
 	echo "install dir: ${PREFIX}"; \
@@ -74,26 +76,29 @@ all: occa nekBone axhelm bw dot adv install
 
 install:
 
-bw:
+bw: occa
 	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(BWDIR) 
 
-dot:
+dot: occa
 	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(DOTDIR) 
 
-adv:
+adv: occa
 	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(ADVDIR) 
 
-axhelm: libblas
-	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS)" $(MAKE) -C $(AXHELMDIR) 
+axhelm: occa libblas
+	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS_BLAS) $(LDFLAGS)" $(MAKE) -C $(AXHELMDIR) 
 
-nekBone: libogs libblas
-	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS_GS) $(LDFLAGS)" $(MAKE) -C $(NEKBONEDIR)
+nekBone: occa libogs libblas
+	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS_GS) $(LDFLAGS_BLAS) $(LDFLAGS)" $(MAKE) -C $(NEKBONEDIR)
+
+gs: occa libogs libblas
+	LDFLAGS="$(LDFLAGS_OCCA) $(LDFLAGS_GS) $(LDFLAGS_BLAS) $(LDFLAGS)" $(MAKE) -C $(GSDIR)
 
 occa:
 	@PREFIX=$(PREFIX)/occa $(MAKE) -j8 -C $(OCCA_DIR)
 
 libogs:
-	@PREFIX=$(PREFIX)/gs $(MAKE) -C $(OGSDIR) -j4 lib
+	@PREFIX=$(PREFIX)/libgs $(MAKE) -C $(OLIBGSDIR) -j4 lib
 
 libblas:
 	@PREFIX=$(PREFIX)/blasLapack $(MAKE) -C $(BLASLAPACK_DIR) -j4 lib
@@ -102,10 +107,12 @@ clean:
 	@$(MAKE) -C $(NEKBONEDIR) clean
 	@$(MAKE) -C $(AXHELMDIR) clean
 	@$(MAKE) -C $(BWDIR) clean
+	@$(MAKE) -C $(DOTDIR) clean
+	@$(MAKE) -C $(GSDIR) clean
 
 realclean: clean
 	@rm -rf core/*.o
 	@$(MAKE) -C $(OCCA_DIR) clean
-	@$(MAKE) -C $(OGSDIR) clean
-	@$(MAKE) -C $(GSDIR) clean
+	@$(MAKE) -C $(OLIBGSDIR) clean
+	@$(MAKE) -C $(LIBGSDIR) clean
 	@$(MAKE) -C $(BLASLAPACK_DIR) clean
