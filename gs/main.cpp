@@ -10,6 +10,11 @@
 
 #include "osu_multi_lat.h"
 
+#include "ogs.hpp"
+#include "ogsKernels.hpp"
+#include "ogsInterface.h"
+
+static void gs(occa::memory o_v, const char *type, const char *op, ogs_t *ogs); 
 static void printMeshPartitionStatistics(mesh_t *mesh);
 
 int main(int argc, char **argv){
@@ -18,8 +23,8 @@ int main(int argc, char **argv){
   MPI_Init(&argc, &argv);
   setupAide options;
 
-  if(argc!=7){
-    printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL DEVICE-ID\n");
+  if(argc<6){
+    printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <nRepetitions> <DEVICE-ID>\n");
 
     MPI_Finalize();
     exit(1);
@@ -33,9 +38,15 @@ int main(int argc, char **argv){
   threadModel.assign(strdup(argv[5]));
   options.setArgs("THREAD MODEL", threadModel);
 
-  std::string deviceNumber;
-  deviceNumber.assign(strdup(argv[6]));
-  options.setArgs("DEVICE NUMBER", deviceNumber);
+  int Ntests = 1;
+  if(argc>6) Ntests = atoi(argv[6]);
+
+  options.setArgs("DEVICE NUMBER", "LOCAL-RANK");
+  if(argc>7) {
+    std::string deviceNumber;
+    deviceNumber.assign(strdup(argv[7]));
+    options.setArgs("DEVICE NUMBER", deviceNumber);
+  }
 
   options.setArgs("BOX NX", std::to_string(NX));
   options.setArgs("BOX NY", std::to_string(NY));
@@ -61,6 +72,8 @@ int main(int argc, char **argv){
   occa::properties kernelInfo;
   meshOccaSetup3D(mesh, options, kernelInfo);
 
+  timer::init(mesh->comm, mesh->device, 1);
+
   if(mesh->rank == 0) cout << "\n";
   osu_multi_latency(0,argv);
   if(mesh->rank == 0) cout << "\n";
@@ -69,19 +82,22 @@ int main(int argc, char **argv){
   ogs_t *ogs= ogsSetup(Nlocal, mesh->globalIds, mesh->comm, 1, mesh->device); 
 
   occa::memory o_q = mesh->device.malloc(Nlocal*sizeof(dfloat));
-  const int Ntests = 10;
 
-  ogsGatherScatter(o_q, ogsDfloat, ogsAdd, ogs);
+  gs(o_q, ogsDfloat, ogsAdd, ogs);
+  timer::reset();
+
   mesh->device.finish();
-  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Barrier(mesh->comm);
   const double start = MPI_Wtime();
-
   for(int test=0;test<Ntests;++test)
-    ogsGatherScatter(o_q, ogsDfloat, ogsAdd, ogs);
-
+    gs(o_q, ogsDfloat, ogsAdd, ogs);
   mesh->device.finish();
-  MPI_Barrier(MPI_COMM_WORLD);
-  const double elapsed = MPI_Wtime() - start;
+  MPI_Barrier(mesh->comm);
+  const double elapsed = (MPI_Wtime() - start)/Ntests;
+
+  double etime[10];
+  etime[0] = timer::query("gs_local", "DEVICE:MAX")/Ntests;
+  etime[1] = timer::query("gs_host", "HOST:MAX")/Ntests;
 
   if(mesh->rank==0){
     int Nthreads =  omp_get_max_threads();
@@ -91,7 +107,9 @@ int main(int argc, char **argv){
       cout << "  OMPthreads       : " << Nthreads << "\n";
     cout << "  polyN            : " << N << "\n"
          << "  Nelements        : " << NX*NY*NZ << "\n"
-         << "  avg elapsed time : " << elapsed/Ntests << " s\n"
+         << "  avg elapsed time : " << elapsed << " s\n"
+         << "    gs_local       : " << etime[0] << " s\n"
+         << "    gs_host        : " << etime[1] << " s\n"
          << "  throughput       : " << ((dfloat)(NX*NY*NZ)*N*N*N/elapsed)/1.e9 << " GDOF/s\n";
   }
 
@@ -133,10 +151,69 @@ void printMeshPartitionStatistics(mesh_t *mesh){
       for(int s=0;s<size;++s){
         printf(" %04d", comms[s]);
       }
-      printf("] (Nelements=" dlongFormat ", Nmessages=%d, Ncomms=%d)\n", mesh->Nelements,Nmessages, Ncomms);
+      printf("] (Nelements=" dlongFormat ", Nmessages=%d, Nfaces=%d)\n", mesh->Nelements,Nmessages, Ncomms);
       fflush(stdout);
     } 
   } 
   
   free(comms);
 }
+
+void gs(occa::memory o_v, const char *type, const char *op, ogs_t *ogs) 
+{
+  size_t Nbytes;
+  if (!strcmp(type, "float")) 
+    Nbytes = sizeof(float);
+  else if (!strcmp(type, "double")) 
+    Nbytes = sizeof(double);
+  else if (!strcmp(type, "int")) 
+    Nbytes = sizeof(int);
+  else if (!strcmp(type, "long long int")) 
+    Nbytes = sizeof(long long int);
+
+  if (ogs->NhaloGather) {
+    if (ogs::o_haloBuf.size() < ogs->NhaloGather*Nbytes) {
+      if (ogs::o_haloBuf.size()) ogs::o_haloBuf.free();
+
+      occa::properties props;
+      props["mapped"] = true;
+      ogs::o_haloBuf = ogs->device.malloc(ogs->NhaloGather*Nbytes, props);
+      ogs::haloBuf = ogs::o_haloBuf.ptr();
+    }
+  }
+
+  if (ogs->NhaloGather) {
+    timer::tic("gs_local");
+    occaGather(ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, o_v, ogs::o_haloBuf);
+    timer::toc("gs_local");
+
+    ogs->device.finish();
+    ogs->device.setStream(ogs::dataStream);
+    ogs::o_haloBuf.copyTo(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
+    ogs->device.setStream(ogs::defaultStream);
+  }
+
+  if(ogs->NlocalGather) {
+    timer::tic("gs_local");
+    occaGatherScatter(ogs->NlocalGather, ogs->o_localGatherOffsets, ogs->o_localGatherIds, type, op, o_v);
+    timer::toc("gs_local");
+  }
+
+  if (ogs->NhaloGather) {
+    ogs->device.setStream(ogs::dataStream);
+    ogs->device.finish();
+
+    timer::tic("gs_host");
+    ogsHostGatherScatter(ogs::haloBuf, type, op, ogs->haloGshSym);
+    timer::toc("gs_host");
+
+    ogs::o_haloBuf.copyFrom(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
+
+    timer::tic("gs_local");
+    occaScatter(ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, ogs::o_haloBuf, o_v);
+    timer::toc("gs_local");
+    ogs->device.finish();
+    ogs->device.setStream(ogs::defaultStream);
+  }
+}
+
