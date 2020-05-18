@@ -75,7 +75,7 @@ int main(int argc, char **argv){
   timer::init(mesh->comm, mesh->device, 1);
 
   if(mesh->rank == 0) cout << "\n";
-  osu_multi_latency(0,argv);
+  if(mesh->size > 1) osu_multi_latency(0,argv);
   if(mesh->rank == 0) cout << "\n";
 
   const dlong Nlocal = mesh->Nelements*mesh->Np; 
@@ -86,6 +86,7 @@ int main(int argc, char **argv){
   gs(o_q, ogsDfloat, ogsAdd, ogs);
   timer::reset();
 
+  if(mesh->rank == 0) cout << "starting measurement ...\n"; fflush(stdout);
   mesh->device.finish();
   MPI_Barrier(mesh->comm);
   const double start = MPI_Wtime();
@@ -98,6 +99,7 @@ int main(int argc, char **argv){
   double etime[10];
   etime[0] = timer::query("gs_local", "DEVICE:MAX")/Ntests;
   etime[1] = timer::query("gs_host", "HOST:MAX")/Ntests;
+  etime[2] = timer::query("gs_memcpy", "DEVICE:MAX")/Ntests;
 
   if(mesh->rank==0){
     int Nthreads =  omp_get_max_threads();
@@ -107,9 +109,11 @@ int main(int argc, char **argv){
       cout << "  OMPthreads       : " << Nthreads << "\n";
     cout << "  polyN            : " << N << "\n"
          << "  Nelements        : " << NX*NY*NZ << "\n"
+         << "  Nrepetitions     : " << Ntests << "\n"
          << "  avg elapsed time : " << elapsed << " s\n"
          << "    gs_local       : " << etime[0] << " s\n"
          << "    gs_host        : " << etime[1] << " s\n"
+         << "    gs_memcpy      : " << etime[2] << " s\n"
          << "  throughput       : " << ((dfloat)(NX*NY*NZ)*N*N*N/elapsed)/1.e9 << " GDOF/s\n";
   }
 
@@ -159,6 +163,7 @@ void printMeshPartitionStatistics(mesh_t *mesh){
   free(comms);
 }
 
+//#define ASYNC
 void gs(occa::memory o_v, const char *type, const char *op, ogs_t *ogs) 
 {
   size_t Nbytes;
@@ -187,10 +192,16 @@ void gs(occa::memory o_v, const char *type, const char *op, ogs_t *ogs)
     occaGather(ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, o_v, ogs::o_haloBuf);
     timer::toc("gs_local");
 
+#ifdef ASYNC
     ogs->device.finish();
     ogs->device.setStream(ogs::dataStream);
     ogs::o_haloBuf.copyTo(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
     ogs->device.setStream(ogs::defaultStream);
+#else    
+    timer::tic("gs_memcpy");
+    ogs::o_haloBuf.copyTo(ogs::haloBuf, ogs->NhaloGather*Nbytes);
+    timer::toc("gs_memcpy");
+#endif
   }
 
   if(ogs->NlocalGather) {
@@ -200,20 +211,31 @@ void gs(occa::memory o_v, const char *type, const char *op, ogs_t *ogs)
   }
 
   if (ogs->NhaloGather) {
+#ifdef ASYNC
     ogs->device.setStream(ogs::dataStream);
     ogs->device.finish();
+#endif
 
     timer::tic("gs_host");
     ogsHostGatherScatter(ogs::haloBuf, type, op, ogs->haloGshSym);
     timer::toc("gs_host");
 
+#ifdef ASYNC
     ogs::o_haloBuf.copyFrom(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
+#else    
+    timer::tic("gs_memcpy");
+    ogs::o_haloBuf.copyFrom(ogs::haloBuf, ogs->NhaloGather*Nbytes);
+    timer::toc("gs_memcpy");
+#endif
 
     timer::tic("gs_local");
     occaScatter(ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, ogs::o_haloBuf, o_v);
     timer::toc("gs_local");
+
+#ifdef ASYNC
     ogs->device.finish();
     ogs->device.setStream(ogs::defaultStream);
+#endif    
   }
 }
 
