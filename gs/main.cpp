@@ -24,7 +24,7 @@ int main(int argc, char **argv){
   setupAide options;
 
   if(argc<6){
-    printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <nRepetitions> <DEVICE-ID>\n");
+    printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <nRepetitions> <FP32> <DEVICE-ID>\n");
 
     MPI_Finalize();
     exit(1);
@@ -41,10 +41,13 @@ int main(int argc, char **argv){
   int Ntests = 1;
   if(argc>6) Ntests = atoi(argv[6]);
 
+  std::string floatType("double");
+  if(argc>7 && atoi(argv[7])) floatType = "float";
+
   options.setArgs("DEVICE NUMBER", "LOCAL-RANK");
-  if(argc>7) {
+  if(argc>8) {
     std::string deviceNumber;
-    deviceNumber.assign(strdup(argv[7]));
+    deviceNumber.assign(strdup(argv[8]));
     options.setArgs("DEVICE NUMBER", deviceNumber);
   }
 
@@ -83,7 +86,7 @@ int main(int argc, char **argv){
 
   occa::memory o_q = mesh->device.malloc(Nlocal*sizeof(dfloat));
 
-  gs(o_q, ogsDfloat, ogsAdd, ogs);
+  gs(o_q, floatType.c_str(), ogsAdd, ogs);
   timer::reset();
 
   if(mesh->rank == 0) cout << "starting measurement ...\n"; fflush(stdout);
@@ -91,7 +94,7 @@ int main(int argc, char **argv){
   MPI_Barrier(mesh->comm);
   const double start = MPI_Wtime();
   for(int test=0;test<Ntests;++test)
-    gs(o_q, ogsDfloat, ogsAdd, ogs);
+    gs(o_q, floatType.c_str(), ogsAdd, ogs);
   mesh->device.finish();
   MPI_Barrier(mesh->comm);
   const double elapsed = (MPI_Wtime() - start)/Ntests;

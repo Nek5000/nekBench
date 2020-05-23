@@ -8,7 +8,7 @@ export LD = mpic++
 
 export NALIGN ?= 64
 
-export OCCA_CUDA_ENABLED=0
+export OCCA_CUDA_ENABLED=1
 export OCCA_HIP_ENABLED=0
 export OCCA_OPENCL_ENABLED=0
 export OCCA_METAL_ENABLED=0
