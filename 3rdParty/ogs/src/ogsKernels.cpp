@@ -36,6 +36,7 @@ namespace ogs {
 
   void* haloBuf;
   occa::memory o_haloBuf;
+  occa::memory h_haloBuf;
 
   occa::stream defaultStream;
   occa::stream dataStream;
@@ -190,17 +191,18 @@ void ogs::initKernels(MPI_Comm comm, occa::device device) {
   }
 
   if(device.mode()=="CUDA"){ // add backend compiler optimization for CUDA
-   kernelInfo["compiler_flags"] += " --ftz=true";
-   kernelInfo["compiler_flags"] += " --prec-div=false";
-   kernelInfo["compiler_flags"] += " --prec-sqrt=false";
-   kernelInfo["compiler_flags"] += " --use_fast_math";
-   kernelInfo["compiler_flags"] += " --fmad=true"; // compiler option for cuda
+   kernelInfo["compiler_flags"] += " --ftz=true ";
+   kernelInfo["compiler_flags"] += " --prec-div=false ";
+   kernelInfo["compiler_flags"] += " --prec-sqrt=false ";
+   kernelInfo["compiler_flags"] += " --use_fast_math ";
+   kernelInfo["compiler_flags"] += " --fmad=true "; // compiler option for cuda
   }
 
   if (rank==0) printf("Compiling GatherScatter Kernels...");fflush(stdout);
 
-  for (int r=0;r<size;r++) {
-    if (r==rank) {
+  for (int r=0;r<2;r++){
+    if ((r==0 && rank==0) || (r==1 && rank>0)) {      
+
       ogs::gatherScatterKernel_floatAdd = device.buildKernel(DOGS "/okl/gatherScatter.okl", "gatherScatter_floatAdd", kernelInfo);
       ogs::gatherScatterKernel_floatMul = device.buildKernel(DOGS "/okl/gatherScatter.okl", "gatherScatter_floatMul", kernelInfo);
       ogs::gatherScatterKernel_floatMin = device.buildKernel(DOGS "/okl/gatherScatter.okl", "gatherScatter_floatMin", kernelInfo);

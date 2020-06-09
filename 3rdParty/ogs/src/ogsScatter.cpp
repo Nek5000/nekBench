@@ -59,15 +59,10 @@ void ogsScatterStart(occa::memory o_sv,
   if (ogs->NhaloGather) {
     if (ogs::o_haloBuf.size() < ogs->NhaloGather*Nbytes) {
       if (ogs::o_haloBuf.size()) ogs::o_haloBuf.free();
-#if USE_NEW_PINNED_MALLOC==1
-      occa::properties props;
-      props["mapped"] = true;
-      ogs::o_haloBuf = ogs->device.malloc(ogs->NhaloGather*Nbytes, props);
-      ogs::haloBuf = ogs::o_haloBuf.ptr();
-#else
-      ogs::o_haloBuf = ogs->device.mappedAlloc(ogs->NhaloGather*Nbytes);
-      ogs::haloBuf = ogs::o_haloBuf.getMappedPointer();
-#endif
+      //      ogs::o_haloBuf = ogs->device.mappedAlloc(ogs->NhaloGather*Nbytes);
+      //      ogs::haloBuf = ogs::o_haloBuf.getMappedPointer();
+
+      ogs::haloBuf = ogsHostMallocPinned(ogs->device, ogs->NhaloGather*Nbytes, NULL, ogs::o_haloBuf, ogs::h_haloBuf);
     }
   }
 
