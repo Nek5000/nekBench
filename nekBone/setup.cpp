@@ -270,6 +270,9 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
       BP->vecInvKernel =
           mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecInv", kernelInfo);
 
+      BP->vecScaleKernel =
+          mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecScale", kernelInfo);
+
       BP->updateJacobiKernel =
           mesh->device.buildKernel(DBP "/kernel/updateJacobi.okl", "updateJacobi", kernelInfo);
 

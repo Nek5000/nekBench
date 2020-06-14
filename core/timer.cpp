@@ -16,7 +16,9 @@ typedef struct tagData_{
   double hostElapsed;
   double deviceElapsed;
   double startTime;
+  double stopTime;
   occa::streamTag startTag;
+  occa::streamTag stopTag;
 } tagData;
 std::map<std::string,tagData> m_;
 
@@ -60,16 +62,13 @@ void deviceTic(const std::string tag){
 }
 
 void deviceToc(const std::string tag){
-  occa::streamTag stopTag=device_.tagStream();
+  m_[tag].stopTag =device_.tagStream();
 
   std::map<std::string,tagData>::iterator it=m_.find(tag);
   if(it==m_.end()){
     printf("Error in deviceToc: Invalid tag name. %s:%u\n",__FILE__,__LINE__);
     MPI_Abort(comm_,1);
   }
-
-  it->second.deviceElapsed+=device_.timeBetween(it->second.startTag,stopTag);
-  it->second.count++;
 }
 
 void hostTic(const std::string tag,int ifSync){
@@ -83,16 +82,13 @@ void hostTic(const std::string tag){
 }
 
 void hostToc(const std::string tag){
-  double stopTime=MPI_Wtime();
+  m_[tag].stopTime=MPI_Wtime();
 
   auto it=m_.find(tag);
   if(it==m_.end()){
     printf("Error in deviceToc: Invalid tag name. %s:%u\n",__FILE__,__LINE__);
     MPI_Abort(comm_,1);
   }
-
-  it->second.hostElapsed+=(stopTime - it->second.startTime);
-  it->second.count++;
 }
 
 void tic(const std::string tag,int ifSync){
@@ -108,22 +104,27 @@ void tic(const std::string tag){
 }
 
 void toc(const std::string tag){
-  auto stopTime=MPI_Wtime();
-  auto stopTag =device_.tagStream();
+  m_[tag].stopTime=MPI_Wtime();
+  m_[tag].stopTag =device_.tagStream();
 
   auto it=m_.find(tag);
   if(it==m_.end()){
     printf("Error in deviceToc: Invalid tag name. %s:%u\n",__FILE__,__LINE__);
     MPI_Abort(comm_,1);
   }
+}
 
-  it->second.hostElapsed  +=(stopTime - it->second.startTime);
-  it->second.deviceElapsed+=device_.timeBetween(it->second.startTag,stopTag);
-  it->second.count++;
+void update(){
+  for (auto it = m_.begin(); it != m_.end(); it++) {
+    it->second.hostElapsed += it->second.stopTime - it->second.startTime;
+    it->second.deviceElapsed += device_.timeBetween(it->second.startTag,it->second.stopTag);
+    it->second.count++;
+  }
 }
 
 double hostElapsed(const std::string tag){
   auto it=m_.find(tag);
+  it->second.hostElapsed = it->second.stopTime - it->second.startTime;
   if(it==m_.end()){ return NEKRS_TIMER_INVALID_KEY; }
   return it->second.hostElapsed;
 }

@@ -82,6 +82,7 @@ int main(int argc, char **argv){
       for(int test=0;test<Ntests;++test) triadKernel(N[i], 1.0, o_a, o_b, o_c);
       device.finish();
       timer::toc("triad");
+      timer::update();
       double elapsed = timer::query("triad", "HOST:MAX")/Ntests;
       std::cout << "triad stream: "
                 << N[i] << " words, "
@@ -104,6 +105,7 @@ int main(int argc, char **argv){
       for(int test=0;test<Ntests;++test) triadKernel(N[i], 1.0, o_a, o_b, o_c);
       device.finish();
       timer::toc("triad");
+      timer::update();
       double elapsed = timer::query("triad", "HOST:MAX")/Ntests;
       std::cout << "triad stream subBuffer: "
                 << N[i] << " words, "
@@ -134,6 +136,7 @@ int main(int argc, char **argv){
       for(int test=0;test<Ntests;++test) o_a.copyTo(ptr, bytes);
       device.finish();
       timer::toc("memcpyDH");
+      timer::update();
       const double elapsed = timer::query("memcpyDH", "HOST:MAX")/Ntests;
       std::cout << "D->H memcpy " <<  N[i] << " words, " 
                 << elapsed << " s, "
@@ -161,6 +164,7 @@ int main(int argc, char **argv){
       for(int test=0;test<Ntests;++test) o_a.copyTo(o_b, bytes);
       device.finish();
       timer::toc("memcpyDD");
+      timer::update();
       const double elapsed = timer::query("memcpyDD", "HOST:MAX")/Ntests;
       std::cout << "D->D memcpy " <<  N[i] << " words, " 
                 << elapsed << " s, "

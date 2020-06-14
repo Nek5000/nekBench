@@ -30,6 +30,8 @@ SOFTWARE.
 #include "mesh.h"
 #include "setCompilerFlags.hpp"
 
+#include "gslib.h"
+
 int findBestPeriodicMatch(dfloat xper, dfloat yper, dfloat zper,
 			  dfloat x1, dfloat y1, dfloat z1,
 			  int Np2, int *nodeList, dfloat *x2, dfloat *y2, dfloat *z2, int *nP){
@@ -3491,4 +3493,91 @@ void meshLocalizedConnectNodes(mesh_t *mesh){
   free(sendBuffer);
   free(localizedIds);
   
+}
+
+void meshPrintPartitionStatistics(mesh_t *mesh)
+{
+  if(mesh->size == 1) return;
+  ogs_t *ogs = mesh->ogs;
+
+  int nelMin, nelMax;
+  nelMax = mesh->Nelements;
+  nelMin = mesh->Nelements;
+  MPI_Allreduce(MPI_IN_PLACE, &nelMin, 1, MPI_INT, MPI_MIN, ogs->comm);
+  MPI_Allreduce(MPI_IN_PLACE, &nelMax, 1, MPI_INT, MPI_MAX, ogs->comm);
+
+  int nhMin, nhMax, nhSum;
+  nhMax = nhMin = nhSum = ogs->NhaloGather;
+  MPI_Allreduce(MPI_IN_PLACE, &nhMax, 1, MPI_INT, MPI_MAX, ogs->comm);
+  MPI_Allreduce(MPI_IN_PLACE, &nhMin, 1, MPI_INT, MPI_MIN, ogs->comm);
+  MPI_Allreduce(MPI_IN_PLACE, &nhSum, 1, MPI_INT, MPI_SUM, ogs->comm);
+
+  if (mesh->rank == 0) {
+    printf("\n");
+    printf(
+      "max elements: %d | min elements: %d | balance: %lf\n",
+      nelMax, nelMin, (double)nelMax/nelMin);
+    printf(
+        "max halo size: %d | min halo size: %d | avg halo size: %lf\n",
+        nhMax, nhMin, (double)nhSum/mesh->size);
+    printf("\n");
+  }
+
+  // gs pairwise statistics
+  for (int send=0; send<1; ++send){
+    int Nmsg;
+    pw_data_nmsg((gs_data*) ogs->hostGsh, send, &Nmsg);
+    int *Ncomm = (int *) malloc(Nmsg*sizeof(int));
+    pw_data_size((gs_data*) ogs->hostGsh, send, Ncomm);
+ 
+     // number of messages
+    int ncMin, ncMax, ncSum;
+    ncMax = Nmsg;
+    ncMin = Nmsg;
+    ncSum = Nmsg;
+    MPI_Allreduce(MPI_IN_PLACE, &ncMax, 1, MPI_INT, MPI_MAX, ogs->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &ncMin, 1, MPI_INT, MPI_MIN, ogs->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &ncSum, 1, MPI_INT, MPI_SUM, ogs->comm);
+ 
+    // message sizes 
+    int nsMin, nsMax, nsSum;
+    nsMax = Ncomm[0];
+    nsMin = Ncomm[0];
+    nsSum = Ncomm[0];
+    for (int i=1; i<Nmsg; ++i){
+      nsMax = Ncomm[i] > Ncomm[i-1] ? Ncomm[i] : Ncomm[i-1];
+      nsMin = Ncomm[i] < Ncomm[i-1] ? Ncomm[i] : Ncomm[i-1];
+      nsSum += Ncomm[i];
+    }
+    nsSum = nsSum/Nmsg;   
+    MPI_Allreduce(MPI_IN_PLACE, &nsMax, 1, MPI_INT, MPI_MAX, ogs->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &nsMin, 1, MPI_INT, MPI_MIN, ogs->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &nsSum, 1, MPI_INT, MPI_SUM, ogs->comm);
+ 
+    // message volume per rank 
+    int nssMin, nssMax, nssSum;
+    nssMin = nsSum;
+    nssMax = nsSum;
+    nssSum = nsSum;
+    MPI_Allreduce(MPI_IN_PLACE, &nssMax, 1, MPI_INT, MPI_MAX, ogs->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &nssMin, 1, MPI_INT, MPI_MIN, ogs->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &nssSum, 1, MPI_INT, MPI_SUM, ogs->comm);
+ 
+    if (mesh->rank == 0) {
+      printf(
+        "max nmsg: %d | min nmsg: %d | avg nmsg: %lf\n",
+        ncMax, ncMin, (double)ncSum/mesh->size);
+     printf(
+        "max msg size: %d | min msg size: %d | avg msg size: %lf\n",
+        nsMax, nsMin, (double)nsSum/mesh->size);
+      printf(
+        "max msg volume: %d | min msg volume: %d | avg msg volume: %lf\n",
+        nssMax, nssMin, (double)nssSum/mesh->size);
+      printf("\n");
+    }
+ 
+    free(Ncomm);
+  }
+
+  fflush(stdout);
 }

@@ -1,0 +1,9 @@
+@kernel void dummy(const int Ntotal,
+                   @restrict double * U)
+{
+  for(dlong n=0;n<Ntotal;++n;@tile(256,@outer,@inner)){
+    if(n<Ntotal){
+      for(dlong i=0;i<5;i++) U[n] += pow(U[n],2.1*i);
+    }
+  }
+}

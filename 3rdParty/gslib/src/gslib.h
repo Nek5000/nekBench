@@ -5,6 +5,10 @@
 
 #define MPI 1
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -18,3 +22,7 @@
 #include "gs_defs.h"
 #include "gs.h"
 #include "crs.h"
+
+#ifdef __cplusplus
+}
+#endif

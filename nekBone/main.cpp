@@ -3,13 +3,17 @@
 
 int solve(BP_t *BP, occa::memory &o_lambda, dfloat tol, occa::memory &o_r, occa::memory &o_x, double *opElapsed){
   mesh_t *mesh = BP->mesh;
-  setupAide options = BP->options;
+  setupAide &options = BP->options;
 
   int Niter = 0;
   int maxIter = 1000; 
 
-  options.getArgs("MAXIMUM ITERATIONS", maxIter);
-  options.getArgs("SOLVER TOLERANCE", tol);
+  if(tol > 0) {
+    options.setArgs("FIXED ITERATION COUNT", "FALSE");
+  } else {
+    options.setArgs("FIXED ITERATION COUNT", "TRUE");
+    options.getArgs("MAXIMUM ITERATIONS", maxIter);
+  }
 
   if(BP->allNeumann) 
     BPZeroMean(BP, o_r);
@@ -102,9 +106,10 @@ int main(int argc, char **argv){
  
   dlong Ndofs = BP->Nfields*mesh->Np*mesh->Nelements;
  
-  // convergence tolerance
+  // default convergence tolerance
   dfloat tol = 1e-8;
-  
+  options.getArgs("SOLVER TOLERANCE", tol); 
+ 
   int it;
   int bpstart = BP->BPid;
   int bpid = BP->BPid;
@@ -139,20 +144,24 @@ int main(int argc, char **argv){
     }
     dfloat globalMaxError = 0;
     MPI_Allreduce(&maxError, &globalMaxError, 1, MPI_DFLOAT, MPI_MAX, mesh->comm);
-    if(mesh->rank==0) printf("correctness check: maxError = %g\n", globalMaxError);
+    if(mesh->rank==0) printf("correctness check: maxError = %g in %d iterations\n", globalMaxError, it);
 
-    if(mesh->rank==0) cout << "\nrunning solver ...";
-    mesh->device.finish();  
-    MPI_Barrier(mesh->comm);
-    double elapsed = MPI_Wtime();
+    if(options.compareArgs("FIXED ITERATION COUNT", "TRUE")) tol = 0;
+    if(mesh->rank==0) cout << "\nrunning solver ..."; fflush(stdout);
+    double elapsed;
     for(int test=0;test<Ntests;++test){
+      BP->vecScaleKernel(mesh->Nelements*mesh->Np, 0, BP->o_x); // reset 
+      BP->o_r.copyFrom(BP->r); // reset 
+      mesh->device.finish();  
+      MPI_Barrier(mesh->comm);
+      double start = MPI_Wtime();
       it = solve(BP, BP->o_lambda, tol, BP->o_r, BP->o_x, &opElapsed);
+      MPI_Barrier(mesh->comm);
+      elapsed += MPI_Wtime() - start;
+      timer::update();
     }
-    mesh->device.finish();  
-    MPI_Barrier(mesh->comm);
     if(mesh->rank==0) cout << " done\n";
-    elapsed = (MPI_Wtime() - elapsed)/Ntests; 
-
+    elapsed /= Ntests; 
 
     // print statistics 
     double NGbytes;

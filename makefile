@@ -47,14 +47,14 @@ export OLIBGSDIR = $(CURDIR)/3rdParty/ogs
 export BLASLAPACK_DIR = $(CURDIR)/3rdParty/BlasLapack
 export NEKBONEDIR = $(CURDIR)/nekBone 
 export AXHELMDIR  = $(CURDIR)/axhelm 
-export BWDIR  = $(CURDIR)/bw 
-export ADVDIR  = $(CURDIR)/adv 
-export DOTDIR  = $(CURDIR)/dot 
-export GSDIR  = $(CURDIR)/gs 
+export BWDIR  = $(CURDIR)/bw
+export ADVDIR  = $(CURDIR)/adv
+export DOTDIR  = $(CURDIR)/dot
+export GSDIR  = $(CURDIR)/gs
 
-export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(OLIBGSDIR) -I$(OLIBGSDIR)/include -DDOGS='"$(PREFIX)/libgs/"' -D DBP='"$(PREFIX)/"' $(paths)
+export CFLAGS = -I. -DOCCA_VERSION_1_0 $(cCompilerFlags) $(flags) -I$(HDRDIR) -I$(LIBGSDIR)/src -I$(OLIBGSDIR) -I$(OLIBGSDIR)/include -DDOGS='"$(PREFIX)/libgs/"' -D DBP='"$(PREFIX)/"' $(paths)
 
-export CXXFLAGS = -I. -DOCCA_VERSION_1_0 $(compilerFlags) $(flags) -I$(HDRDIR) -I$(OLIBGSDIR) -I$(OLIBGSDIR)/include -DDOGS='"$(PREFIX)/libgs/"' -D DBP='"$(PREFIX)/"' $(paths)
+export CXXFLAGS = -I. -DOCCA_VERSION_1_0 $(compilerFlags) $(flags) -I$(HDRDIR) -I$(LIBGSDIR)/src -I$(OLIBGSDIR) -I$(OLIBGSDIR)/include -DDOGS='"$(PREFIX)/libgs/"' -D DBP='"$(PREFIX)/"' $(paths)
 
 LDFLAGS = -lgfortran -fopenmp
 LDFLAGS_BLAS = $(PREFIX)/blasLapack/lib/libBlasLapack.a

@@ -30,6 +30,9 @@
 #define gs_free    PREFIXED_NAME(gs_free  )
 #define gs_unique  PREFIXED_NAME(gs_unique)
 #define gs_hf2c    PREFIXED_NAME(gs_hf2c  )
+#define pw_data_nmsg PREFIXED_NAME(pw_data_nmsg )
+#define pw_data_size PREFIXED_NAME(pw_data_size )
+
 
 GS_DEFINE_DOM_SIZES()
 
@@ -1457,6 +1460,21 @@ void gs_unique(slong *id, uint n, const struct comm *comm)
   make_topology_unique(&top,id,comm->id,&cr.data);
   gs_topology_free(&top);
   crystal_free(&cr);
+}
+
+void pw_data_nmsg(struct gs_data *gsh, int send, int *n)
+{
+  struct gs_remote *r = &gsh->r;
+  const struct pw_data *pwd = r->data;
+  *n = pwd->comm[send].n;
+}
+
+void pw_data_size(struct gs_data *gsh, int send, int *n)
+{
+  int i;
+  const struct pw_data *pwd = (&gsh->r)->data;
+  int ns = pwd->comm[send].n;
+  for(i=0; i< ns; ++i) n[i] = pwd->comm[send].size[i];
 }
 
 /*------------------------------------------------------------------------------

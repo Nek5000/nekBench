@@ -422,6 +422,7 @@ mesh3D *meshSetupBoxTet3D(int N, int cubN, setupAide &options);
 
 void meshConnectPeriodicFaceNodes3D(mesh3D *mesh, dfloat xper, dfloat yper, dfloat zper);
 
+void meshPrintPartitionStatistics(mesh_t *mesh);
 
 int meshWarpBlendNodesTet3D(int N, dfloat **r, dfloat **s, dfloat **t);
 

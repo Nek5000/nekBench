@@ -44,7 +44,8 @@ all: gs install
 
 install:
 	@mkdir -p $(PREFIX)
-	@cd $(CURDIR)	 
+	@cd $(CURDIR)
+	@cp *.okl $(PREFIX) 
 	@mv gs $(PREFIX) 
 
 
