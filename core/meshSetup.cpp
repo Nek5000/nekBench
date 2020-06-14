@@ -3531,16 +3531,18 @@ void meshPrintPartitionStatistics(mesh_t *mesh)
     pw_data_size((gs_data*) ogs->hostGsh, send, Ncomm);
  
      // number of messages
-    int ncMin, ncMax, ncSum;
+    int ncMin, ncMax;
+    double ncSum;
     ncMax = Nmsg;
     ncMin = Nmsg;
     ncSum = Nmsg;
     MPI_Allreduce(MPI_IN_PLACE, &ncMax, 1, MPI_INT, MPI_MAX, ogs->comm);
     MPI_Allreduce(MPI_IN_PLACE, &ncMin, 1, MPI_INT, MPI_MIN, ogs->comm);
-    MPI_Allreduce(MPI_IN_PLACE, &ncSum, 1, MPI_INT, MPI_SUM, ogs->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &ncSum, 1, MPI_DOUBLE, MPI_SUM, ogs->comm);
  
     // message sizes 
-    int nsMin, nsMax, nsSum;
+    int nsMin, nsMax;
+    double nsSum;
     nsMax = Ncomm[0];
     nsMin = Ncomm[0];
     nsSum = Ncomm[0];
@@ -3552,27 +3554,28 @@ void meshPrintPartitionStatistics(mesh_t *mesh)
     nsSum = nsSum/Nmsg;   
     MPI_Allreduce(MPI_IN_PLACE, &nsMax, 1, MPI_INT, MPI_MAX, ogs->comm);
     MPI_Allreduce(MPI_IN_PLACE, &nsMin, 1, MPI_INT, MPI_MIN, ogs->comm);
-    MPI_Allreduce(MPI_IN_PLACE, &nsSum, 1, MPI_INT, MPI_SUM, ogs->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &nsSum, 1, MPI_DOUBLE, MPI_SUM, ogs->comm);
  
     // message volume per rank 
-    int nssMin, nssMax, nssSum;
+    int nssMin, nssMax;
+    double nssSum;
     nssMin = nsSum;
     nssMax = nsSum;
     nssSum = nsSum;
     MPI_Allreduce(MPI_IN_PLACE, &nssMax, 1, MPI_INT, MPI_MAX, ogs->comm);
     MPI_Allreduce(MPI_IN_PLACE, &nssMin, 1, MPI_INT, MPI_MIN, ogs->comm);
-    MPI_Allreduce(MPI_IN_PLACE, &nssSum, 1, MPI_INT, MPI_SUM, ogs->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &nssSum, 1, MPI_DOUBLE, MPI_SUM, ogs->comm);
  
     if (mesh->rank == 0) {
       printf(
         "max nmsg: %d | min nmsg: %d | avg nmsg: %lf\n",
-        ncMax, ncMin, (double)ncSum/mesh->size);
+        ncMax, ncMin, ncSum/mesh->size);
      printf(
         "max msg size: %d | min msg size: %d | avg msg size: %lf\n",
-        nsMax, nsMin, (double)nsSum/mesh->size);
+        nsMax, nsMin, nsSum/mesh->size);
       printf(
         "max msg volume: %d | min msg volume: %d | avg msg volume: %lf\n",
-        nssMax, nssMin, (double)nssSum/mesh->size);
+        nssMax, nssMin, nssSum/mesh->size);
       printf("\n");
     }
  

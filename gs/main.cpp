@@ -43,7 +43,7 @@ int main(int argc, char **argv)
   threadModel.assign(strdup(argv[5]));
   options.setArgs("THREAD MODEL", threadModel);
 
-  int Ntests = 10;
+  int Ntests = 100;
   if(argc>6) Ntests = atoi(argv[6]);
 
   int dummyKernel = 0;
