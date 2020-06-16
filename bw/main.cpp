@@ -118,7 +118,7 @@ int main(int argc, char **argv){
   std::cout << "\n";
 
   {
-    const int N[] = {1, 2000, 4000, 8000, 50000, 100000, 150000, 2000*512, 4000*512, 8000*512};
+    const int N[] = {1, 4000, 8000, 50000, 100000, 150000, 300000, 2000*512, 4000*512, 8000*512};
     const int Nsize = sizeof(N)/sizeof(int);
     const int nWords = N[sizeof(N)/sizeof(N[0]) - 1];
     props["mapped"] = true;
@@ -142,6 +142,25 @@ int main(int argc, char **argv){
                 << elapsed << " s, "
                 << bytes/elapsed << " bytes/s\n"; 
     }
+
+    for(int i=0; i<Nsize; ++i) {
+      int Ntests = 5000;
+      if(N[i] > 10000) Ntests = 100; 
+      const long long int bytes = N[i]*sizeof(double);
+      void *ptr = h_u.ptr(props);
+      device.finish();
+      timer::reset("memcpyHD");
+      timer::tic("memcpyHD");
+      for(int test=0;test<Ntests;++test) o_a.copyFrom(ptr, bytes);
+      device.finish();
+      timer::toc("memcpyHD");
+      timer::update();
+      const double elapsed = timer::query("memcpyHD", "HOST:MAX")/Ntests;
+      std::cout << "H->D memcpy " <<  N[i] << " words, " 
+                << elapsed << " s, "
+                << bytes/elapsed << " bytes/s\n"; 
+    }
+
     h_u.free();
     o_a.free();
   }
