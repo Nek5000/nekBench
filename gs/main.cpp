@@ -9,22 +9,12 @@
 #include "mesh.h"
 #include "timer.hpp"
 
-#include "osu_multi_lat.h"
+#include "ping_pong.h"
 
-#include "gslib.h"
-#include "ogs.hpp"
-#include "ogsKernels.hpp"
-#include "ogsInterface.h"
-
-static void gsStart(occa::memory o_v, const char *type, const char *op, ogs_t *ogs); 
-static void gsFinish(occa::memory o_v, const char *type, const char *op, ogs_t *ogs); 
-static void printMeshPartitionStatistics(mesh_t *mesh);
-
-#define ASYNC
+#include "mygs.h"
 
 int main(int argc, char **argv)
 {
-  // start up MPI
   MPI_Init(&argc, &argv);
   setupAide options;
 
@@ -77,13 +67,16 @@ int main(int argc, char **argv)
   options.setArgs("ELEMENT TYPE", std::to_string(HEXAHEDRA));
   options.setArgs("POLYNOMIAL DEGREE", std::to_string(N));
 
+  // setup mesh
   mesh_t *mesh = meshSetupBoxHex3D(N, 0, options);
   mesh->elementType = HEXAHEDRA;
   occa::properties kernelInfo;
   meshOccaSetup3D(mesh, options, kernelInfo);
 
+  // setup dummy kernel
   const int uDim = mesh->Nelements*mesh->Np;
-  occa::memory o_U = mesh->device.malloc(uDim*sizeof(double));
+  double *U = (double*) calloc(uDim, sizeof(double));
+  occa::memory o_U = mesh->device.malloc(uDim*sizeof(double), U);
   occa::kernel kernel;
   if(dummyKernel) {
     for (int r=0;r<2;r++){
@@ -96,22 +89,29 @@ int main(int argc, char **argv)
 
   timer::init(mesh->comm, mesh->device, 1);
 
-  if(mesh->rank == 0) cout << "\n";
-  if(mesh->size > 1 && (mesh->size)%2 == 0) osu_multi_latency(0,argv);
-  if(mesh->rank == 0) cout << "\n";
-
+  // setup gs
   const dlong Nlocal = mesh->Nelements*mesh->Np; 
   ogs_t *ogs= ogsSetup(Nlocal, mesh->globalIds, mesh->comm, 1, mesh->device);
   mesh->ogs = ogs; 
-  meshPrintPartitionStatistics(mesh);
+
+  //meshPrintPartitionStatistics(mesh);
 
   occa::memory o_q = mesh->device.malloc(Nlocal*sizeof(dfloat));
-
   gsStart(o_q, floatType.c_str(), ogsAdd, ogs);
   gsFinish(o_q, floatType.c_str(), ogsAdd, ogs);
   timer::reset();
 
   if(mesh->rank == 0) cout << "starting measurement ...\n"; fflush(stdout);
+
+  // ping pong
+  mesh->device.finish();
+  MPI_Barrier(mesh->comm);
+  if(mesh->size > 1 && (mesh->size)%2 == 0) {
+    const int nPairs = mesh->size/2;
+    //pingPongMulti(nPairs, mesh->device, mesh->comm);
+  }
+
+  // gs
   mesh->device.finish();
   MPI_Barrier(mesh->comm);
   const double start = MPI_Wtime();
@@ -131,6 +131,7 @@ int main(int argc, char **argv)
   MPI_Barrier(mesh->comm);
   const double elapsed = (MPI_Wtime() - start)/Ntests;
 
+  // print stats 
   double etime[10];
   etime[0] = timer::query("gather_halo", "DEVICE:MAX")/Ntests;
   etime[1] = timer::query("gs_interior", "DEVICE:MAX")/Ntests;
@@ -165,100 +166,3 @@ int main(int argc, char **argv)
   MPI_Finalize();
   return 0;
 }
-
-void gsStart(occa::memory o_v, const char *type, const char *op, ogs_t *ogs) 
-{
-  size_t Nbytes;
-  if (!strcmp(type, "float")) 
-    Nbytes = sizeof(float);
-  else if (!strcmp(type, "double")) 
-    Nbytes = sizeof(double);
-  else if (!strcmp(type, "int")) 
-    Nbytes = sizeof(int);
-  else if (!strcmp(type, "long long int")) 
-    Nbytes = sizeof(long long int);
-
-  if (ogs->NhaloGather) {
-    if (ogs::o_haloBuf.size() < ogs->NhaloGather*Nbytes) {
-      if (ogs::o_haloBuf.size()) ogs::o_haloBuf.free();
-
-      occa::properties props;
-      props["mapped"] = true;
-      ogs::o_haloBuf = ogs->device.malloc(ogs->NhaloGather*Nbytes, props);
-      ogs::haloBuf = ogs::o_haloBuf.ptr();
-    }
-  }
-
-  if (ogs->NhaloGather) {
-    timer::tic("gather_halo");
-    occaGather(ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, o_v, ogs::o_haloBuf);
-    timer::toc("gather_halo");
-
-#ifdef ASYNC
-    ogs->device.finish();
-    ogs->device.setStream(ogs::dataStream);
-    timer::tic("gs_memcpy");
-    ogs::o_haloBuf.copyTo(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
-    timer::toc("gs_memcpy");
-    ogs->device.setStream(ogs::defaultStream);
-#else    
-    timer::tic("gs_memcpy");
-    ogs::o_haloBuf.copyTo(ogs::haloBuf, ogs->NhaloGather*Nbytes);
-    timer::toc("gs_memcpy");
-#endif
-  }
-}
-
-void gsFinish(occa::memory o_v, const char *type, const char *op, ogs_t *ogs) 
-{
-  size_t Nbytes;
-  if (!strcmp(type, "float")) 
-    Nbytes = sizeof(float);
-  else if (!strcmp(type, "double")) 
-    Nbytes = sizeof(double);
-  else if (!strcmp(type, "int")) 
-    Nbytes = sizeof(int);
-  else if (!strcmp(type, "long long int")) 
-    Nbytes = sizeof(long long int);
-
-  if(ogs->NlocalGather) {
-    timer::tic("gs_interior");
-    occaGatherScatter(ogs->NlocalGather, ogs->o_localGatherOffsets, ogs->o_localGatherIds, type, op, o_v);
-    timer::toc("gs_interior");
-  }
-
-  if (ogs->NhaloGather) {
-#ifdef ASYNC
-    ogs->device.setStream(ogs::dataStream);
-    //timer::tic("gs_memcpy");
-    ogs->device.finish();
-    //timer::toc("gs_memcpy");
-#endif
-
-    timer::tic("gs_host");
-    ogsHostGatherScatter(ogs::haloBuf, type, op, ogs->haloGshSym);
-    timer::toc("gs_host");
-
-#ifdef ASYNC
-    timer::tic("gs_memcpy");
-    ogs::o_haloBuf.copyFrom(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
-    timer::toc("gs_memcpy");
-#else    
-    timer::tic("gs_memcpy");
-    ogs::o_haloBuf.copyFrom(ogs::haloBuf, ogs->NhaloGather*Nbytes);
-    timer::toc("gs_memcpy");
-#endif
-
-    timer::tic("scatter");
-    occaScatter(ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, ogs::o_haloBuf, o_v);
-    timer::toc("scatter");
-
-#ifdef ASYNC
-    //timer::tic("gs_memcpy");
-    ogs->device.finish();
-    //timer::toc("gs_memcpy");
-    ogs->device.setStream(ogs::defaultStream);
-#endif    
-  }
-}
-

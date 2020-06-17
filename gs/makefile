@@ -26,10 +26,9 @@ $(OGSDIR)/ogs.hpp
 
 # list of objects to be compiled
 AOBJS    = \
-./osu_util.o \
-./osu_util_mpi.o \
-./osu_multi_lat.o \
-./main.o \
+./ping_pong.o \
+./mygs.o \
+./main.o
 
 # library objects
 LOBJS = \
@@ -50,7 +49,7 @@ install:
 
 
 gs: $(AOBJS) $(LOBJS)
-	$(LD)  -o gs $(COBJS) $(AOBJS) $(LOBJS) $(LDFLAGS)
+	$(LD) -o gs $(COBJS) $(AOBJS) $(LOBJS) $(LDFLAGS)
 
 clean:
 	@rm -rf *.o

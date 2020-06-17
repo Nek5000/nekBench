@@ -3525,10 +3525,12 @@ void meshPrintPartitionStatistics(mesh_t *mesh)
 
   // gs pairwise statistics
   for (int send=0; send<1; ++send){
-    int Nmsg;
-    pw_data_nmsg((gs_data*) ogs->hostGsh, send, &Nmsg);
+    int Nmsg = 0;
+    struct gs_data *gsh = (gs_data*) ogs->hostGsh; 
+    pw_data_nmsg(gsh, send, &Nmsg);
+    printf("Nmsg: %d\n", Nmsg);
     int *Ncomm = (int *) malloc(Nmsg*sizeof(int));
-    pw_data_size((gs_data*) ogs->hostGsh, send, Ncomm);
+    pw_data_size(gsh, send, Ncomm);
  
      // number of messages
     int ncMin, ncMax;
