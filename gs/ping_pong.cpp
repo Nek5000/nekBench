@@ -1,5 +1,6 @@
 #include <mpi.h>
 #include <assert.h>
+#include <unistd.h>
 #include <occa.hpp>
 
 #define FIELD_WIDTH 20
@@ -38,12 +39,14 @@ struct options_t options;
 char *s_buf, *r_buf;
 
 extern "C" { // Begin C Linkage
-int pingPongMulti(int pairs, occa::device device, MPI_Comm comm)
+int pingPongMulti(int pairs, int useDevice, occa::device device, MPI_Comm comm)
 {
 
     int size, rank;
     MPI_Comm_size(comm,&size);
     MPI_Comm_rank(comm,&rank);
+
+    if(size == 0 || size%2 != 0) return 1;
 
     options.min_message_size = 0;
     options.max_message_size = 1 << 20;
@@ -54,13 +57,22 @@ int pingPongMulti(int pairs, occa::device device, MPI_Comm comm)
     options.iterations_large = LAT_LOOP_LARGE;
     options.skip_large = LAT_SKIP_LARGE;
 
-    occa::memory o_s_buf = device.malloc(options.max_message_size);
-    occa::memory o_r_buf = device.malloc(options.max_message_size);
-    s_buf = (char*) o_s_buf.ptr();
-    r_buf = (char*) o_s_buf.ptr();
+    occa::memory o_s_buf;
+    occa::memory o_r_buf;
+
+    if(useDevice) {
+      o_s_buf = device.malloc(options.max_message_size);
+      o_r_buf = device.malloc(options.max_message_size);
+      s_buf = (char*) o_s_buf.ptr();
+      r_buf = (char*) o_s_buf.ptr();
+    } else {   
+      unsigned long align_size = sysconf(_SC_PAGESIZE);
+      posix_memalign((void**)&s_buf, align_size, options.max_message_size);
+      posix_memalign((void**)&r_buf, align_size, options.max_message_size);
+    }
 
     if(rank == 0) {
-        printf("\nping pong multi with %d pairs\n", pairs);
+        printf("\nping pong multi - pairs: %d useDevice: %d\n", pairs, useDevice);
         fflush(stdout);
     }
 
@@ -68,8 +80,13 @@ int pingPongMulti(int pairs, occa::device device, MPI_Comm comm)
     multi_latency(comm);
     MPI_CHECK(MPI_Barrier(comm));
 
-    o_s_buf.free();
-    o_r_buf.free();
+    if(useDevice) {
+      o_s_buf.free();
+      o_r_buf.free();
+    } else {
+      free(s_buf);
+      free(r_buf); 
+    }
 
     return EXIT_SUCCESS;
 }
