@@ -44,7 +44,7 @@ int main(int argc, char **argv)
 
   int enabledGPUMPI = 0;
   if(argc>9) {
-    if(argv[9]) enabledGPUMPI = 1;
+    if(atoi(argv[9])) enabledGPUMPI = 1;
   }
   
   int createDetailedPingPongFile = 0;
