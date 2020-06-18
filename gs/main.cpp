@@ -19,7 +19,7 @@ int main(int argc, char **argv)
   setupAide options;
 
   if(argc<6){
-    printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <nRepetitions> <run dummy kernel> <use FP32> <GPU aware MPI> <DEVICE-ID>\n");
+    printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <nRepetitions> <run dummy kernel> <use FP32> <GPU aware MPI> <create detailed pingpong logfile> <DEVICE-ID>\n");
 
     MPI_Finalize();
     exit(1);
@@ -46,11 +46,16 @@ int main(int argc, char **argv)
   if(argc>9) {
     if(argv[9]) enabledGPUMPI = 1;
   }
+  
+  int createDetailedPingPongFile = 0;
+  if(argc>10) {
+    if(atoi(argv[10])) createDetailedPingPongFile = 1;
+  }
 
   options.setArgs("DEVICE NUMBER", "LOCAL-RANK");
-  if(argc>10) {
+  if(argc>11) {
     std::string deviceNumber;
-    deviceNumber.assign(strdup(argv[10]));
+    deviceNumber.assign(strdup(argv[11]));
     options.setArgs("DEVICE NUMBER", deviceNumber);
   }
 
@@ -113,8 +118,7 @@ int main(int argc, char **argv)
   MPI_Barrier(mesh->comm);
   {
     const int nPairs = mesh->size/2;
-    pingPongMulti(nPairs, 0, mesh->device, mesh->comm);
-    if(enabledGPUMPI) pingPongMulti(nPairs, enabledGPUMPI, mesh->device, mesh->comm);
+    pingPongMulti(nPairs, enabledGPUMPI, createDetailedPingPongFile, mesh->device, mesh->comm);
   }
 
   // gs
