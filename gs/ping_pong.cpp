@@ -223,10 +223,8 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
                 
                 for(int i = 0; i < options.iterations + options.skip; i++) {
 
-                    if(i == options.skip) {
-                        MPI_CHECK(MPI_Barrier(comm));
+                    if(i == options.skip)
                         t_start = MPI_Wtime();
-                    }
 
                     MPI_CHECK(MPI_Send(s_buf, size, MPI_CHAR, 0, 1, comm));
                     MPI_CHECK(MPI_Recv(r_buf, size, MPI_CHAR, 0, 1, comm, MPI_STATUS_IGNORE));
@@ -243,10 +241,8 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
                 
                 for(int i = 0; i < options.iterations + options.skip; i++) {
 
-                    if(i == options.skip) {
-                        MPI_CHECK(MPI_Barrier(comm));
+                    if(i == options.skip)
                         t_start = MPI_Wtime();
-                    }
 
                     MPI_CHECK(MPI_Recv(r_buf, size, MPI_CHAR, iRank, 1, comm, MPI_STATUS_IGNORE));
                     MPI_CHECK(MPI_Send(s_buf, size, MPI_CHAR, iRank, 1, comm));
