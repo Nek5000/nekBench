@@ -272,9 +272,11 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
                 if(all_max[iSize] < avg_lat)
                     all_max[iSize] = avg_lat;
                 all_avg[iSize] += avg_lat;
-                        
-                if(writeToFile)
+
+                if(writeToFile) {
                     fprintf(fp, "%-10d %-10d %-15d %-15f\n", iRank, 0, size, avg_lat);
+                    fflush(fp);
+                }
 
             }
             
@@ -292,6 +294,9 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
         for(int i = 0; i < 22; ++i)
             avg_sum += all_avg[i];
         printf("\nGlobal average: %f\n", avg_sum/22.0);
+
+        if(writeToFile)
+            fclose(fp);
     }
     
 }
