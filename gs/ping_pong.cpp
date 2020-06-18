@@ -49,7 +49,7 @@ int pingPongMulti(int pairs, int useDevice, int createDetailedPingPongFile, occa
 
     if(size == 0 || size%2 != 0) return 1;
 
-    options.min_message_size = 0;
+    options.min_message_size = 1;
     options.max_message_size = 1 << 20;
     options.pairs = pairs;
 
@@ -73,12 +73,23 @@ int pingPongMulti(int pairs, int useDevice, int createDetailedPingPongFile, occa
     }
 
     if(rank == 0) {
-        printf("\nping pong multi - pairs: %d useDevice: %d\n", pairs, useDevice);
+        printf("\nping pong multi - pairs: %d useDevice: %d\n\n", pairs, useDevice);
         fflush(stdout);
     }
 
     MPI_CHECK(MPI_Barrier(comm));
-//     multi_latency(comm);
+    multi_latency(comm);
+    MPI_CHECK(MPI_Barrier(comm));
+
+    if(rank == 0) {
+        if(size > 2)
+            printf("\n\nping pong - ranks 1-%d to rank 0, useDevice: %d\n\n", size-1, useDevice);
+        else
+            printf("\n\nping pong - ranks 1 to rank 0, useDevice: %d\n\n", useDevice);
+        fflush(stdout);
+    }
+
+    MPI_CHECK(MPI_Barrier(comm));
     multi_latency_paul(createDetailedPingPongFile, comm);
     MPI_CHECK(MPI_Barrier(comm));
 
@@ -176,10 +187,10 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
     MPI_Comm_rank(comm, &myRank);
     MPI_Comm_size(comm, &mpiSize);
     
-    int all_sizes[22];
-    double all_min[22];
-    double all_max[22];
-    double all_avg[22];
+    int all_sizes[21];
+    double all_min[21];
+    double all_max[21];
+    double all_avg[21];
     
     // initialize stats
     int i = 0;
@@ -283,13 +294,13 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
     
     if(myRank == 0) {
         printf("%-10s %-13s %-13s %-13s\n", "bytes", "average", "minimum", "maximum");
-        for(int i = 0; i < 22; ++i) {
+        for(int i = 0; i < 21; ++i) {
             printf("%-10d %-13f %-13f %-13f\n", all_sizes[i], all_avg[i]/((double)(mpiSize-1)), all_min[i], all_max[i]);
         }
         double avg_sum = 0;
-        for(int i = 0; i < 22; ++i)
+        for(int i = 0; i < 21; ++i)
             avg_sum += all_avg[i];
-        printf("\nGlobal average: %f\n", avg_sum/22.0);
+        printf("\nGlobal average: %f\n", avg_sum/21.0);
 
         if(writeToFile)
             fclose(fp);
