@@ -282,7 +282,6 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
 
                 if(writeToFile) {
                     fprintf(fp, "%-10d %-10d %-15d %-15f\n", iRank, 0, size, avg_lat);
-                    fflush(fp);
                 }
 
             }
@@ -301,6 +300,7 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
         for(int i = 0; i < 21; ++i)
             avg_sum += all_avg[i];
         printf("\nGlobal average: %f\n", avg_sum/21.0);
+        fflush(stdout);
 
         if(writeToFile)
             fclose(fp);
