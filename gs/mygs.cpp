@@ -22,6 +22,11 @@ typedef void gs_scatter_fun(
   const uint *map, gs_dom dom);
 extern gs_scatter_fun gs_scatter;
 
+typedef void gs_gather_fun(
+  void *out, const void *in, const unsigned vn,
+  const uint *map, gs_dom dom, gs_op op);
+extern gs_gather_fun gs_gather;
+
 typedef enum { mode_plain, mode_vec, mode_many,
                mode_dry_run } gs_mode;
 
@@ -80,53 +85,98 @@ static void my_scatter_to_buf(
   }
 }
 
-static buffer static_buffer = null_buffer;
+static buffer buff = null_buffer;
+static occa::memory o_buff;
+static int firstTime = 1;
 
+//#define MPI_CPU_BUFFER
 static void myHostGatherScatter(void *u, gs_dom dom, gs_op op,
-                                unsigned transpose, struct gs_data *gsh)
+                                unsigned transpose, ogs_t *ogs)
 {
+  struct gs_data *gsh = (gs_data*) ogs->haloGshSym;
   const unsigned recv = 0^transpose, send = 1^transpose;
   const void* execdata = gsh->r.data; 
   const struct pw_data *pwd = (pw_data*) execdata; 
-  const struct pw_comm_data *c = &pwd->comm[recv];
   const struct comm *comm = &gsh->comm;
-  unsigned vn = 1;
+  const unsigned vn = 1;
+  const unsigned unit_size = vn*sizeof(double); //gs_dom_size[dom];
+  const gs_mode mode = mode_plain;
+  double eTime_pw = 0;
 
-  gs_mode mode = mode_plain;
+  if(firstTime) {
+    buffer_reserve(&buff, gsh->r.buffer_size*sizeof(double)); // just something large
+#ifdef MPI_GPU_BUFFER
+    o_buff = ogs->device->malloc(gsh->r.buffer_size*sizeof(double));
+#endif
+    firstTime = 0;
+  }
 
-  buffer *buff = &static_buffer;
-  buffer_reserve(buff, gsh->r.buffer_size*sizeof(double)); // just something large 
-
-  char *sendbuf = (char*) buff->ptr;
- 
+  char *buf = (char *) buff.ptr;
+#ifdef MPI_GPU_BUFFER
+  occa::memory o_buf = o_buff; 
+#endif
+  
   if(transpose==0) gs_init(u,vn,gsh->flagged_primaries,dom,op);
 
-  char *buf =  (char*) buff->ptr; 
-  unsigned unit_size = vn*sizeof(double); //gs_dom_size[dom];
-  const uint *p, *pe, *size=c->size;
-  for(p=c->p,pe=p+c->n;p!=pe;++p) {
-    size_t len = *(size++)*unit_size;
-    //comm_irecv(req++,comm,buf,len,*p,*p);
-    buf += len;
+  {
+    MPI_Barrier(comm->c);
+    double t0 = MPI_Wtime(); 
+    comm_req *req = pwd->req; 
+    const struct pw_comm_data *c = &pwd->comm[recv];
+    const uint *p, *pe, *size=c->size;
+    for(p=c->p,pe=p+c->n;p!=pe;++p) {
+      size_t len = *(size++)*unit_size;
+#ifdef MPI_GPU_BUFFER
+      void *recvbuf = o_buf->ptr();
+#else
+      void *recvbuf = buf;
+#endif
+      MPI_Irecv(recvbuf,len,MPI_UNSIGNED_CHAR,*p,*p,comm->c,req++); 
+      buf += len;
+#ifdef MPI_GPU_BUFFER
+      o_buf += len;
+#endif
+    }
+    eTime_pw += MPI_Wtime() - t0;
   }
 
-  gs_scatter(sendbuf,u,vn,pwd->map[send],dom); 
+  gs_scatter(buf,u,vn,pwd->map[send],dom); 
   //my_scatter_to_buf((double *) sendbuf, 1, (double *) u, 1, pwd->map[send]); 
-
-/*
-  comm_req *req = &pwd->req[pwd->comm[recv].n]; 
-  const struct pw_comm_data *c = &pwd->comm[send]; 
-  for(p=c->p,pe=p+c->n;p!=pe;++p) {
-    size_t len = *(size++)*unit_size;
-    comm_isend(req++,comm,buf,len,*p,comm->id);
-    buf += len;
+#ifdef MPI_GPU_BUFFER
+  o_buff.copyFrom(buff.ptr);  
+#endif
+ 
+  {
+    MPI_Barrier(comm->c);
+    double t0 = MPI_Wtime(); 
+    comm_req *req = &pwd->req[pwd->comm[recv].n]; 
+    const struct pw_comm_data *c = &pwd->comm[send];
+    const uint *p, *pe, *size=c->size;
+    for(p=c->p,pe=p+c->n;p!=pe;++p) {
+      size_t len = *(size++)*unit_size;
+#ifdef MPI_GPU_BUFFER
+      void *recvbuf = o_buf->ptr();
+#else
+      void *sendbuf = buf;
+#endif
+      MPI_Isend(sendbuf,len,MPI_UNSIGNED_CHAR,*p,comm->id,comm->c,req++);
+      buf += len;
+#ifdef MPI_GPU_BUFFER
+      o_buf += len;
+#endif
+    }
+    MPI_Waitall(pwd->comm[send].n + pwd->comm[recv].n,pwd->req,MPI_STATUSES_IGNORE);
+    MPI_Barrier(comm->c);
+    eTime_pw += MPI_Wtime() - t0;
   }
-  return buf;
 
-  comm_wait(pwd->req,pwd->comm[0].n+pwd->comm[1].n);
-*/
+  if(comm->id ==0) printf("time pw_exchange: %g s\n", eTime_pw);
 
-  //gather_from_buf(u,buf,vn,pwd->map[recv],dom,op);
+#ifdef MPI_GPU_BUFFER
+  o_buff.copyTo(buff.ptr);  
+#endif
+ 
+  gs_gather(u,(char*) buff.ptr,vn,pwd->map[recv],dom,op);
 }
 
 void gsStart(occa::memory o_v, const char *type, const char *op, ogs_t *ogs) 
@@ -199,8 +249,8 @@ void gsFinish(occa::memory o_v, const char *type, const char *op, ogs_t *ogs)
 #endif
 
     timer::tic("gs_host");
-    ogsHostGatherScatter(ogs::haloBuf, type, op, ogs->haloGshSym);
-    //myHostGatherScatter(ogs::haloBuf, gs_double, gs_add, 0, (gs_data*) ogs->haloGshSym);
+    //ogsHostGatherScatter(ogs::haloBuf, type, op, ogs->haloGshSym);
+    myHostGatherScatter(ogs::haloBuf, gs_double, gs_add, 0, ogs);
     timer::toc("gs_host");
 
 #ifdef ASYNC
