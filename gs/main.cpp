@@ -13,6 +13,8 @@
 
 #include "mygs.h"
 
+//#define DEBUG
+
 int main(int argc, char **argv)
 {
   MPI_Init(&argc, &argv);
@@ -117,6 +119,11 @@ int main(int argc, char **argv)
     if(enabledGPUMPI) pingPongMulti(nPairs, enabledGPUMPI, mesh->device, mesh->comm);
   }
 
+#ifdef DEBUG
+  for(int i=0; i<Nlocal; i++) U[i] = 1;
+  o_q.copyFrom(U, Nlocal*sizeof(double));
+#endif
+
   // gs
   mesh->device.finish();
   MPI_Barrier(mesh->comm);
@@ -131,11 +138,18 @@ int main(int argc, char **argv)
     }
     gsFinish(o_q, floatType.c_str(), ogsAdd, ogs);
     timer::update();
-   }
+  }
 
   mesh->device.finish();
   MPI_Barrier(mesh->comm);
   const double elapsed = (MPI_Wtime() - start)/Ntests;
+
+#ifdef DEBUG
+  o_q.copyTo(U, Nlocal*sizeof(double));
+  double Usum = 0;
+  for(int i=0; i<Nlocal; i++) Usum += U[i]; 
+  printf("Usum: %g\n", Usum);
+#endif
 
   // print stats 
   double etime[10];
