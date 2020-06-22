@@ -3528,7 +3528,6 @@ void meshPrintPartitionStatistics(mesh_t *mesh)
     int Nmsg = 0;
     struct gs_data *gsh = (gs_data*) ogs->hostGsh; 
     pw_data_nmsg(gsh, send, &Nmsg);
-    printf("Nmsg: %d\n", Nmsg);
     int *Ncomm = (int *) malloc(Nmsg*sizeof(int));
     pw_data_size(gsh, send, Ncomm);
  

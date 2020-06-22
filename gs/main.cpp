@@ -100,7 +100,7 @@ int main(int argc, char **argv)
   ogs_t *ogs= ogsSetup(Nlocal, mesh->globalIds, mesh->comm, 1, mesh->device);
   mesh->ogs = ogs; 
 
-  //meshPrintPartitionStatistics(mesh);
+  meshPrintPartitionStatistics(mesh);
 
   occa::memory o_q = mesh->device.malloc(Nlocal*sizeof(dfloat));
   for(int i=0; i<Nlocal; i++) U[i] = 1;
@@ -117,9 +117,13 @@ int main(int argc, char **argv)
   double nPts = 0;
   for(int i=0; i<Nlocal; i++) nPts += U[i];
   MPI_Allreduce(MPI_IN_PLACE,&nPts,1,MPI_DOUBLE,MPI_SUM,mesh->comm);
-  if(mesh->rank == 0 && nPts == NX*NY*NZ * (double) mesh->Np) 
-    printf("verfication test passed!\n");
-
+  if(nPts == NX*NY*NZ * (double) mesh->Np) { 
+    if(mesh->rank == 0) printf("\nverfication test passed!\n");
+  } else {
+    if(mesh->rank == 0) printf("\nverfication test failed!\n");
+    MPI_Abort(mesh->comm, 1);
+  }
+ 
   if(mesh->rank == 0) cout << "\nstarting measurement ...\n"; fflush(stdout);
 
   // ping pong
