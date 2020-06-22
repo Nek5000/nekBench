@@ -3090,7 +3090,7 @@ void occaDeviceConfig(mesh_t *mesh, setupAide &options){
   if(rank==0) 
    std::cout << "active occa mode: " << mesh->device.mode() << "\n";
 
-  occa::env::OCCA_MEM_BYTE_ALIGN = USE_OCCA_MEM_BYTE_ALIGN;
+  //occa::env::OCCA_MEM_BYTE_ALIGN = USE_OCCA_MEM_BYTE_ALIGN;
 }
 
 

@@ -13,7 +13,6 @@
 
 #include "mygs.h"
 
-//#define DEBUG
 
 int main(int argc, char **argv)
 {
@@ -104,13 +103,27 @@ int main(int argc, char **argv)
   //meshPrintPartitionStatistics(mesh);
 
   occa::memory o_q = mesh->device.malloc(Nlocal*sizeof(dfloat));
+  for(int i=0; i<Nlocal; i++) U[i] = 1;
+  o_q.copyFrom(U, Nlocal*sizeof(double));
   gsStart(o_q, floatType.c_str(), ogsAdd, ogs);
   gsFinish(o_q, floatType.c_str(), ogsAdd, ogs);
-  timer::reset();
+  o_q.copyTo(U, Nlocal*sizeof(double));
+  for(int i=0; i<Nlocal; i++) U[i] = 1/U[i];
 
-  if(mesh->rank == 0) cout << "starting measurement ...\n"; fflush(stdout);
+  o_q.copyFrom(U, Nlocal*sizeof(double));
+  gsStart(o_q, floatType.c_str(), ogsAdd, ogs);
+  gsFinish(o_q, floatType.c_str(), ogsAdd, ogs);
+  o_q.copyTo(U, Nlocal*sizeof(double));
+  double nPts = 0;
+  for(int i=0; i<Nlocal; i++) nPts += U[i];
+  MPI_Allreduce(MPI_IN_PLACE,&nPts,1,MPI_DOUBLE,MPI_SUM,mesh->comm);
+  if(mesh->rank == 0 && nPts == NX*NY*NZ * (double) mesh->Np) 
+    printf("verfication test passed!\n");
+
+  if(mesh->rank == 0) cout << "\nstarting measurement ...\n"; fflush(stdout);
 
   // ping pong
+  timer::reset();
   mesh->device.finish();
   MPI_Barrier(mesh->comm);
   {
@@ -118,11 +131,6 @@ int main(int argc, char **argv)
     pingPongMulti(nPairs, 0, mesh->device, mesh->comm);
     if(enabledGPUMPI) pingPongMulti(nPairs, enabledGPUMPI, mesh->device, mesh->comm);
   }
-
-#ifdef DEBUG
-  for(int i=0; i<Nlocal; i++) U[i] = 1;
-  o_q.copyFrom(U, Nlocal*sizeof(double));
-#endif
 
   // gs
   mesh->device.finish();
@@ -143,13 +151,6 @@ int main(int argc, char **argv)
   mesh->device.finish();
   MPI_Barrier(mesh->comm);
   const double elapsed = (MPI_Wtime() - start)/Ntests;
-
-#ifdef DEBUG
-  o_q.copyTo(U, Nlocal*sizeof(double));
-  double Usum = 0;
-  for(int i=0; i<Nlocal; i++) Usum += U[i]; 
-  printf("Usum: %g\n", Usum);
-#endif
 
   // print stats 
   double etime[10];

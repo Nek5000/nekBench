@@ -1,8 +1,10 @@
 /*
  * TODO:
  *  - Add device support for gs_init
- *  - Fix buffer alignment issues
- *  - Add option to do pw-exchange on host
+ *  - Use separate device MPI buffers for each message (to avoid alignment issues)?
+ *  - Add support for different data types + gs ops
+ *  - Add gs input array to gathered array
+ *  - Copy MPI buffer async
  */
 
 #include <omp.h>
@@ -12,7 +14,12 @@
 #include "ogsInterface.h"
 #include "timer.hpp"
 
+/* pack/unpack MPI buffer on device but stage communication throuh HOST */
+//#define USE_GPU_GSBUF
+
+/* includes USE_GPU_GSBUF but bypasses HOST also for communication */
 //#define USE_GPU_AWARE_MPI
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -75,9 +82,14 @@ struct gs_data {
   uint handle_size;
 };
 
+#ifdef USE_GPU_AWARE_MPI
+#define USE_GPU_GSBUF
+#endif
+
 // GLOBALS
-static buffer buff = null_buffer;
-static occa::memory o_buff;
+static occa::memory h_buff, o_buff;
+void *buff;
+
 static int firstTime = 1;
 
 static int *scatterOffsets, *gatherOffsets;
@@ -95,11 +107,11 @@ static void init_double(double *restrict out,
    while((i=*map++)!=(UINT_MAX)) out[i]=e;
 }
 
-static void scatter_double(const int Nscatter,
-                           const int *restrict starts,
-                           const int *restrict ids,
-                           const double *restrict q,
-                           double *restrict scatterq){
+static void myscatter_double(const int Nscatter,
+                             const int *restrict starts,
+                             const int *restrict ids,
+                             const double *restrict q,
+                             double *restrict scatterq){
 
 //#pragma omp parallel for
   for(int s=0;s<Nscatter;++s){
@@ -116,11 +128,11 @@ static void scatter_double(const int Nscatter,
   }
 }
 
-void gather_doubleAdd(const int Ngather,
-                      const int *restrict starts,
-                      const int *restrict ids,
-                      const double *restrict q,
-                      double *restrict gatherq){
+void mygather_doubleAdd(const int Ngather,
+                        const int *restrict starts,
+                        const int *restrict ids,
+                        const double *restrict q,
+                        double *restrict gatherq){
 
 //#pragma omp parallel for
   for(int g=0;g<Ngather;++g){
@@ -134,35 +146,31 @@ void gather_doubleAdd(const int Ngather,
       gq += q[id];
     }
 
-    //#pragma omp atomic write
-    gatherq[g] += gq;
+    gatherq[g] = gq;
   }
 }
 
 
-static void convertMap(const uint *restrict map,
-                       int *restrict starts,
-                       int *restrict ids){
- 
-  
+static void convertPwMap(const uint *restrict map,
+                         int *restrict starts,
+                         int *restrict ids){
+
   uint i,j; 
-  int n=0;
-  int s=0;
-  uint *m = (uint*) map;
-  while((i=*m++)!=UINT_MAX) {
+  int n=0, s=0;
+  while((i=*map++)!=UINT_MAX) {
     starts[s] = n;
-    j=*m++; 
+    j=*map++; 
     do {
       ids[n] = j;
       n++;
-    } while((j=*m++)!=UINT_MAX);
+    } while((j=*map++)!=UINT_MAX);
     starts[s+1] = n;
     s++;
   }
 }
 
 static void myHostGatherScatter(
-#ifdef USE_GPU_AWARE_MPI
+#ifdef USE_GPU_GSBUF
                                 occa::memory o_u,
 #else
                                 void *u,
@@ -175,24 +183,31 @@ static void myHostGatherScatter(
   const void* execdata = gsh->r.data; 
   const struct pw_data *pwd = (pw_data*) execdata; 
   const struct comm *comm = &gsh->comm;
+
+  // hardwired for now
   const unsigned vn = 1;
   const unsigned unit_size = vn*sizeof(double); //gs_dom_size[dom];
+  const char type[] = "double";
+
   double eTime_pw = 0;
 
   if(firstTime) {
-    buffer_reserve(&buff, gsh->r.buffer_size*sizeof(double)); // just something large
-   
+    occa::properties props;
+    props["mapped"] = true;
+    h_buff = ogs->device.malloc(gsh->r.buffer_size*unit_size, props);
+    buff = h_buff.ptr(props);  
+ 
     scatterOffsets = (int*) calloc(2*ogs->NhaloGather,sizeof(int));
     gatherOffsets  = (int*) calloc(2*ogs->NhaloGather,sizeof(int));
 
     scatterIds = (int*) calloc(pwd->comm[send].total,sizeof(int));
     gatherIds  = (int*) calloc(pwd->comm[recv].total,sizeof(int));
 
-    convertMap(pwd->map[send], scatterOffsets, scatterIds);
-    convertMap(pwd->map[recv], gatherOffsets, gatherIds);
+    convertPwMap(pwd->map[send], scatterOffsets, scatterIds);
+    convertPwMap(pwd->map[recv], gatherOffsets, gatherIds);
 
-#ifdef USE_GPU_AWARE_MPI
-    o_buff = ogs->device.malloc(gsh->r.buffer_size*sizeof(double));
+#ifdef USE_GPU_GSBUF
+    o_buff = ogs->device.malloc(gsh->r.buffer_size*unit_size);
 
     o_scatterOffsets = ogs->device.malloc(2*ogs->NhaloGather*sizeof(int), scatterOffsets);
     o_gatherOffsets  = ogs->device.malloc(2*ogs->NhaloGather*sizeof(int), gatherOffsets);
@@ -203,81 +218,91 @@ static void myHostGatherScatter(
     firstTime = 0;
   }
 
-  char *buf = (char *) buff.ptr;
-#ifdef USE_GPU_AWARE_MPI
-  occa::memory o_buf = o_buff; 
-#endif
-  
 #ifdef USE_GPU_AWARE_MPI
   // todo
 #else
   //if(transpose==0) gs_init(u,vn,gsh->flagged_primaries,dom,op);
-  if(transpose==0) init_double((double*) u,gsh->flagged_primaries,gs_add);
+  //if(transpose==0) init_double((double*) u,gsh->flagged_primaries,gs_add);
 #endif
 
+  // prepost recv
   {
     MPI_Barrier(comm->c);
     double t0 = MPI_Wtime(); 
     comm_req *req = pwd->req; 
     const struct pw_comm_data *c = &pwd->comm[recv];
     const uint *p, *pe, *size=c->size;
+    uint bufOffset = 0;
     for(p=c->p,pe=p+c->n;p!=pe;++p) {
       size_t len = *(size++)*unit_size;
 #ifdef USE_GPU_AWARE_MPI
-      void *recvbuf = o_buf.ptr();
+      char *recvbuf = (char*) o_buff.ptr() + bufOffset;
 #else
-      void *recvbuf = buf;
+      char *recvbuf = (char *) buff + bufOffset;
 #endif
-      MPI_Irecv(recvbuf,len,MPI_UNSIGNED_CHAR,*p,*p,comm->c,req++); 
-#ifdef USE_GPU_AWARE_MPI
-      o_buf += len;
-#else
-      buf += len;
-#endif
+      MPI_Irecv((void*) recvbuf,len,MPI_UNSIGNED_CHAR,*p,*p,comm->c,req++);
+      bufOffset += len;
     }
     eTime_pw += MPI_Wtime() - t0;
   }
 
-#ifdef USE_GPU_AWARE_MPI
-  occaScatter(ogs->NhaloGather, o_scatterOffsets, o_scatterIds, "double", ogsAdd, o_buf, o_u);
+  // scatter
+  {
+    char *buf = (char *) buff + pwd->comm[recv].total*unit_size;
+#ifdef USE_GPU_GSBUF
+    occa::memory o_buf = o_buff + pwd->comm[recv].total*unit_size;
+    occaScatter(ogs->NhaloGather, o_scatterOffsets, o_scatterIds, type, ogsAdd, o_u, o_buf);
+#ifndef USE_GPU_AWARE_MPI
+    o_buf.copyTo(buf, pwd->comm[send].total*unit_size);
+#endif 
+
 #else
   //gs_scatter(buf,u,vn,pwd->map[send],dom); 
-  scatter_double(ogs->NhaloGather, scatterOffsets, scatterIds, (double *) u, (double *) buf); 
+  myscatter_double(ogs->NhaloGather, scatterOffsets, scatterIds, (double *) u, (double *) buf); 
 #endif
+  }
 
+  // pw-exchange
   {
     MPI_Barrier(comm->c);
     double t0 = MPI_Wtime(); 
     comm_req *req = &pwd->req[pwd->comm[recv].n]; 
     const struct pw_comm_data *c = &pwd->comm[send];
     const uint *p, *pe, *size=c->size;
+    uint bufOffset = pwd->comm[recv].total*unit_size;
     for(p=c->p,pe=p+c->n;p!=pe;++p) {
       size_t len = *(size++)*unit_size;
 #ifdef USE_GPU_AWARE_MPI
-      void *recvbuf = o_buf.ptr();
+      char *sendbuf = (char*) o_buff.ptr() + bufOffset;
 #else
-      void *sendbuf = buf;
+      char *sendbuf = (char*) buff + bufOffset;
 #endif
-      MPI_Isend(sendbuf,len,MPI_UNSIGNED_CHAR,*p,comm->id,comm->c,req++);
-#ifdef USE_GPU_AWARE_MPI
-      o_buf += len;
-#else
-      buf += len;
-#endif
+      MPI_Isend((void*) sendbuf,len,MPI_UNSIGNED_CHAR,*p,comm->id,comm->c,req++);
+      bufOffset += len;
     }
     MPI_Waitall(pwd->comm[send].n + pwd->comm[recv].n,pwd->req,MPI_STATUSES_IGNORE);
     MPI_Barrier(comm->c);
     eTime_pw += MPI_Wtime() - t0;
+    //if(comm->id ==0) printf("time pw_exchange: %g s\n", eTime_pw);
   }
 
-  //if(comm->id ==0) printf("time pw_exchange: %g s\n", eTime_pw);
+  // gahter
+  {
+    char *buf = (char *) buff;
+#ifdef USE_GPU_GSBUF
 
-#ifdef USE_GPU_AWARE_MPI
-  occaGather(ogs->NhaloGather, o_gatherOffsets, o_gatherIds, "double", ogsAdd, o_u, o_buff);
-#else
-  //gs_gather(u,(char*) buff.ptr,vn,pwd->map[recv],dom,op);
-  gather_doubleAdd(ogs->NhaloGather, gatherOffsets, gatherIds, (double *) buff.ptr, (double *) u);
+    occa::memory o_buf = o_buff;
+#ifndef USE_GPU_AWARE_MPI
+    o_buf.copyFrom(buf,pwd->comm[recv].total*unit_size); 
 #endif
+    occaGather(ogs->NhaloGather, o_gatherOffsets, o_gatherIds, type, ogsAdd, o_buf, o_u);
+
+#else
+    //gs_gather(u,(char*) buff,vn,pwd->map[recv],dom,op);
+    mygather_doubleAdd(ogs->NhaloGather, gatherOffsets, gatherIds, (double *) buf, (double *) u);
+#endif
+  }
+
 }
 
 void gsStart(occa::memory o_v, const char *type, const char *op, ogs_t *ogs) 
@@ -308,7 +333,7 @@ void gsStart(occa::memory o_v, const char *type, const char *op, ogs_t *ogs)
     occaGather(ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, o_v, ogs::o_haloBuf);
     timer::toc("gather_halo");
 
-#ifndef USE_GPU_AWARE_MPI
+#ifndef USE_GPU_GSBUF
     ogs->device.finish();
     ogs->device.setStream(ogs::dataStream);
     timer::tic("gs_memcpy");
@@ -339,12 +364,12 @@ void gsFinish(occa::memory o_v, const char *type, const char *op, ogs_t *ogs)
 
   if (ogs->NhaloGather) {
     ogs->device.setStream(ogs::dataStream);
-#ifndef USE_GPU_AWARE_MPI
+#ifndef USE_GPU_GSBUF
     ogs->device.finish();
 #endif
 
     timer::tic("gs_host");
-#ifdef USE_GPU_AWARE_MPI
+#ifdef USE_GPU_GSBUF
     ogs->device.finish(); // just for timing 
     myHostGatherScatter(ogs::o_haloBuf, gs_double, gs_add, 0, ogs);
     ogs->device.finish(); // just for timing
@@ -354,7 +379,7 @@ void gsFinish(occa::memory o_v, const char *type, const char *op, ogs_t *ogs)
 #endif
     timer::toc("gs_host");
 
-#ifndef USE_GPU_AWARE_MPI
+#ifndef USE_GPU_GSBUF
     timer::tic("gs_memcpy");
     ogs::o_haloBuf.copyFrom(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
     timer::toc("gs_memcpy");
