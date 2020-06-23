@@ -193,7 +193,6 @@ void mygsSetup(ogs_t *ogs)
   convertPwMap(pwd->map[send], scatterOffsets, scatterIds);
   convertPwMap(pwd->map[recv], gatherOffsets, gatherIds);
 
-  printf("allocating memory %d\n", gsh->r.buffer_size*unit_size);
   o_buff = ogs->device.malloc(gsh->r.buffer_size*unit_size);
   o_bufSend = o_buff + pwd->comm[recv].total*unit_size;
   o_bufRecv = o_buff;

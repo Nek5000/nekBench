@@ -38,7 +38,7 @@ int main(int argc, char **argv)
   options.setArgs("THREAD MODEL", threadModel);
 
   std::list<ogs_mode> ogs_mode_list;
-  if(argc>6) {
+  if(argc>6 && atoi(argv[6])>0) {
     const int mode = atoi(argv[6]);
     if(mode < 0 || mode > 4){
       if(rank == 0) printf("invalid ogs_mode!\n");
