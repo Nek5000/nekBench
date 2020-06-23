@@ -116,10 +116,17 @@ void toc(const std::string tag){
 
 void update(){
   for (auto it = m_.begin(); it != m_.end(); it++) {
-    it->second.hostElapsed += it->second.stopTime - it->second.startTime;
+    it->second.hostElapsed += (it->second.stopTime - it->second.startTime);
     it->second.deviceElapsed += device_.timeBetween(it->second.startTag,it->second.stopTag);
     it->second.count++;
   }
+}
+
+void update(const std::string tag){
+  auto it=m_.find(tag);
+  it->second.hostElapsed += (it->second.stopTime - it->second.startTime);
+  it->second.deviceElapsed += device_.timeBetween(it->second.startTag,it->second.stopTag);
+  it->second.count++;
 }
 
 double hostElapsed(const std::string tag){

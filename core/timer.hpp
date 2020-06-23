@@ -10,6 +10,7 @@ namespace timer{
   void init(MPI_Comm comm,occa::device device,int ifsync=0);
   void reset();
   void update();
+  void update(const std::string tag);
   void reset(const std::string tag);
   void finalize();
 

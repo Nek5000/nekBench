@@ -1,10 +1,11 @@
 /*
  * TODO:
  *  - Add device support for gs_init
- *  - Use separate device MPI buffers for each message (to avoid alignment issues)?
+ *  - Fix alignments issues of device MPI buffers
  *  - Add support for different data types + gs ops
- *  - Add gs input array to gathered array
- *  - Copy MPI buffer async
+ *  - Enable overlap (ogs::dataStream had be non-blocking but OCCA creates always blocking streams)
+ *  - Add up gs input and gathered array
+ *  - Perform auto-discovery during setup phase to identify fastest mode
  */
 
 #include <omp.h>
@@ -14,16 +15,11 @@
 #include "ogsInterface.h"
 #include "timer.hpp"
 
-/* pack/unpack MPI buffer on device but stage communication throuh HOST */
-//#define USE_GPU_GSBUF
-
-/* includes USE_GPU_GSBUF but bypasses HOST also for communication */
-//#define USE_GPU_AWARE_MPI
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+enum ogs_mode { OGS_DEFAULT, OGS_HOSTMPI, OGS_DEVICEMPI };
 
 #include "gslib.h"
 
@@ -82,15 +78,11 @@ struct gs_data {
   uint handle_size;
 };
 
-#ifdef USE_GPU_AWARE_MPI
-#define USE_GPU_GSBUF
-#endif
-
 // GLOBALS
-static occa::memory h_buff, o_buff;
-void *buff;
-
-static int firstTime = 1;
+static occa::memory h_buff;
+unsigned char *bufSend, *bufRecv;
+static occa::memory o_buff;
+static occa::memory o_bufSend, o_bufRecv;
 
 static int *scatterOffsets, *gatherOffsets;
 static int *scatterIds, *gatherIds;
@@ -98,6 +90,10 @@ static occa::memory o_scatterOffsets, o_gatherOffsets;
 static occa::memory o_scatterIds, o_gatherIds;
 
 static const double gs_identity_double[] = { 0, 1, 1.7976931348623157e+308, -1.7976931348623157e+308, 0 };
+
+#ifdef __cplusplus
+}
+#endif
 
 static void init_double(double *restrict out, 
                         const unsigned int *restrict map, 
@@ -169,143 +165,206 @@ static void convertPwMap(const uint *restrict map,
   }
 }
 
-static void myHostGatherScatter(
-#ifdef USE_GPU_GSBUF
-                                occa::memory o_u,
-#else
-                                void *u,
-#endif
-                                gs_dom dom, gs_op op,
-                                unsigned transpose, ogs_t *ogs)
+
+void mygsSetup(ogs_t *ogs)
 {
+  const unsigned transpose = 0;
   struct gs_data *gsh = (gs_data*) ogs->haloGshSym;
   const unsigned recv = 0^transpose, send = 1^transpose;
+  const void* execdata = gsh->r.data;
+  const struct pw_data *pwd = (pw_data*) execdata;
+  const unsigned Nhalo = ogs->NhaloGather;
+  const unsigned vn = 1;
+  const unsigned unit_size = vn*sizeof(double);
+
+  if(Nhalo == 0) return;
+  occa::properties props;
+  props["mapped"] = true;
+  h_buff = ogs->device.malloc(gsh->r.buffer_size*unit_size, props);
+  bufSend = (unsigned char*)h_buff.ptr(props) + pwd->comm[recv].total*unit_size;
+  bufRecv = (unsigned char*)h_buff.ptr(props);
+
+  scatterOffsets = (int*) calloc(2*Nhalo,sizeof(int));
+  gatherOffsets  = (int*) calloc(2*Nhalo,sizeof(int));
+
+  scatterIds = (int*) calloc(pwd->comm[send].total,sizeof(int));
+  gatherIds  = (int*) calloc(pwd->comm[recv].total,sizeof(int));
+
+  convertPwMap(pwd->map[send], scatterOffsets, scatterIds);
+  convertPwMap(pwd->map[recv], gatherOffsets, gatherIds);
+
+  printf("allocating memory %d\n", gsh->r.buffer_size*unit_size);
+  o_buff = ogs->device.malloc(gsh->r.buffer_size*unit_size);
+  o_bufSend = o_buff + pwd->comm[recv].total*unit_size;
+  o_bufRecv = o_buff;
+
+  o_scatterOffsets = ogs->device.malloc(2*Nhalo*sizeof(int), scatterOffsets);
+  o_gatherOffsets  = ogs->device.malloc(2*Nhalo*sizeof(int), gatherOffsets);
+
+  o_scatterIds = ogs->device.malloc(pwd->comm[send].total*sizeof(int), scatterIds);
+  o_gatherIds  = ogs->device.malloc(pwd->comm[recv].total*sizeof(int), gatherIds);
+}
+
+static void myHostGatherScatter(occa::memory o_u,
+                                ogs_t *ogs, ogs_mode ogs_mode)
+{
+  struct gs_data *gsh = (gs_data*) ogs->haloGshSym;
   const void* execdata = gsh->r.data; 
   const struct pw_data *pwd = (pw_data*) execdata; 
   const struct comm *comm = &gsh->comm;
+  const unsigned Nhalo = ogs->NhaloGather;
 
   // hardwired for now
+  const unsigned transpose = 0;
+  const unsigned recv = 0^transpose, send = 1^transpose;
   const unsigned vn = 1;
-  const unsigned unit_size = vn*sizeof(double); //gs_dom_size[dom];
+  const unsigned unit_size = vn*sizeof(double);
   const char type[] = "double";
+  const char op[]   = "add";
 
-  double eTime_pw = 0;
-
-  if(firstTime) {
-    occa::properties props;
-    props["mapped"] = true;
-    h_buff = ogs->device.malloc(gsh->r.buffer_size*unit_size, props);
-    buff = h_buff.ptr(props);  
- 
-    scatterOffsets = (int*) calloc(2*ogs->NhaloGather,sizeof(int));
-    gatherOffsets  = (int*) calloc(2*ogs->NhaloGather,sizeof(int));
-
-    scatterIds = (int*) calloc(pwd->comm[send].total,sizeof(int));
-    gatherIds  = (int*) calloc(pwd->comm[recv].total,sizeof(int));
-
-    convertPwMap(pwd->map[send], scatterOffsets, scatterIds);
-    convertPwMap(pwd->map[recv], gatherOffsets, gatherIds);
-
-#ifdef USE_GPU_GSBUF
-    o_buff = ogs->device.malloc(gsh->r.buffer_size*unit_size);
-
-    o_scatterOffsets = ogs->device.malloc(2*ogs->NhaloGather*sizeof(int), scatterOffsets);
-    o_gatherOffsets  = ogs->device.malloc(2*ogs->NhaloGather*sizeof(int), gatherOffsets);
-
-    o_scatterIds = ogs->device.malloc(pwd->comm[send].total*sizeof(int), scatterIds);
-    o_gatherIds  = ogs->device.malloc(pwd->comm[recv].total*sizeof(int), gatherIds);
-#endif
-    firstTime = 0;
-  }
-
-#ifdef USE_GPU_AWARE_MPI
-  // todo
-#else
   //if(transpose==0) gs_init(u,vn,gsh->flagged_primaries,dom,op);
   //if(transpose==0) init_double((double*) u,gsh->flagged_primaries,gs_add);
-#endif
 
-  // prepost recv
-  {
+  { // prepost recv
     MPI_Barrier(comm->c);
-    double t0 = MPI_Wtime(); 
+    timer::tic("pw_exec");
+
     comm_req *req = pwd->req; 
     const struct pw_comm_data *c = &pwd->comm[recv];
     const uint *p, *pe, *size=c->size;
     uint bufOffset = 0;
     for(p=c->p,pe=p+c->n;p!=pe;++p) {
       size_t len = *(size++)*unit_size;
-#ifdef USE_GPU_AWARE_MPI
-      char *recvbuf = (char*) o_buff.ptr() + bufOffset;
-#else
-      char *recvbuf = (char *) buff + bufOffset;
-#endif
-      MPI_Irecv((void*) recvbuf,len,MPI_UNSIGNED_CHAR,*p,*p,comm->c,req++);
+      unsigned char *recvbuf = (unsigned char *)bufRecv + bufOffset;
+      if(ogs_mode == OGS_DEVICEMPI) recvbuf = (unsigned char*)o_bufRecv.ptr() + bufOffset;
+      MPI_Irecv((void*)recvbuf,len,MPI_UNSIGNED_CHAR,*p,*p,comm->c,req++);
       bufOffset += len;
     }
-    eTime_pw += MPI_Wtime() - t0;
+
+    timer::toc("pw_exec");
   }
 
-  // scatter
-  {
-    char *buf = (char *) buff + pwd->comm[recv].total*unit_size;
-#ifdef USE_GPU_GSBUF
-    occa::memory o_buf = o_buff + pwd->comm[recv].total*unit_size;
-    occaScatter(ogs->NhaloGather, o_scatterOffsets, o_scatterIds, type, ogsAdd, o_u, o_buf);
-#ifndef USE_GPU_AWARE_MPI
-    o_buf.copyTo(buf, pwd->comm[send].total*unit_size);
-#endif 
+  { // scatter
+    timer::tic("pack");
+    occaScatter(Nhalo, o_scatterOffsets, o_scatterIds, type, op, o_u, o_bufSend);
+    timer::toc("pack");
 
-#else
-  //gs_scatter(buf,u,vn,pwd->map[send],dom); 
-  myscatter_double(ogs->NhaloGather, scatterOffsets, scatterIds, (double *) u, (double *) buf); 
-#endif
+    if(ogs_mode == OGS_HOSTMPI) {
+      timer::tic("gs_memcpy_dh");
+      o_bufSend.copyTo(bufSend, pwd->comm[send].total*unit_size, 0, "async: true");
+      timer::toc("gs_memcpy_dh");
+      ogs->device.finish();
+    }
   }
 
-  // pw-exchange
-  {
+  { // pw exchange
     MPI_Barrier(comm->c);
-    double t0 = MPI_Wtime(); 
+    timer::update("pw_exec");
+    timer::tic("pw_exec");
+
     comm_req *req = &pwd->req[pwd->comm[recv].n]; 
     const struct pw_comm_data *c = &pwd->comm[send];
     const uint *p, *pe, *size=c->size;
-    uint bufOffset = pwd->comm[recv].total*unit_size;
+    uint bufOffset = 0;
     for(p=c->p,pe=p+c->n;p!=pe;++p) {
       size_t len = *(size++)*unit_size;
-#ifdef USE_GPU_AWARE_MPI
-      char *sendbuf = (char*) o_buff.ptr() + bufOffset;
-#else
-      char *sendbuf = (char*) buff + bufOffset;
-#endif
-      MPI_Isend((void*) sendbuf,len,MPI_UNSIGNED_CHAR,*p,comm->id,comm->c,req++);
+      unsigned char *sendbuf = (unsigned char*)bufSend + bufOffset;
+      if(ogs_mode == OGS_DEVICEMPI) sendbuf = (unsigned char*)o_bufSend.ptr() + bufOffset;
+      MPI_Isend((void*)sendbuf,len,MPI_UNSIGNED_CHAR,*p,comm->id,comm->c,req++);
       bufOffset += len;
     }
     MPI_Waitall(pwd->comm[send].n + pwd->comm[recv].n,pwd->req,MPI_STATUSES_IGNORE);
-    MPI_Barrier(comm->c);
-    eTime_pw += MPI_Wtime() - t0;
-    //if(comm->id ==0) printf("time pw_exchange: %g s\n", eTime_pw);
+
+    timer::toc("pw_exec");
   }
 
-  // gahter
-  {
-    char *buf = (char *) buff;
-#ifdef USE_GPU_GSBUF
+  { // gather
+    if(ogs_mode == OGS_HOSTMPI){
+      timer::tic("gs_memcpy_hd");
+      o_bufRecv.copyFrom(bufRecv,pwd->comm[recv].total*unit_size, 0, "async: true"); 
+      timer::toc("gs_memcpy_hd");
+    }
 
-    occa::memory o_buf = o_buff;
-#ifndef USE_GPU_AWARE_MPI
-    o_buf.copyFrom(buf,pwd->comm[recv].total*unit_size); 
-#endif
-    occaGather(ogs->NhaloGather, o_gatherOffsets, o_gatherIds, type, ogsAdd, o_buf, o_u);
-
-#else
-    //gs_gather(u,(char*) buff,vn,pwd->map[recv],dom,op);
-    mygather_doubleAdd(ogs->NhaloGather, gatherOffsets, gatherIds, (double *) buf, (double *) u);
-#endif
+    timer::tic("unpack");
+    occaGather(Nhalo, o_gatherOffsets, o_gatherIds, type, op, o_bufRecv, o_u);
+    timer::toc("unpack");
   }
 
 }
 
-void gsStart(occa::memory o_v, const char *type, const char *op, ogs_t *ogs) 
+static void myHostGatherScatter(void *u,
+                                ogs_t *ogs, ogs_mode ogs_mode)
+{
+  struct gs_data *gsh = (gs_data*) ogs->haloGshSym;
+  const void* execdata = gsh->r.data; 
+  const struct pw_data *pwd = (pw_data*) execdata; 
+  const struct comm *comm = &gsh->comm;
+  const unsigned Nhalo = ogs->NhaloGather;
+
+  // hardwired for now
+  const unsigned transpose = 0;
+  const unsigned recv = 0^transpose, send = 1^transpose;
+  const unsigned vn = 1;
+  const unsigned unit_size = vn*sizeof(double);
+  const char type[] = "double";
+  const char op[]   = "add";
+
+  //if(transpose==0) gs_init(u,vn,gsh->flagged_primaries,dom,op);
+  //if(transpose==0) init_double((double*) u,gsh->flagged_primaries,gs_add);
+
+  { // prepost recv
+    MPI_Barrier(comm->c);
+    timer::tic("pw_exec");
+
+    comm_req *req = pwd->req; 
+    const struct pw_comm_data *c = &pwd->comm[recv];
+    const uint *p, *pe, *size=c->size;
+    uint bufOffset = 0;
+    for(p=c->p,pe=p+c->n;p!=pe;++p) {
+      size_t len = *(size++)*unit_size;
+      unsigned char *recvbuf = (unsigned char *)bufRecv + bufOffset;
+      MPI_Irecv((void*)recvbuf,len,MPI_UNSIGNED_CHAR,*p,*p,comm->c,req++);
+      bufOffset += len;
+    }
+
+    timer::toc("pw_exec");
+  }
+
+  { // scatter
+    timer::tic("pack");
+    myscatter_double(Nhalo, scatterOffsets, scatterIds, (double *) u, (double *) bufSend); 
+    timer::toc("pack");
+  }
+
+  { // pw exchange
+    MPI_Barrier(comm->c);
+    timer::update("pw_exec");
+    timer::tic("pw_exec");
+
+    comm_req *req = &pwd->req[pwd->comm[recv].n]; 
+    const struct pw_comm_data *c = &pwd->comm[send];
+    const uint *p, *pe, *size=c->size;
+    uint bufOffset = 0;
+    for(p=c->p,pe=p+c->n;p!=pe;++p) {
+      size_t len = *(size++)*unit_size;
+      unsigned char *sendbuf = (unsigned char*)bufSend + bufOffset;
+      MPI_Isend((void*)sendbuf,len,MPI_UNSIGNED_CHAR,*p,comm->id,comm->c,req++);
+      bufOffset += len;
+    }
+    MPI_Waitall(pwd->comm[send].n + pwd->comm[recv].n,pwd->req,MPI_STATUSES_IGNORE);
+
+    timer::toc("pw_exec");
+  }
+
+  { // gather
+    timer::tic("unpack");
+    mygather_doubleAdd(Nhalo, gatherOffsets, gatherIds, (double *) bufRecv, (double *) u);
+    timer::toc("unpack");
+  }
+
+}
+
+void mygsStart(occa::memory o_v, const char *type, const char *op, ogs_t *ogs, ogs_mode ogs_mode) 
 {
   size_t Nbytes;
   if (!strcmp(type, "float")) 
@@ -333,18 +392,18 @@ void gsStart(occa::memory o_v, const char *type, const char *op, ogs_t *ogs)
     occaGather(ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, o_v, ogs::o_haloBuf);
     timer::toc("gather_halo");
 
-#ifndef USE_GPU_GSBUF
-    ogs->device.finish();
-    ogs->device.setStream(ogs::dataStream);
-    timer::tic("gs_memcpy");
-    ogs::o_haloBuf.copyTo(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
-    timer::toc("gs_memcpy");
-    ogs->device.setStream(ogs::defaultStream);
-#endif
+    if(ogs_mode == OGS_DEFAULT) {
+      ogs->device.finish();
+      ogs->device.setStream(ogs::dataStream);
+      timer::tic("gs_memcpy_dh");
+      ogs::o_haloBuf.copyTo(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
+      timer::toc("gs_memcpy_dh");
+      ogs->device.setStream(ogs::defaultStream);
+    }
   }
 }
 
-void gsFinish(occa::memory o_v, const char *type, const char *op, ogs_t *ogs) 
+void mygsFinish(occa::memory o_v, const char *type, const char *op, ogs_t *ogs, ogs_mode ogs_mode) 
 {
   size_t Nbytes;
   if (!strcmp(type, "float")) 
@@ -364,26 +423,19 @@ void gsFinish(occa::memory o_v, const char *type, const char *op, ogs_t *ogs)
 
   if (ogs->NhaloGather) {
     ogs->device.setStream(ogs::dataStream);
-#ifndef USE_GPU_GSBUF
-    ogs->device.finish();
-#endif
+    if(ogs_mode == OGS_DEFAULT) ogs->device.finish(); // waiting for halo data on host 
 
-    timer::tic("gs_host");
-#ifdef USE_GPU_GSBUF
-    ogs->device.finish(); // just for timing 
-    myHostGatherScatter(ogs::o_haloBuf, gs_double, gs_add, 0, ogs);
-    ogs->device.finish(); // just for timing
-#else
-    //ogsHostGatherScatter(ogs::haloBuf, type, op, ogs->haloGshSym);
-    myHostGatherScatter(ogs::haloBuf, gs_double, gs_add, 0, ogs);
-#endif
-    timer::toc("gs_host");
-
-#ifndef USE_GPU_GSBUF
-    timer::tic("gs_memcpy");
-    ogs::o_haloBuf.copyFrom(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
-    timer::toc("gs_memcpy");
-#endif
+    if(ogs_mode != OGS_DEFAULT)
+      myHostGatherScatter(ogs::o_haloBuf, ogs, ogs_mode);
+    else
+      //ogsHostGatherScatter(ogs::haloBuf, type, op, ogs->haloGshSym);
+      myHostGatherScatter(ogs::haloBuf, ogs, ogs_mode);
+ 
+    if(ogs_mode == OGS_DEFAULT) { 
+      timer::tic("gs_memcpy_hd");
+      ogs::o_haloBuf.copyFrom(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
+      timer::toc("gs_memcpy_hd");
+    }
 
     timer::tic("scatter");
     occaScatter(ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, ogs::o_haloBuf, o_v);
@@ -394,7 +446,3 @@ void gsFinish(occa::memory o_v, const char *type, const char *op, ogs_t *ogs)
   }
 }
 
-
-#ifdef __cplusplus
-}
-#endif
