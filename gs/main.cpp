@@ -57,8 +57,14 @@ int main(int argc, char **argv)
   int dummyKernel = 0;
   if(argc>8) dummyKernel = atoi(argv[8]);
 
+  int unit_size = 8;
   std::string floatType("double");
-  if(argc>9 && atoi(argv[9])) floatType = "float";
+  if(argc>9 && atoi(argv[9])) {
+    floatType = "float";
+    unit_size = 4;
+    if(rank == 0) printf("FP32 unsupported!\n");
+    MPI_Abort(MPI_COMM_WORLD,1);
+  }
 
   int enabledGPUMPI = 0;
   if(argc>10) {
@@ -117,26 +123,27 @@ int main(int argc, char **argv)
 
   meshPrintPartitionStatistics(mesh);
 
-  double *U = (double*) calloc(mesh->Nelements*mesh->Np, sizeof(double));
-  occa::memory o_U = mesh->device.malloc(mesh->Nelements*mesh->Np*sizeof(double), U);
-  occa::memory o_q = mesh->device.malloc(Nlocal*sizeof(double));
+  double *U = (double*) calloc(Nlocal, sizeof(double));
+  occa::memory o_U = mesh->device.malloc(Nlocal*sizeof(double), U);
 
+  double *Q = (double*) calloc(Nlocal, unit_size);
+  occa::memory o_q = mesh->device.malloc(Nlocal*unit_size, Q);
 
   // warm-up + check for correctness
   for (auto const& ogs_mode_enum : ogs_mode_list) {
-    for(int i=0; i<Nlocal; i++) U[i] = 1;
-    o_q.copyFrom(U, Nlocal*sizeof(double));
+    for(int i=0; i<Nlocal; i++) Q[i] = 1;
+    o_q.copyFrom(Q, Nlocal*unit_size);
     mygsStart(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
     mygsFinish(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
-    o_q.copyTo(U, Nlocal*sizeof(double));
-    for(int i=0; i<Nlocal; i++) U[i] = 1/U[i];
+    o_q.copyTo(Q, Nlocal*unit_size);
+    for(int i=0; i<Nlocal; i++) Q[i] = 1/Q[i];
  
-    o_q.copyFrom(U, Nlocal*sizeof(double));
+    o_q.copyFrom(Q, Nlocal*unit_size);
     mygsStart(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
     mygsFinish(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
-    o_q.copyTo(U, Nlocal*sizeof(double));
+    o_q.copyTo(Q, Nlocal*unit_size);
     double nPts = 0;
-    for(int i=0; i<Nlocal; i++) nPts += U[i];
+    for(int i=0; i<Nlocal; i++) nPts += Q[i];
     MPI_Allreduce(MPI_IN_PLACE,&nPts,1,MPI_DOUBLE,MPI_SUM,mesh->comm);
     if(fabs(nPts - NX*NY*NZ*(double)mesh->Np) > 1e-6) { 
       if(mesh->rank == 0) printf("\ncorrectness check failed for mode=%d! %ld\n", ogs_mode_enum, (long long int)nPts);
@@ -148,7 +155,6 @@ int main(int argc, char **argv)
   if(mesh->rank == 0) cout << "\nstarting measurement ...\n"; fflush(stdout);
 
   // ping pong
-  timer::reset();
   mesh->device.finish();
   MPI_Barrier(mesh->comm);
   {
@@ -160,6 +166,7 @@ int main(int argc, char **argv)
   for (auto const& ogs_mode_enum : ogs_mode_list) { 
 
   // gs
+  timer::reset();
   mesh->device.finish();
   MPI_Barrier(mesh->comm);
   const double start = MPI_Wtime();

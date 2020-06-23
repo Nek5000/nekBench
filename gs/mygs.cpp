@@ -5,7 +5,6 @@
  *  - Add support for different data types + gs ops
  *  - Enable overlap (ogs::dataStream had be non-blocking but OCCA creates always blocking streams)
  *  - Add up gs input and gathered array
- *  - Perform auto-discovery during setup phase to identify fastest mode
  */
 
 #include <omp.h>
@@ -202,6 +201,7 @@ void mygsSetup(ogs_t *ogs)
 }
 
 static void myHostGatherScatter(occa::memory o_u,
+                                const char *type, const char *op, 
                                 ogs_t *ogs, ogs_mode ogs_mode)
 {
   struct gs_data *gsh = (gs_data*) ogs->haloGshSym;
@@ -213,10 +213,16 @@ static void myHostGatherScatter(occa::memory o_u,
   // hardwired for now
   const unsigned transpose = 0;
   const unsigned recv = 0^transpose, send = 1^transpose;
-  const unsigned vn = 1;
-  const unsigned unit_size = vn*sizeof(double);
-  const char type[] = "double";
-  const char op[]   = "add";
+
+  size_t unit_size;
+  if (!strcmp(type, "float"))
+    unit_size = sizeof(float);
+  else if (!strcmp(type, "double"))
+    unit_size  = sizeof(double);
+  else if (!strcmp(type, "int"))
+    unit_size  = sizeof(int);
+  else if (!strcmp(type, "long long int"))
+    unit_size  = sizeof(long long int);
 
   //if(transpose==0) gs_init(u,vn,gsh->flagged_primaries,dom,op);
   //if(transpose==0) init_double((double*) u,gsh->flagged_primaries,gs_add);
@@ -288,8 +294,7 @@ static void myHostGatherScatter(occa::memory o_u,
 
 }
 
-static void myHostGatherScatter(void *u,
-                                ogs_t *ogs, ogs_mode ogs_mode)
+static void myHostGatherScatter(void *u, ogs_t *ogs)
 {
   struct gs_data *gsh = (gs_data*) ogs->haloGshSym;
   const void* execdata = gsh->r.data; 
@@ -421,11 +426,11 @@ void mygsFinish(occa::memory o_v, const char *type, const char *op, ogs_t *ogs, 
     ogs->device.setStream(ogs::dataStream);
     if(ogs_mode == OGS_DEFAULT) ogs->device.finish(); // waiting for halo data on host 
 
-    if(ogs_mode != OGS_DEFAULT)
-      myHostGatherScatter(ogs::o_haloBuf, ogs, ogs_mode);
-    else
+    if(ogs_mode == OGS_DEFAULT)
       //ogsHostGatherScatter(ogs::haloBuf, type, op, ogs->haloGshSym);
-      myHostGatherScatter(ogs::haloBuf, ogs, ogs_mode);
+      myHostGatherScatter(ogs::haloBuf, ogs);
+    else
+      myHostGatherScatter(ogs::o_haloBuf, type, op, ogs, ogs_mode);
  
     if(ogs_mode == OGS_DEFAULT) { 
       timer::tic("gs_memcpy_hd");
