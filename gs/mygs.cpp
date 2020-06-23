@@ -79,9 +79,8 @@ struct gs_data {
 };
 
 // GLOBALS
-static occa::memory h_buff;
-unsigned char *bufSend, *bufRecv;
-static occa::memory o_buff;
+static occa::memory h_buffSend, h_buffRecv;
+static unsigned char *bufSend, *bufRecv;
 static occa::memory o_bufSend, o_bufRecv;
 
 static int *scatterOffsets, *gatherOffsets;
@@ -180,27 +179,25 @@ void mygsSetup(ogs_t *ogs)
   if(Nhalo == 0) return;
   occa::properties props;
   props["mapped"] = true;
-  h_buff = ogs->device.malloc(gsh->r.buffer_size*unit_size, props);
-  bufSend = (unsigned char*)h_buff.ptr(props) + pwd->comm[recv].total*unit_size;
-  bufRecv = (unsigned char*)h_buff.ptr(props);
 
+  h_buffSend = ogs->device.malloc(pwd->comm[send].total*unit_size, props);
+  bufSend = (unsigned char*)h_buffSend.ptr(props); 
   scatterOffsets = (int*) calloc(2*Nhalo,sizeof(int));
-  gatherOffsets  = (int*) calloc(2*Nhalo,sizeof(int));
-
   scatterIds = (int*) calloc(pwd->comm[send].total,sizeof(int));
-  gatherIds  = (int*) calloc(pwd->comm[recv].total,sizeof(int));
-
   convertPwMap(pwd->map[send], scatterOffsets, scatterIds);
+
+  o_bufSend = ogs->device.malloc(pwd->comm[send].total*unit_size);
+  o_scatterOffsets = ogs->device.malloc(2*Nhalo*sizeof(int), scatterOffsets);
+  o_scatterIds = ogs->device.malloc(pwd->comm[send].total*sizeof(int), scatterIds);
+
+  h_buffRecv = ogs->device.malloc(pwd->comm[recv].total*unit_size, props);
+  bufRecv = (unsigned char*)h_buffRecv.ptr(props);
+  gatherOffsets  = (int*) calloc(2*Nhalo,sizeof(int));
+  gatherIds  = (int*) calloc(pwd->comm[recv].total,sizeof(int));
   convertPwMap(pwd->map[recv], gatherOffsets, gatherIds);
 
-  o_buff = ogs->device.malloc(gsh->r.buffer_size*unit_size);
-  o_bufSend = o_buff + pwd->comm[recv].total*unit_size;
-  o_bufRecv = o_buff;
-
-  o_scatterOffsets = ogs->device.malloc(2*Nhalo*sizeof(int), scatterOffsets);
+  o_bufRecv = ogs->device.malloc(pwd->comm[recv].total*unit_size);
   o_gatherOffsets  = ogs->device.malloc(2*Nhalo*sizeof(int), gatherOffsets);
-
-  o_scatterIds = ogs->device.malloc(pwd->comm[send].total*sizeof(int), scatterIds);
   o_gatherIds  = ogs->device.malloc(pwd->comm[recv].total*sizeof(int), gatherIds);
 }
 
