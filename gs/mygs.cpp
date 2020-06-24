@@ -2,9 +2,8 @@
  * TODO:
  *  - Add device support for gs_init
  *  - Fix alignments issues of device MPI buffers
- *  - Add support for different data types + gs ops
  *  - Enable overlap (ogs::dataStream had be non-blocking but OCCA creates always blocking streams)
- *  - Add up gs input and gathered array
+ *  - Add occaGather kernel initializing result with original value not zero 
  */
 
 #include <omp.h>
@@ -227,8 +226,8 @@ static void myHostGatherScatter(occa::memory o_u,
   else if (!strcmp(type, "long long int"))
     unit_size  = sizeof(long long int);
 
+  // mask flagged primaries with gs_identity
   //if(transpose==0) gs_init(u,vn,gsh->flagged_primaries,dom,op);
-  //if(transpose==0) init_double((double*) u,gsh->flagged_primaries,gs_add);
 
   { // prepost recv
     if(enabledTimer) {
@@ -434,8 +433,10 @@ void mygsFinish(occa::memory o_v, const char *type, const char *op, ogs_t *ogs, 
 
     if(ogs_mode == OGS_DEFAULT) {
       ogs->device.finish(); // waitings for ogs::haloBuf on host
-      //ogsHostGatherScatter(ogs::haloBuf, type, op, ogs->haloGshSym);
-      myHostGatherScatter(ogs::haloBuf, ogs);
+      if(enabledTimer) timer::tic("gs_host");
+      ogsHostGatherScatter(ogs::haloBuf, type, op, ogs->haloGshSym);
+      //myHostGatherScatter(ogs::haloBuf, ogs);
+      if(enabledTimer) timer::toc("gs_host");
     } else {
       myHostGatherScatter(ogs::o_haloBuf, type, op, ogs, ogs_mode);
     }   

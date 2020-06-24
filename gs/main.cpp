@@ -67,8 +67,6 @@ int main(int argc, char **argv)
   if(argc>10 && std::stoi(argv[10])) {
     floatType = "float";
     unit_size = sizeof(float);
-    if(rank == 0) printf("FP32 unsupported!\n");
-    MPI_Abort(MPI_COMM_WORLD,1);
   }
 
   int enabledGPUMPI = 0;
@@ -131,25 +129,54 @@ int main(int argc, char **argv)
   double *U = (double*) calloc(Nlocal, sizeof(double));
   occa::memory o_U = mesh->device.malloc(Nlocal*sizeof(double), U);
 
-  double *Q = (double*) calloc(Nlocal, unit_size);
-  occa::memory o_q = mesh->device.malloc(Nlocal*unit_size, Q);
+  occa::memory o_q = mesh->device.malloc(Nlocal*unit_size);
 
   // warm-up + check for correctness
   for (auto const& ogs_mode_enum : ogs_mode_list) {
-    for(int i=0; i<Nlocal; i++) Q[i] = 1;
-    o_q.copyFrom(Q, Nlocal*unit_size);
-    mygsStart(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
-    mygsFinish(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
-    o_q.copyTo(Q, Nlocal*unit_size);
+    if(floatType.compare("float") == 0) {
+      float *Q = (float*) calloc(Nlocal, unit_size);
+      for(int i=0; i<Nlocal; i++) Q[i] = 1;
+      o_q.copyFrom(Q, Nlocal*unit_size);
+      free(Q);
+    } else {
+      double *Q = (double*) calloc(Nlocal, unit_size);
+      for(int i=0; i<Nlocal; i++) Q[i] = 1;
+      o_q.copyFrom(Q, Nlocal*unit_size);
+      free(Q);
+    }
 
-    for(int i=0; i<Nlocal; i++) Q[i] = 1/Q[i];
-    o_q.copyFrom(Q, Nlocal*unit_size);
     mygsStart(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
     mygsFinish(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
-    o_q.copyTo(Q, Nlocal*unit_size);
+
+    if(floatType.compare("float") == 0) {
+      float *Q = (float*) calloc(Nlocal, unit_size);
+      o_q.copyTo(Q, Nlocal*unit_size);
+      for(int i=0; i<Nlocal; i++) Q[i] = 1/Q[i];
+      o_q.copyFrom(Q, Nlocal*unit_size);
+      free(Q);
+    } else {
+      double *Q = (double*) calloc(Nlocal, unit_size);
+      o_q.copyTo(Q, Nlocal*unit_size);
+      for(int i=0; i<Nlocal; i++) Q[i] = 1/Q[i];
+      o_q.copyFrom(Q, Nlocal*unit_size);
+      free(Q);
+    }
+
+    mygsStart(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
+    mygsFinish(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
 
     long long int nPts = 0;
-    for(int i=0; i<Nlocal; i++) nPts += (long long int)nearbyint(Q[i]);
+    if(floatType.compare("float") == 0) {
+      float *Q = (float*) calloc(Nlocal, unit_size);
+      o_q.copyTo(Q, Nlocal*unit_size);
+      for(int i=0; i<Nlocal; i++) nPts += (long long int)nearbyint(Q[i]);
+      free(Q);
+    } else {
+      double *Q = (double*) calloc(Nlocal, unit_size);
+      o_q.copyTo(Q, Nlocal*unit_size);
+      for(int i=0; i<Nlocal; i++) nPts += (long long int)nearbyint(Q[i]);
+      free(Q);
+    }
     MPI_Allreduce(MPI_IN_PLACE,&nPts,1,MPI_LONG_LONG_INT,MPI_SUM,mesh->comm);
     if(nPts - NX*NY*NZ*(long long int)mesh->Np != 0) { 
       if(mesh->rank == 0) printf("\ncorrectness check failed for mode=%d! %ld\n", ogs_mode_enum, nPts);
@@ -210,26 +237,35 @@ int main(int argc, char **argv)
   if(mesh->rank==0){
     int Nthreads =  omp_get_max_threads();
     cout << "\nsummary\n"
-         << "  ogsMode                 : " << ogs_mode_enum << "\n"
-         << "  MPItasks                : " << mesh->size << "\n";
+         << "  ogsMode                       : " << ogs_mode_enum << "\n"
+         << "  MPItasks                      : " << mesh->size << "\n";
 
     if(options.compareArgs("THREAD MODEL", "OPENMP"))
-    cout << "  OMPthreads              : " << Nthreads << "\n";
+    cout << "  OMPthreads                    : " << Nthreads << "\n";
 
-    cout << "  polyN                   : " << N << "\n"
-         << "  Nelements               : " << NX*NY*NZ << "\n"
-         << "  Nrepetitions            : " << Ntests << "\n"
-         << "  floatType               : " << floatType << "\n"
-         << "  throughput              : " << ((double)(NX*NY*NZ)*N*N*N/elapsed)/1.e9 << " GDOF/s\n"
-         << "  avg elapsed time        : " << elapsed << " s\n";
+    cout << "  polyN                         : " << N << "\n"
+         << "  Nelements                     : " << NX*NY*NZ << "\n"
+         << "  Nrepetitions                  : " << Ntests << "\n"
+         << "  floatType                     : " << floatType << "\n"
+         << "  throughput                    : " << ((double)(NX*NY*NZ)*N*N*N/elapsed)/1.e9 << " GDOF/s\n"
+         << "  avg elapsed time              : " << elapsed << " s\n";
+
     if(enabledTimer) {
-    cout << "    gather halo           : " << etime[0] << " s\n"
-         << "    gs interior           : " << etime[1] << " s\n"
-         << "    scatter halo          : " << etime[2] << " s\n"
-         << "    pw exec               : " << etime[7] << " s\n"
-         << "    memcpy host<->device  : " << etime[4] + etime[5] << " s\n"
-         << "    pack/unpack buf       : " << etime[8] + etime[9] << " s\n"
-         << "    dummy kernel          : " << etime[6] << " s\n";
+
+    cout << "    gather halo                 : " << etime[0] << " s\n"
+         << "    gs interior                 : " << etime[1] << " s\n"
+         << "    scatter halo                : " << etime[2] << " s\n"
+         << "    memcpy host<->device        : " << etime[4] + etime[5] << " s\n";
+
+    if(ogs_mode_enum == OGS_DEFAULT)
+    cout << "    gslib_host                  : " << etime[3] << " s\n";
+    else
+    cout << "    pack/unpack buf             : " << etime[8] + etime[9] << " s\n"
+         << "    pw exec                     : " << etime[7] << " s\n";
+
+
+    cout << "  avg elapsed time dummy kernel : " << etime[6] << " s\n";
+
     }
   }
 
