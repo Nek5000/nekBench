@@ -3,7 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <omp.h>
+
 #include <list>
+#include <algorithm>
 
 #include "mpi.h"
 #include "params.h"
@@ -23,23 +25,23 @@ int main(int argc, char **argv)
   setupAide options;
 
   if(argc<6){
-    if(rank ==0) printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <ogs_mode> <nRepetitions> <run dummy kernel> <use FP32> <GPU aware MPI> <DEVICE-ID>\n");
+    if(rank ==0) printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <ogs_mode> <nRepetitions> <enable timers> <run dummy kernel> <use FP32> <GPU aware MPI> <DEVICE-ID>\n");
 
     MPI_Finalize();
     exit(1);
   }
 
-  const int N = atoi(argv[1]);
-  const int NX = atoi(argv[2]);
-  const int NY = atoi(argv[3]);
-  const int NZ = atoi(argv[4]);
+  const int N = std::stoi(argv[1]);
+  const int NX = std::stoi(argv[2]);
+  const int NY = std::stoi(argv[3]);
+  const int NZ = std::stoi(argv[4]);
   std::string threadModel;
   threadModel.assign(strdup(argv[5]));
   options.setArgs("THREAD MODEL", threadModel);
 
   std::list<ogs_mode> ogs_mode_list;
-  if(argc>6 && atoi(argv[6])>0) {
-    const int mode = atoi(argv[6]);
+  if(argc>6 && std::stoi(argv[6])>0) {
+    const int mode = std::stoi(argv[6]);
     if(mode < 0 || mode > 4){
       if(rank == 0) printf("invalid ogs_mode!\n");
       MPI_Abort(MPI_COMM_WORLD,1);
@@ -52,29 +54,32 @@ int main(int argc, char **argv)
   }
 
   int Ntests = 100;
-  if(argc>7) Ntests = atoi(argv[7]);
+  if(argc>7) Ntests = std::stoi(argv[7]);
+
+  int enabledTimer = 0;
+  if(argc>8) enabledTimer = std::stoi(argv[8]);
 
   int dummyKernel = 0;
-  if(argc>8) dummyKernel = atoi(argv[8]);
+  if(argc>9) dummyKernel = std::stoi(argv[9]);
 
-  int unit_size = 8;
+  int unit_size = sizeof(double);
   std::string floatType("double");
-  if(argc>9 && atoi(argv[9])) {
+  if(argc>10 && std::stoi(argv[10])) {
     floatType = "float";
-    unit_size = 4;
+    unit_size = sizeof(float);
     if(rank == 0) printf("FP32 unsupported!\n");
     MPI_Abort(MPI_COMM_WORLD,1);
   }
 
   int enabledGPUMPI = 0;
-  if(argc>10) {
-    if(argv[10]) enabledGPUMPI = 1;
+  if(argc>11) {
+    if(argv[11]) enabledGPUMPI = 1;
   }
 
   options.setArgs("DEVICE NUMBER", "LOCAL-RANK");
-  if(argc>11) {
+  if(argc>12) {
     std::string deviceNumber;
-    deviceNumber.assign(strdup(argv[11]));
+    deviceNumber.assign(strdup(argv[12]));
     options.setArgs("DEVICE NUMBER", deviceNumber);
   }
 
@@ -113,12 +118,12 @@ int main(int argc, char **argv)
     }
   }
 
-  timer::init(mesh->comm, mesh->device, 1);
+  timer::init(mesh->comm, mesh->device, 0);
 
   // setup gs
   const dlong Nlocal = mesh->Nelements*mesh->Np; 
   ogs_t *ogs= ogsSetup(Nlocal, mesh->globalIds, mesh->comm, 1, mesh->device);
-  mygsSetup(ogs);
+  mygsSetup(ogs, enabledTimer);
   mesh->ogs = ogs; 
 
   meshPrintPartitionStatistics(mesh);
@@ -136,17 +141,18 @@ int main(int argc, char **argv)
     mygsStart(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
     mygsFinish(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
     o_q.copyTo(Q, Nlocal*unit_size);
+
     for(int i=0; i<Nlocal; i++) Q[i] = 1/Q[i];
- 
     o_q.copyFrom(Q, Nlocal*unit_size);
     mygsStart(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
     mygsFinish(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
     o_q.copyTo(Q, Nlocal*unit_size);
-    double nPts = 0;
-    for(int i=0; i<Nlocal; i++) nPts += Q[i];
-    MPI_Allreduce(MPI_IN_PLACE,&nPts,1,MPI_DOUBLE,MPI_SUM,mesh->comm);
-    if(fabs(nPts - NX*NY*NZ*(double)mesh->Np) > 1e-6) { 
-      if(mesh->rank == 0) printf("\ncorrectness check failed for mode=%d! %ld\n", ogs_mode_enum, (long long int)nPts);
+
+    long long int nPts = 0;
+    for(int i=0; i<Nlocal; i++) nPts += (long long int)nearbyint(Q[i]);
+    MPI_Allreduce(MPI_IN_PLACE,&nPts,1,MPI_LONG_LONG_INT,MPI_SUM,mesh->comm);
+    if(nPts - NX*NY*NZ*(long long int)mesh->Np != 0) { 
+      if(mesh->rank == 0) printf("\ncorrectness check failed for mode=%d! %ld\n", ogs_mode_enum, nPts);
       fflush(stdout);
       MPI_Abort(mesh->comm, 1);
     }
@@ -173,30 +179,33 @@ int main(int argc, char **argv)
   for(int test=0;test<Ntests;++test) {
     mygsStart(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
     if(dummyKernel) { 
-      timer::tic("dummyKernel");
-      kernel(mesh->Nelements*mesh->Np, o_U);
-      timer::toc("dummyKernel");
+      if(enabledTimer) timer::tic("dummyKernel");
+      kernel(Nlocal, o_U);
+      if(enabledTimer) timer::toc("dummyKernel");
     }
     mygsFinish(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
-    timer::update();
+    if(enabledTimer) timer::update();
   }
   mesh->device.finish();
   MPI_Barrier(mesh->comm);
   const double elapsed = (MPI_Wtime() - start)/Ntests;
 
   // print stats 
-  double etime[10];
-  etime[0] = timer::query("gather_halo", "DEVICE:MAX")/Ntests;
-  etime[1] = timer::query("gs_interior", "DEVICE:MAX")/Ntests;
-  etime[2] = timer::query("scatter", "DEVICE:MAX")/Ntests;
-  etime[3] = timer::query("gs_host", "HOST:MAX")/Ntests;
-  etime[4] = timer::query("gs_memcpy_dh", "DEVICE:MAX")/Ntests;
-  etime[5] = timer::query("gs_memcpy_hd", "DEVICE:MAX")/Ntests;
-  etime[6] = timer::query("dummyKernel", "DEVICE:MAX")/Ntests;
-  etime[7] = timer::query("pw_exec", "HOST:MAX")/Ntests;
-  etime[8] = timer::query("pack", "DEVICE:MAX")/Ntests;
-  etime[9] = timer::query("unpack", "DEVICE:MAX")/Ntests;
-  if(etime[6] < 0) etime[6] = 0;
+  const int Ntimer = 10;
+  double etime[Ntimer];
+  if(enabledTimer) {
+    etime[0] = timer::query("gather_halo", "DEVICE:MAX");
+    etime[1] = timer::query("gs_interior", "DEVICE:MAX");
+    etime[2] = timer::query("scatter", "DEVICE:MAX");
+    etime[3] = timer::query("gs_host", "HOST:MAX");
+    etime[4] = timer::query("gs_memcpy_dh", "DEVICE:MAX");
+    etime[5] = timer::query("gs_memcpy_hd", "DEVICE:MAX");
+    etime[6] = timer::query("dummyKernel", "DEVICE:MAX");
+    etime[7] = timer::query("pw_exec", "HOST:MAX");
+    etime[8] = timer::query("pack", "DEVICE:MAX");
+    etime[9] = timer::query("unpack", "DEVICE:MAX");
+    for(int i=0; i<Ntimer; i++) etime[i] = std::max(etime[i],0.0)/Ntests;
+  }
 
   if(mesh->rank==0){
     int Nthreads =  omp_get_max_threads();
@@ -205,21 +214,23 @@ int main(int argc, char **argv)
          << "  MPItasks                : " << mesh->size << "\n";
 
     if(options.compareArgs("THREAD MODEL", "OPENMP"))
-      cout << "  OMPthreads              : " << Nthreads << "\n";
+    cout << "  OMPthreads              : " << Nthreads << "\n";
 
     cout << "  polyN                   : " << N << "\n"
          << "  Nelements               : " << NX*NY*NZ << "\n"
          << "  Nrepetitions            : " << Ntests << "\n"
-         << "  floatType               : " << floatType << "\n" 
-         << "  avg elapsed time        : " << elapsed << " s\n"
-         << "    gather halo           : " << etime[0] << " s\n"
+         << "  floatType               : " << floatType << "\n"
+         << "  throughput              : " << ((double)(NX*NY*NZ)*N*N*N/elapsed)/1.e9 << " GDOF/s\n"
+         << "  avg elapsed time        : " << elapsed << " s\n";
+    if(enabledTimer) {
+    cout << "    gather halo           : " << etime[0] << " s\n"
          << "    gs interior           : " << etime[1] << " s\n"
          << "    scatter halo          : " << etime[2] << " s\n"
          << "    pw exec               : " << etime[7] << " s\n"
          << "    memcpy host<->device  : " << etime[4] + etime[5] << " s\n"
          << "    pack/unpack buf       : " << etime[8] + etime[9] << " s\n"
-         << "    dummy kernel          : " << etime[6] << " s\n"
-         << "  throughput              : " << ((double)(NX*NY*NZ)*N*N*N/elapsed)/1.e9 << " GDOF/s\n";
+         << "    dummy kernel          : " << etime[6] << " s\n";
+    }
   }
 
   }
