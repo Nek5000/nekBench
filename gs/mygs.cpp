@@ -141,7 +141,8 @@ void mygather_doubleAdd(const int Ngather,
       gq += q[id];
     }
 
-    gatherq[g] = gq;
+    gatherq[g] += gq;
+    //gatherq[g] = gq;
   }
 }
 
@@ -232,7 +233,7 @@ static void myHostGatherScatter(occa::memory o_u,
   { // prepost recv
     if(enabledTimer) {
       MPI_Barrier(comm->c);
-      timer::tic("pw_exec");
+      timer::hostTic("pw_exec");
     }
 
     comm_req *req = pwd->req; 
@@ -247,27 +248,27 @@ static void myHostGatherScatter(occa::memory o_u,
       bufOffset += len;
     }
 
-    if(enabledTimer)  timer::toc("pw_exec");
+    if(enabledTimer)  timer::hostToc("pw_exec");
   }
 
   { // scatter
-    if(enabledTimer) timer::tic("pack");
+    if(enabledTimer) timer::deviceTic("pack");
     occaScatter(Nhalo, o_scatterOffsets, o_scatterIds, type, op, o_u, o_bufSend);
-    if(enabledTimer) timer::toc("pack");
+    if(enabledTimer) timer::deviceToc("pack");
 
     if(ogs_mode == OGS_HOSTMPI) {
-      if(enabledTimer) timer::tic("gs_memcpy_dh");
+      if(enabledTimer) timer::deviceTic("gs_memcpy_dh");
       o_bufSend.copyTo(bufSend, pwd->comm[send].total*unit_size, 0, "async: true");
-      if(enabledTimer) timer::toc("gs_memcpy_dh");
-      ogs->device.finish();
+      if(enabledTimer) timer::deviceToc("gs_memcpy_dh");
     }
   }
 
   { // pw exchange
+    ogs->device.finish(); // waiting for buffers to be ready
     MPI_Barrier(comm->c);
     if(enabledTimer) {
-      timer::update("pw_exec");
-      timer::tic("pw_exec");
+      timer::hostUpdate("pw_exec");
+      timer::hostTic("pw_exec");
     }
 
     comm_req *req = &pwd->req[pwd->comm[recv].n]; 
@@ -283,19 +284,19 @@ static void myHostGatherScatter(occa::memory o_u,
     }
     MPI_Waitall(pwd->comm[send].n + pwd->comm[recv].n,pwd->req,MPI_STATUSES_IGNORE);
 
-    if(enabledTimer) timer::toc("pw_exec");
+    if(enabledTimer) timer::hostToc("pw_exec");
   }
 
   { // gather
     if(ogs_mode == OGS_HOSTMPI){
-      if(enabledTimer) timer::tic("gs_memcpy_hd");
+      if(enabledTimer) timer::deviceTic("gs_memcpy_hd");
       o_bufRecv.copyFrom(bufRecv,pwd->comm[recv].total*unit_size, 0, "async: true");
-      if(enabledTimer) timer::toc("gs_memcpy_hd");
+      if(enabledTimer) timer::deviceToc("gs_memcpy_hd");
     }
 
-    if(enabledTimer) timer::tic("unpack");
+    if(enabledTimer) timer::deviceTic("unpack");
     occaGather(Nhalo, o_gatherOffsets, o_gatherIds, type, op, o_bufRecv, o_u);
-    if(enabledTimer) timer::toc("unpack");
+    if(enabledTimer) timer::deviceToc("unpack");
   }
 
 }
@@ -395,16 +396,16 @@ void mygsStart(occa::memory o_v, const char *type, const char *op, ogs_t *ogs, o
   }
 
   if (ogs->NhaloGather) {
-    if(enabledTimer) timer::tic("gather_halo");
+    if(enabledTimer) timer::deviceTic("gather_halo");
     occaGather(ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, o_v, ogs::o_haloBuf);
-    if(enabledTimer) timer::toc("gather_halo");
-    ogs->device.finish();
+    if(enabledTimer) timer::deviceToc("gather_halo");
+    ogs->device.finish(); // just in case dataStream is non-blocking 
 
     if(ogs_mode == OGS_DEFAULT) {
       ogs->device.setStream(ogs::dataStream);
-      if(enabledTimer) timer::tic("gs_memcpy_dh");
+      if(enabledTimer) timer::deviceTic("gs_memcpy_dh");
       ogs::o_haloBuf.copyTo(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
-      if(enabledTimer) timer::toc("gs_memcpy_dh");
+      if(enabledTimer) timer::deviceToc("gs_memcpy_dh");
       ogs->device.setStream(ogs::defaultStream);
     }
   }
@@ -423,36 +424,34 @@ void mygsFinish(occa::memory o_v, const char *type, const char *op, ogs_t *ogs, 
     Nbytes = sizeof(long long int);
 
   if(ogs->NlocalGather) {
-    if(enabledTimer) timer::tic("gs_interior");
+    if(enabledTimer) timer::deviceTic("gs_interior");
     occaGatherScatter(ogs->NlocalGather, ogs->o_localGatherOffsets, ogs->o_localGatherIds, type, op, o_v);
-    if(enabledTimer) timer::toc("gs_interior");
+    if(enabledTimer) timer::deviceToc("gs_interior");
   }
 
   if (ogs->NhaloGather) {
     ogs->device.setStream(ogs::dataStream);
-
     if(ogs_mode == OGS_DEFAULT) {
-      ogs->device.finish(); // waitings for ogs::haloBuf on host
-      if(enabledTimer) timer::tic("gs_host");
+      ogs->device.finish(); // waiting for ogs::haloBuf copy to finish 
+      if(enabledTimer) timer::hostTic("gs_host");
       ogsHostGatherScatter(ogs::haloBuf, type, op, ogs->haloGshSym);
       //myHostGatherScatter(ogs::haloBuf, ogs);
-      if(enabledTimer) timer::toc("gs_host");
+      if(enabledTimer) timer::hostToc("gs_host");
     } else {
       myHostGatherScatter(ogs::o_haloBuf, type, op, ogs, ogs_mode);
     }   
  
     if(ogs_mode == OGS_DEFAULT) { 
-      if(enabledTimer) timer::tic("gs_memcpy_hd");
+      if(enabledTimer) timer::deviceTic("gs_memcpy_hd");
       ogs::o_haloBuf.copyFrom(ogs::haloBuf, ogs->NhaloGather*Nbytes, 0, "async: true");
-      if(enabledTimer) timer::toc("gs_memcpy_hd");
+      if(enabledTimer) timer::deviceToc("gs_memcpy_hd");
     }
-
-    if(enabledTimer) timer::tic("scatter");
-    occaScatter(ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, ogs::o_haloBuf, o_v);
-    if(enabledTimer) timer::toc("scatter");
 
     ogs->device.finish();
     ogs->device.setStream(ogs::defaultStream);
+
+    if(enabledTimer) timer::deviceTic("scatter");
+    occaScatter(ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, ogs::o_haloBuf, o_v);
+    if(enabledTimer) timer::deviceToc("scatter");
   }
 }
-

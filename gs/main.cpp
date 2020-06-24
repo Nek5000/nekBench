@@ -169,19 +169,23 @@ int main(int argc, char **argv)
     if(floatType.compare("float") == 0) {
       float *Q = (float*) calloc(Nlocal, unit_size);
       o_q.copyTo(Q, Nlocal*unit_size);
-      for(int i=0; i<Nlocal; i++) nPts += (long long int)nearbyint(Q[i]);
+      for(int i=0; i<Nlocal; i++) nPts += (long long int)std::nearbyint(Q[i]);
       free(Q);
     } else {
       double *Q = (double*) calloc(Nlocal, unit_size);
       o_q.copyTo(Q, Nlocal*unit_size);
-      for(int i=0; i<Nlocal; i++) nPts += (long long int)nearbyint(Q[i]);
+      for(int i=0; i<Nlocal; i++) {
+        double tmp = std::nearbyint(Q[i]); 
+        nPts += (long long int)tmp;
+        //if(tmp != 1) printf("here %g\n",tmp); 
+      }
       free(Q);
     }
     MPI_Allreduce(MPI_IN_PLACE,&nPts,1,MPI_LONG_LONG_INT,MPI_SUM,mesh->comm);
     if(nPts - NX*NY*NZ*(long long int)mesh->Np != 0) { 
       if(mesh->rank == 0) printf("\ncorrectness check failed for mode=%d! %ld\n", ogs_mode_enum, nPts);
       fflush(stdout);
-      MPI_Abort(mesh->comm, 1);
+      //MPI_Abort(mesh->comm, 1);
     }
   }
 

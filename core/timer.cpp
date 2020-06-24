@@ -117,7 +117,8 @@ void toc(const std::string tag){
 void update(){
   for (auto it = m_.begin(); it != m_.end(); it++) {
     it->second.hostElapsed += (it->second.stopTime - it->second.startTime);
-    it->second.deviceElapsed += device_.timeBetween(it->second.startTag,it->second.stopTag);
+    if(it->second.startTag.isInitialized() && it->second.stopTag.isInitialized())
+      it->second.deviceElapsed += device_.timeBetween(it->second.startTag,it->second.stopTag);
     it->second.count++;
   }
 }
@@ -125,21 +126,15 @@ void update(){
 void update(const std::string tag){
   auto it=m_.find(tag);
   it->second.hostElapsed += (it->second.stopTime - it->second.startTime);
-  it->second.deviceElapsed += device_.timeBetween(it->second.startTag,it->second.stopTag);
+  if(it->second.startTag.isInitialized() && it->second.stopTag.isInitialized())
+    it->second.deviceElapsed += device_.timeBetween(it->second.startTag,it->second.stopTag);
   it->second.count++;
 }
 
-double hostElapsed(const std::string tag){
+void hostUpdate(const std::string tag){
   auto it=m_.find(tag);
-  it->second.hostElapsed = it->second.stopTime - it->second.startTime;
-  if(it==m_.end()){ return NEKRS_TIMER_INVALID_KEY; }
-  return it->second.hostElapsed;
-}
-
-double deviceElapsed(const std::string tag){
-  auto it=m_.find(tag);
-  if(it==m_.end()){ return NEKRS_TIMER_INVALID_KEY; }
-  return it->second.deviceElapsed;
+  it->second.hostElapsed += (it->second.stopTime - it->second.startTime);
+  it->second.count++;
 }
 
 int count(const std::string tag){

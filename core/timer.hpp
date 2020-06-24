@@ -11,6 +11,7 @@ namespace timer{
   void reset();
   void update();
   void update(const std::string tag);
+  void hostUpdate(const std::string tag);
   void reset(const std::string tag);
   void finalize();
 
@@ -24,8 +25,6 @@ namespace timer{
   void deviceTic(const std::string tag,int ifSync);
   void deviceToc(const std::string tag);
 
-  double hostElapsed(const std::string tag);
-  double deviceElapsed(const std::string tag);
   int count(const std::string tag);
   double query(const std::string tag,std::string metric);
   void printStat();
