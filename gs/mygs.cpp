@@ -222,8 +222,8 @@ void mygsSetup(ogs_t *ogs, int timer)
   const struct pw_comm_data *c_recv = &pwd->comm[recv];
   const struct pw_comm_data *c_send = &pwd->comm[send];
 
-  int src[c_recv->n];
-  int dst[c_send->n];
+  int *src = (int*) calloc(c_recv->n, sizeof(int));
+  int *dst = (int*) calloc(c_send->n, sizeof(int));
 
   for(int i = 0; i < c_recv->n; ++i)
     src[i] = *(c_recv->p+i);
