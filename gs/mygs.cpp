@@ -13,6 +13,8 @@
 #include "ogsInterface.h"
 #include "timer.hpp"
 
+// #define NEIGHBORHOOD_COLLECTIVES
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -230,13 +232,15 @@ static void myHostGatherScatter(occa::memory o_u,
   // mask flagged primaries with gs_identity
   //if(transpose==0) gs_init(u,vn,gsh->flagged_primaries,dom,op);
 
+#ifndef NEIGHBORHOOD_COLLECTIVES
+
   { // prepost recv
     if(enabledTimer) {
       MPI_Barrier(comm->c);
       timer::hostTic("pw_exec");
     }
 
-    comm_req *req = pwd->req; 
+    comm_req *req = pwd->req;
     const struct pw_comm_data *c = &pwd->comm[recv];
     const uint *p, *pe, *size=c->size;
     uint bufOffset = 0;
@@ -251,6 +255,8 @@ static void myHostGatherScatter(occa::memory o_u,
     if(enabledTimer)  timer::hostToc("pw_exec");
   }
 
+#endif
+
   { // scatter
     if(enabledTimer) timer::deviceTic("pack");
     occaScatter(Nhalo, o_scatterOffsets, o_scatterIds, type, op, o_u, o_bufSend);
@@ -262,6 +268,63 @@ static void myHostGatherScatter(occa::memory o_u,
       if(enabledTimer) timer::deviceToc("gs_memcpy_dh");
     }
   }
+
+#ifdef NEIGHBORHOOD_COLLECTIVES
+
+  { // pw exchange
+    ogs->device.finish(); // waiting for buffers to be ready
+    MPI_Barrier(comm->c);
+
+    if(enabledTimer) timer::hostTic("pw_exec");
+
+    const struct pw_comm_data *c_recv = &pwd->comm[recv];
+    const struct pw_comm_data *c_send = &pwd->comm[send];
+
+    int src[c_recv->n];
+    int dst[c_send->n];
+
+    for(int i = 0; i < c_recv->n; ++i)
+      src[i] = *(c_recv->p+i);
+    for(int i = 0; i < c_send->n; ++i)
+      dst[i] = *(c_send->p+i);
+
+    // create new communicator with attached topo
+    MPI_Comm comm_neighbor;
+    MPI_Dist_graph_create_adjacent(comm->c,
+                                   c_recv->n, src, MPI_UNWEIGHTED,
+                                   c_send->n, dst, MPI_UNWEIGHTED,
+                                   MPI_INFO_NULL, 0, &comm_neighbor);
+
+    const uint *sendsize = c_send->size;
+    const uint *recvsize = c_recv->size;
+
+    // compose arrays for alltoall cal
+    int sendcounts[c_send->n];
+    int senddispls[c_send->n];
+    uint bufOffset = 0;
+    for(int i = 0; i < c_send->n; ++i) {
+      sendcounts[i] = *(sendsize++)*unit_size;
+      senddispls[i] = bufOffset;
+      bufOffset += sendcounts[i];
+    }
+    int recvcounts[c_recv->n];
+    int recvdispls[c_recv->n];
+    bufOffset = 0;
+    for(int i = 0; i < c_recv->n; ++i) {
+      recvcounts[i] = *(recvsize++)*unit_size;
+      recvdispls[i] = bufOffset;
+      bufOffset += recvcounts[i];
+    }
+
+    MPI_Neighbor_alltoallv(bufSend, sendcounts, senddispls, MPI_UNSIGNED_CHAR,
+                           bufRecv, recvcounts, recvdispls, MPI_UNSIGNED_CHAR,
+                           comm_neighbor);
+
+    if(enabledTimer) timer::hostToc("pw_exec");
+
+  }
+
+#else
 
   { // pw exchange
     ogs->device.finish(); // waiting for buffers to be ready
@@ -286,6 +349,8 @@ static void myHostGatherScatter(occa::memory o_u,
 
     if(enabledTimer) timer::hostToc("pw_exec");
   }
+
+#endif
 
   { // gather
     if(ogs_mode == OGS_HOSTMPI){
