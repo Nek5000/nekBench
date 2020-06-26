@@ -78,6 +78,17 @@ struct gs_data {
   uint handle_size;
 };
 
+#ifdef NEIGHBORHOOD_COLLECTIVES
+struct neighbor {
+    int *sendcounts;
+    int *senddispls;
+    int *recvcounts;
+    int *recvdispls;
+    MPI_Comm comm;
+};
+neighbor ngh;
+#endif
+
 // GLOBALS
 static occa::memory h_buffSend, h_buffRecv;
 static unsigned char *bufSend, *bufRecv;
@@ -203,15 +214,58 @@ void mygsSetup(ogs_t *ogs, int timer)
   o_bufRecv = ogs->device.malloc(pwd->comm[recv].total*unit_size);
   o_gatherOffsets  = ogs->device.malloc(2*Nhalo*sizeof(int), gatherOffsets);
   o_gatherIds  = ogs->device.malloc(pwd->comm[recv].total*sizeof(int), gatherIds);
+
+#ifdef NEIGHBORHOOD_COLLECTIVES
+
+  const struct comm *comm = &gsh->comm;
+
+  const struct pw_comm_data *c_recv = &pwd->comm[recv];
+  const struct pw_comm_data *c_send = &pwd->comm[send];
+
+  int src[c_recv->n];
+  int dst[c_send->n];
+
+  for(int i = 0; i < c_recv->n; ++i)
+    src[i] = *(c_recv->p+i);
+  for(int i = 0; i < c_send->n; ++i)
+    dst[i] = *(c_send->p+i);
+
+  // create new communicator with attached topo
+  MPI_Dist_graph_create_adjacent(comm->c,
+                                 c_recv->n, src, MPI_UNWEIGHTED,
+                                 c_send->n, dst, MPI_UNWEIGHTED,
+                                 MPI_INFO_NULL, 0, &ngh.comm);
+
+  const uint *sendsize = c_send->size;
+  const uint *recvsize = c_recv->size;
+
+  // compose arrays for alltoall cal
+  ngh.sendcounts = (int*) calloc(c_send->n, sizeof(int));
+  ngh.senddispls = (int*) calloc(c_send->n, sizeof(int));
+  uint bufOffset = 0;
+  for(int i = 0; i < c_send->n; ++i) {
+    ngh.sendcounts[i] = *(sendsize++)*unit_size;
+    ngh.senddispls[i] = bufOffset;
+    bufOffset += ngh.sendcounts[i];
+  }
+  ngh.recvcounts = (int*) calloc(c_recv->n, sizeof(int));
+  ngh.recvdispls = (int*) calloc(c_recv->n, sizeof(int));
+  bufOffset = 0;
+  for(int i = 0; i < c_recv->n; ++i) {
+    ngh.recvcounts[i] = *(recvsize++)*unit_size;
+    ngh.recvdispls[i] = bufOffset;
+    bufOffset += ngh.recvcounts[i];
+  }
+#endif
 }
 
 static void myHostGatherScatter(occa::memory o_u,
-                                const char *type, const char *op, 
+                                const char *type, const char *op,
                                 ogs_t *ogs, ogs_mode ogs_mode)
 {
   struct gs_data *gsh = (gs_data*) ogs->haloGshSym;
-  const void* execdata = gsh->r.data; 
-  const struct pw_data *pwd = (pw_data*) execdata; 
+  const void* execdata = gsh->r.data;
+  const struct pw_data *pwd = (pw_data*) execdata;
   const struct comm *comm = &gsh->comm;
   const unsigned Nhalo = ogs->NhaloGather;
 
@@ -277,48 +331,9 @@ static void myHostGatherScatter(occa::memory o_u,
 
     if(enabledTimer) timer::hostTic("pw_exec");
 
-    const struct pw_comm_data *c_recv = &pwd->comm[recv];
-    const struct pw_comm_data *c_send = &pwd->comm[send];
-
-    int src[c_recv->n];
-    int dst[c_send->n];
-
-    for(int i = 0; i < c_recv->n; ++i)
-      src[i] = *(c_recv->p+i);
-    for(int i = 0; i < c_send->n; ++i)
-      dst[i] = *(c_send->p+i);
-
-    // create new communicator with attached topo
-    MPI_Comm comm_neighbor;
-    MPI_Dist_graph_create_adjacent(comm->c,
-                                   c_recv->n, src, MPI_UNWEIGHTED,
-                                   c_send->n, dst, MPI_UNWEIGHTED,
-                                   MPI_INFO_NULL, 0, &comm_neighbor);
-
-    const uint *sendsize = c_send->size;
-    const uint *recvsize = c_recv->size;
-
-    // compose arrays for alltoall cal
-    int sendcounts[c_send->n];
-    int senddispls[c_send->n];
-    uint bufOffset = 0;
-    for(int i = 0; i < c_send->n; ++i) {
-      sendcounts[i] = *(sendsize++)*unit_size;
-      senddispls[i] = bufOffset;
-      bufOffset += sendcounts[i];
-    }
-    int recvcounts[c_recv->n];
-    int recvdispls[c_recv->n];
-    bufOffset = 0;
-    for(int i = 0; i < c_recv->n; ++i) {
-      recvcounts[i] = *(recvsize++)*unit_size;
-      recvdispls[i] = bufOffset;
-      bufOffset += recvcounts[i];
-    }
-
-    MPI_Neighbor_alltoallv(bufSend, sendcounts, senddispls, MPI_UNSIGNED_CHAR,
-                           bufRecv, recvcounts, recvdispls, MPI_UNSIGNED_CHAR,
-                           comm_neighbor);
+    MPI_Neighbor_alltoallv(bufSend, ngh.sendcounts, ngh.senddispls, MPI_UNSIGNED_CHAR,
+                           bufRecv, ngh.recvcounts, ngh.recvdispls, MPI_UNSIGNED_CHAR,
+                           ngh.comm);
 
     if(enabledTimer) timer::hostToc("pw_exec");
 
