@@ -202,8 +202,12 @@ int main(int argc, char **argv)
 
   for (auto const& ogs_mode_enum : ogs_mode_list) { 
 
+  occa::stream defaultStream = mesh->device.getStream();
+  occa::stream kernelStream  = mesh->device.createStream();
+
   // gs
   timer::reset();
+  mesh->device.setStream(kernelStream);
   mesh->device.finish();
   MPI_Barrier(mesh->comm);
   const double start = MPI_Wtime();
@@ -212,12 +216,14 @@ int main(int argc, char **argv)
     if(dummyKernel) { 
       if(enabledTimer) timer::tic("dummyKernel");
       kernel(Nlocal, o_U);
+      mesh->device.setStream(defaultStream);
       if(enabledTimer) timer::toc("dummyKernel");
     }
     mygsFinish(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
     if(enabledTimer) timer::update();
   }
   mesh->device.finish();
+  mesh->device.setStream(defaultStream);
   MPI_Barrier(mesh->comm);
   const double elapsed = (MPI_Wtime() - start)/Ntests;
 

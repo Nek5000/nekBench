@@ -2,7 +2,6 @@
  * TODO:
  *  - Add device support for gs_init
  *  - Fix alignments issues of device MPI buffers
- *  - Enable overlap (ogs::dataStream had be non-blocking but OCCA creates always blocking streams)
  *  - Add occaGather kernel initializing result with original value not zero 
  */
 
@@ -147,12 +146,11 @@ void mygather_doubleAdd(const int Ngather,
 }
 
 
-static void convertPwMap(const uint *restrict map,
-                         int *restrict starts,
-                         int *restrict ids){
+static void convertMap(const uint *restrict map,
+                       int *restrict starts,
+                       int *restrict ids){
 
-  uint i,j; 
-  int n=0, s=0;
+  int i, j, n=0, s=0;
   while((i=*map++)!=UINT_MAX) {
     starts[s] = n;
     j=*map++; 
@@ -164,7 +162,6 @@ static void convertPwMap(const uint *restrict map,
     s++;
   }
 }
-
 
 void mygsSetup(ogs_t *ogs, int timer)
 {
@@ -186,7 +183,7 @@ void mygsSetup(ogs_t *ogs, int timer)
   bufSend = (unsigned char*)h_buffSend.ptr(props); 
   scatterOffsets = (int*) calloc(2*Nhalo,sizeof(int));
   scatterIds = (int*) calloc(pwd->comm[send].total,sizeof(int));
-  convertPwMap(pwd->map[send], scatterOffsets, scatterIds);
+  convertMap(pwd->map[send], scatterOffsets, scatterIds);
 
   o_bufSend = ogs->device.malloc(pwd->comm[send].total*unit_size);
   o_scatterOffsets = ogs->device.malloc(2*Nhalo*sizeof(int), scatterOffsets);
@@ -196,7 +193,7 @@ void mygsSetup(ogs_t *ogs, int timer)
   bufRecv = (unsigned char*)h_buffRecv.ptr(props);
   gatherOffsets  = (int*) calloc(2*Nhalo,sizeof(int));
   gatherIds  = (int*) calloc(pwd->comm[recv].total,sizeof(int));
-  convertPwMap(pwd->map[recv], gatherOffsets, gatherIds);
+  convertMap(pwd->map[recv], gatherOffsets, gatherIds);
 
   o_bufRecv = ogs->device.malloc(pwd->comm[recv].total*unit_size);
   o_gatherOffsets  = ogs->device.malloc(2*Nhalo*sizeof(int), gatherOffsets);
@@ -226,9 +223,6 @@ static void myHostGatherScatter(occa::memory o_u,
     unit_size  = sizeof(int);
   else if (!strcmp(type, "long long int"))
     unit_size  = sizeof(long long int);
-
-  // mask flagged primaries with gs_identity
-  //if(transpose==0) gs_init(u,vn,gsh->flagged_primaries,dom,op);
 
   { // prepost recv
     if(enabledTimer) {
@@ -316,9 +310,6 @@ static void myHostGatherScatter(void *u, ogs_t *ogs)
   const unsigned unit_size = vn*sizeof(double);
   const char type[] = "double";
   const char op[]   = "add";
-
-  //if(transpose==0) gs_init(u,vn,gsh->flagged_primaries,dom,op);
-  //if(transpose==0) init_double((double*) u,gsh->flagged_primaries,gs_add);
 
   { // prepost recv
     MPI_Barrier(comm->c);
