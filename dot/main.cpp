@@ -9,7 +9,6 @@
 #include "meshBasis.hpp"
 #include "kernelHelper.cpp"
 
-int kernelVersion = 0;
 occa::memory o_tmp;
 occa::memory o_tmp2;
 dfloat *tmp;
@@ -52,8 +51,8 @@ dfloat weightedInnerProduct(dlong N, dlong Ncutoff, int Nblock, occa::memory &o_
 
 int main(int argc, char **argv){
 
-  if(argc<6){
-    printf("Usage: ./dot global N numElements blockSize [NATIVE|OKL]+SERIAL|CUDA|OPENCL CPU|VOLTA [nRepetitions] [kernelVersion]\n");
+  if(argc<5){
+    printf("Usage: ./dot N numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL CPU|VOLTA [nRepetitions] [deviceId] [blockSize] [MPI]\n");
     return 1;
   }
 
@@ -62,25 +61,31 @@ int main(int argc, char **argv){
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-  const int global = atoi(argv[1]);
-  const int N = atoi(argv[2]);
-  const dlong Nelements = atoi(argv[3]);
-  const int blockSize = atoi(argv[4]);
+  const int N = atoi(argv[1]);
+  const dlong Nelements = atoi(argv[2]);
   std::string threadModel;
-  threadModel.assign(strdup(argv[5]));
+  threadModel.assign(strdup(argv[3]));
 
   std::string arch("");
+  if(argc>=5)
+    arch.assign(argv[4]);
+
+  int Ntests = 100;
+  if(argc>=6)
+    Ntests = atoi(argv[5]);
+
+  int deviceId = 0;
   if(argc>=7)
-    arch.assign(argv[6]);
+    deviceId = atoi(argv[6]);
 
-  int Ntests = 1;
+  int blockSize = 256;
   if(argc>=8)
-    Ntests = atoi(argv[7]);
+    blockSize = atoi(argv[7]);
 
+  int global = 0;
   if(argc>=9)
-    kernelVersion = atoi(argv[8]);
+    global = atoi(argv[8]);
 
-  const int deviceId = 0;
   const int platformId = 0;
 
   const int Nq = N+1;
@@ -121,6 +126,7 @@ int main(int argc, char **argv){
 
   // load kernel
   std::string kernelName = "weightedInnerProduct2";
+  const int kernelVersion = 0; // hardwired for now
   kernelName += "_v" + std::to_string(kernelVersion);
   kernel = loadKernel(device, threadModel, arch, kernelName, N, Nelements, blockSize);
 
