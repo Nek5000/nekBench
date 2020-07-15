@@ -307,10 +307,11 @@ dfloat BPWeightedNorm2(BP_t *BP, occa::memory &o_w, occa::memory &o_a){
 
 dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b){
 
+  mesh_t *mesh = BP->mesh;
+  mesh->device.finish();
   if(BP->profiling) timer::tic("dot");
   setupAide &options = BP->options;
 
-  mesh_t *mesh = BP->mesh;
   dfloat *tmp = BP->tmp;
   dlong Nblock = BP->Nblock;
   dlong Nblock2 = BP->Nblock2;
