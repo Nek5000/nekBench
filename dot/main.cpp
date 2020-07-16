@@ -161,7 +161,7 @@ int main(int argc, char **argv){
 
   // print statistics
   double GDOFPerSecond = size*(Nelements*N*N*N)/elapsed/1.e9;
-  const long long bytesMoved = 3*Np; 
+  const long long bytesMoved = 3*Np*sizeof(dfloat); 
   const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
   //  double flopCount = ?;
   //  double gflops = (size*flopCount*Nelements/elapsed)/1.e9;
