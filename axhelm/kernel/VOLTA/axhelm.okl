@@ -58,6 +58,7 @@
 
         // load pencil of u into register
         const dlong base = i + j*p_Nq + e*p_Np;
+#pragma unroll p_Nq
         for(int k = 0; k < p_Nq; ++k) {
           r_q[k] = q[base + k*p_Nq*p_Nq]; // prefetch operation
           r_Aq[k] = 0.f; // zero the accumulator
@@ -205,6 +206,7 @@
         // load pencil of u into register
         const dlong base = i + j*p_Nq + e*p_Np;
 
+#pragma unroll p_Nq
         for(int k = 0; k < p_Nq; k++) {
           //
           r_U[k] = q[base + k*p_Nq*p_Nq + 0*offset];

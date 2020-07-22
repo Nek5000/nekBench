@@ -160,8 +160,8 @@ int main(int argc, char **argv){
   const long long bytesMoved = (Ndim*2*Np+7*Np+2*Np)*sizeof(dfloat); // x, Mx, opa, lambda
   const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
   double flopCount = Ndim*Np*12*Nq;
-  if(Ndim == 1) flopCount += 22*Np;
-  if(Ndim == 3) flopCount += 69*Np;
+  if(Ndim == 1) flopCount += 23*Np;
+  if(Ndim == 3) flopCount *= Ndim;
   double gflops = (size*flopCount*Nelements/elapsed)/1.e9;
   if(rank==0) {
     std::cout << "MPItasks=" << size
