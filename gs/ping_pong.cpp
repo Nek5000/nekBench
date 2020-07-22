@@ -33,14 +33,14 @@ struct options_t {
 };
 
 static void multi_latency(MPI_Comm comm);
-static void multi_latency_paul(int writeToFile, MPI_Comm comm);
+static void single_latency( MPI_Comm comm);
 
 // GLOBALS
 struct options_t options;
 char *s_buf, *r_buf;
 
 extern "C" { // Begin C Linkage
-int pingPongMulti(int pairs, int useDevice, int createDetailedPingPongFile, occa::device device, MPI_Comm comm)
+int pingPongMulti(int pairs, int useDevice, occa::device device, MPI_Comm comm)
 {
 
     int size, rank;
@@ -81,16 +81,56 @@ int pingPongMulti(int pairs, int useDevice, int createDetailedPingPongFile, occa
     multi_latency(comm);
     MPI_CHECK(MPI_Barrier(comm));
 
+    if(useDevice) {
+      o_s_buf.free();
+      o_r_buf.free();
+    } else {
+      free(s_buf);
+      free(r_buf);
+    }
+
+    return EXIT_SUCCESS;
+}
+
+int pingPongSingle(int useDevice, occa::device device, MPI_Comm comm)
+{
+
+    int size, rank;
+    MPI_Comm_size(comm,&size);
+    MPI_Comm_rank(comm,&rank);
+
+    options.min_message_size = 0;
+    options.max_message_size = 1 << 20;
+
+    options.iterations = LAT_LOOP_SMALL;
+    options.skip = LAT_SKIP_SMALL;
+    options.iterations_large = LAT_LOOP_LARGE;
+    options.skip_large = LAT_SKIP_LARGE;
+
+    occa::memory o_s_buf;
+    occa::memory o_r_buf;
+
+    if(useDevice) {
+      o_s_buf = device.malloc(options.max_message_size);
+      o_r_buf = device.malloc(options.max_message_size);
+      s_buf = (char*) o_s_buf.ptr();
+      r_buf = (char*) o_s_buf.ptr();
+    } else {
+      unsigned long align_size = sysconf(_SC_PAGESIZE);
+      posix_memalign((void**)&s_buf, align_size, options.max_message_size);
+      posix_memalign((void**)&r_buf, align_size, options.max_message_size);
+    }
+
     if(rank == 0) {
         if(size > 2)
-            printf("\n\nping pong - ranks 1-%d to rank 0, useDevice: %d\n\n", size-1, useDevice);
+            printf("\n\nping pong single - ranks 1-%d to rank 0, useDevice: %d\n\n", size-1, useDevice);
         else
-            printf("\n\nping pong - ranks 1 to rank 0, useDevice: %d\n\n", useDevice);
+            printf("\n\nping pong single - ranks 1 to rank 0, useDevice: %d\n\n", useDevice);
         fflush(stdout);
     }
 
     MPI_CHECK(MPI_Barrier(comm));
-    multi_latency_paul(createDetailedPingPongFile, comm);
+    single_latency(comm);
     MPI_CHECK(MPI_Barrier(comm));
 
     if(useDevice) {
@@ -189,7 +229,7 @@ static void multi_latency(MPI_Comm comm)
     }
 }
 
-static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
+static void single_latency(MPI_Comm comm) {
 
   int myRank, mpiSize;
   MPI_Comm_rank(comm, &myRank);
@@ -208,7 +248,7 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
   all_avg = (double*)calloc(loopCounter, sizeof(double));
 
   FILE *fp;
-  if(0 == myRank && writeToFile) {
+  if(0 == myRank) {
 
     time_t rawtime;
     struct tm *timeinfo;
@@ -305,9 +345,7 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
           all_max[iSize] = avg_lat;
         all_avg[iSize] += avg_lat;
 
-        if(writeToFile) {
-          fprintf(fp, "%-10d %-10d %-10d %-10d %-15d %-15f\n", iRank, mpiSize, 0, options.iterations, size, avg_lat);
-        }
+        fprintf(fp, "%-10d %-10d %-10d %-10d %-15d %-15f\n", iRank, mpiSize, 0, options.iterations, size, avg_lat);
 
       }
 
@@ -331,8 +369,8 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
     printf("\nGlobal average: %f\n\n", avg_sum/(double)loopCounter);
     fflush(stdout);
 
-    if(writeToFile)
-      fclose(fp);
+    fclose(fp);
+
   }
 
   free(all_sizes);
