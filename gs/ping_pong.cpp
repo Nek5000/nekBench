@@ -215,7 +215,7 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
   }
 
   int maxRank = std::min(512, mpiSize);
-  for(int iRank = 1; iRank < maxRank; iRank = (iRank<32 ? iRank+1 : (maxRank-1-iRank < 5 ? maxRank-1 : iRank+5))) {
+  for(int iRank = 1; iRank < maxRank; iRank = (iRank<32||maxRank<128 ? iRank+1 : (maxRank-1-iRank < 5 ? maxRank-1 : iRank+5))) {
 
     int iSize = 0;
 
@@ -306,6 +306,9 @@ static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
       ++iSize;
 
     }
+
+    if(iRank == maxRank-1)
+      break;
 
   }
 
