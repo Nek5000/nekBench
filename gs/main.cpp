@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 
   int enabledGPUMPI = 0;
   if(argc>11) {
-    if(argv[11]) {
+    if(std::stoi(argv[11])) {
       enabledGPUMPI = 1;
       ogs_mode_list.push_back(OGS_DEVICEMPI);
     }
