@@ -50,7 +50,6 @@ int main(int argc, char **argv)
   } else {
     ogs_mode_list.push_back(OGS_DEFAULT); 
     ogs_mode_list.push_back(OGS_HOSTMPI); 
-    ogs_mode_list.push_back(OGS_DEVICEMPI); 
   }
 
   int Ntests = 100;
@@ -71,7 +70,10 @@ int main(int argc, char **argv)
 
   int enabledGPUMPI = 0;
   if(argc>11) {
-    if(argv[11]) enabledGPUMPI = 1;
+    if(argv[11]) {
+      enabledGPUMPI = 1;
+      ogs_mode_list.push_back(OGS_DEVICEMPI); 
+    }
   }
 
   options.setArgs("DEVICE NUMBER", "LOCAL-RANK");
