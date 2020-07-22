@@ -12,6 +12,8 @@
 #include "ogsInterface.h"
 #include "timer.hpp"
 
+// #define USE_NBC
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -74,6 +76,17 @@ struct gs_data {
   struct gs_remote r;
   uint handle_size;
 };
+
+#ifdef USE_NBC
+struct neighbor {
+    int *sendcounts;
+    int *senddispls;
+    int *recvcounts;
+    int *recvdispls;
+    MPI_Comm comm;
+};
+neighbor ngh;
+#endif
 
 // GLOBALS
 static occa::memory h_buffSend, h_buffRecv;
@@ -198,15 +211,58 @@ void mygsSetup(ogs_t *ogs, int timer)
   o_bufRecv = ogs->device.malloc(pwd->comm[recv].total*unit_size);
   o_gatherOffsets  = ogs->device.malloc(2*Nhalo*sizeof(int), gatherOffsets);
   o_gatherIds  = ogs->device.malloc(pwd->comm[recv].total*sizeof(int), gatherIds);
+
+#ifdef USE_NBC
+
+  const struct comm *comm = &gsh->comm;
+
+  const struct pw_comm_data *c_recv = &pwd->comm[recv];
+  const struct pw_comm_data *c_send = &pwd->comm[send];
+
+  int *src = (int*) calloc(c_recv->n, sizeof(int));
+  int *dst = (int*) calloc(c_send->n, sizeof(int));
+
+  for(int i = 0; i < c_recv->n; ++i)
+    src[i] = *(c_recv->p+i);
+  for(int i = 0; i < c_send->n; ++i)
+    dst[i] = *(c_send->p+i);
+
+  // create new communicator with attached topo
+  MPI_Dist_graph_create_adjacent(comm->c,
+                                 c_recv->n, src, MPI_UNWEIGHTED,
+                                 c_send->n, dst, MPI_UNWEIGHTED,
+                                 MPI_INFO_NULL, 0, &ngh.comm);
+
+  const uint *sendsize = c_send->size;
+  const uint *recvsize = c_recv->size;
+
+  // compose arrays for alltoall cal
+  ngh.sendcounts = (int*) calloc(c_send->n, sizeof(int));
+  ngh.senddispls = (int*) calloc(c_send->n, sizeof(int));
+  uint bufOffset = 0;
+  for(int i = 0; i < c_send->n; ++i) {
+    ngh.sendcounts[i] = *(sendsize++)*unit_size;
+    ngh.senddispls[i] = bufOffset;
+    bufOffset += ngh.sendcounts[i];
+  }
+  ngh.recvcounts = (int*) calloc(c_recv->n, sizeof(int));
+  ngh.recvdispls = (int*) calloc(c_recv->n, sizeof(int));
+  bufOffset = 0;
+  for(int i = 0; i < c_recv->n; ++i) {
+    ngh.recvcounts[i] = *(recvsize++)*unit_size;
+    ngh.recvdispls[i] = bufOffset;
+    bufOffset += ngh.recvcounts[i];
+  }
+#endif
 }
 
 static void myHostGatherScatter(occa::memory o_u,
-                                const char *type, const char *op, 
+                                const char *type, const char *op,
                                 ogs_t *ogs, ogs_mode ogs_mode)
 {
   struct gs_data *gsh = (gs_data*) ogs->haloGshSym;
-  const void* execdata = gsh->r.data; 
-  const struct pw_data *pwd = (pw_data*) execdata; 
+  const void* execdata = gsh->r.data;
+  const struct pw_data *pwd = (pw_data*) execdata;
   const struct comm *comm = &gsh->comm;
   const unsigned Nhalo = ogs->NhaloGather;
 
@@ -224,13 +280,18 @@ static void myHostGatherScatter(occa::memory o_u,
   else if (!strcmp(type, "long long int"))
     unit_size  = sizeof(long long int);
 
+  // mask flagged primaries with gs_identity
+  //if(transpose==0) gs_init(u,vn,gsh->flagged_primaries,dom,op);
+
+#ifndef USE_NBC
+
   { // prepost recv
     if(enabledTimer) {
       MPI_Barrier(comm->c);
       timer::hostTic("pw_exec");
     }
 
-    comm_req *req = pwd->req; 
+    comm_req *req = pwd->req;
     const struct pw_comm_data *c = &pwd->comm[recv];
     const uint *p, *pe, *size=c->size;
     uint bufOffset = 0;
@@ -245,6 +306,8 @@ static void myHostGatherScatter(occa::memory o_u,
     if(enabledTimer)  timer::hostToc("pw_exec");
   }
 
+#endif
+
   { // scatter
     if(enabledTimer) timer::deviceTic("pack");
     occaScatter(Nhalo, o_scatterOffsets, o_scatterIds, type, op, o_u, o_bufSend);
@@ -256,6 +319,24 @@ static void myHostGatherScatter(occa::memory o_u,
       if(enabledTimer) timer::deviceToc("gs_memcpy_dh");
     }
   }
+
+#ifdef USE_NBC
+
+  { // pw exchange
+    ogs->device.finish(); // waiting for buffers to be ready
+    MPI_Barrier(comm->c);
+
+    if(enabledTimer) timer::hostTic("pw_exec");
+
+    MPI_Neighbor_alltoallv(bufSend, ngh.sendcounts, ngh.senddispls, MPI_UNSIGNED_CHAR,
+                           bufRecv, ngh.recvcounts, ngh.recvdispls, MPI_UNSIGNED_CHAR,
+                           ngh.comm);
+
+    if(enabledTimer) timer::hostToc("pw_exec");
+
+  }
+
+#else
 
   { // pw exchange
     ogs->device.finish(); // waiting for buffers to be ready
@@ -280,6 +361,8 @@ static void myHostGatherScatter(occa::memory o_u,
 
     if(enabledTimer) timer::hostToc("pw_exec");
   }
+
+#endif
 
   { // gather
     if(ogs_mode == OGS_HOSTMPI){
