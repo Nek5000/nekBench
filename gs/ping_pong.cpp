@@ -33,13 +33,14 @@ struct options_t {
 };
 
 static void multi_latency(MPI_Comm comm);
+static void multi_latency_paul(int writeToFile, MPI_Comm comm);
 
 // GLOBALS
 struct options_t options;
 char *s_buf, *r_buf;
 
 extern "C" { // Begin C Linkage
-int pingPongMulti(int pairs, int useDevice, occa::device device, MPI_Comm comm)
+int pingPongMulti(int pairs, int useDevice, int createDetailedPingPongFile, occa::device device, MPI_Comm comm)
 {
 
     int size, rank;
@@ -80,12 +81,24 @@ int pingPongMulti(int pairs, int useDevice, occa::device device, MPI_Comm comm)
     multi_latency(comm);
     MPI_CHECK(MPI_Barrier(comm));
 
+    if(rank == 0) {
+        if(size > 2)
+            printf("\n\nping pong - ranks 1-%d to rank 0, useDevice: %d\n\n", size-1, useDevice);
+        else
+            printf("\n\nping pong - ranks 1 to rank 0, useDevice: %d\n\n", useDevice);
+        fflush(stdout);
+    }
+
+    MPI_CHECK(MPI_Barrier(comm));
+    multi_latency_paul(createDetailedPingPongFile, comm);
+    MPI_CHECK(MPI_Barrier(comm));
+
     if(useDevice) {
       o_s_buf.free();
       o_r_buf.free();
     } else {
       free(s_buf);
-      free(r_buf); 
+      free(r_buf);
     }
 
     return EXIT_SUCCESS;
@@ -166,4 +179,154 @@ static void multi_latency(MPI_Comm comm)
             fflush(stdout);
         }
     }
+}
+
+static void multi_latency_paul(int writeToFile, MPI_Comm comm) {
+
+  int myRank, mpiSize;
+  MPI_Comm_rank(comm, &myRank);
+  MPI_Comm_size(comm, &mpiSize);
+
+  int loopCounter = 0;
+  for(int size = options.min_message_size; size <= options.max_message_size; size=((int)(size*1.1) > size ? (int)(size*1.1) : size+1))
+    loopCounter += 1;
+
+  int *all_sizes;
+  double *all_min, *all_max, *all_avg;
+
+  all_sizes = (int*)calloc(loopCounter, sizeof(int));
+  all_min = (double*)calloc(loopCounter, sizeof(double));
+  all_max = (double*)calloc(loopCounter, sizeof(double));
+  all_avg = (double*)calloc(loopCounter, sizeof(double));
+
+  FILE *fp;
+  if(0 == myRank && writeToFile) {
+
+    time_t rawtime;
+    struct tm *timeinfo;
+    char buffer[80];
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+
+    strftime(buffer,80,"pingpong_%Y_%m_%d_%R.txt", timeinfo);
+    fp = fopen(buffer, "w");
+    fprintf(fp, "%-10s %-10s %-10s %-10s %-15s %-15s\n", "sender", "total", "receiver", "loopcount", "bytes", "timing");
+
+  }
+
+  int maxRank = std::min(512, mpiSize);
+  for(int iRank = 1; iRank < maxRank; iRank = (iRank<32 ? iRank+1 : (maxRank-1-iRank < 5 ? maxRank-1 : iRank+5))) {
+
+    int iSize = 0;
+
+    for(int size = options.min_message_size; size <= options.max_message_size; size=((int)(size*1.1) > size ? (int)(size*1.1) : size+1)) {
+
+      MPI_CHECK(MPI_Barrier(comm));
+
+      if(size > LARGE_MESSAGE_SIZE) {
+        options.iterations = options.iterations_large;
+        options.skip = options.skip_large;
+      } else {
+        options.iterations = options.iterations;
+        options.skip = options.skip;
+      }
+
+      double latency = 0;
+
+      MPI_Request rReq, sReq;
+
+      if(myRank == iRank) {
+
+        double t_start = 0;
+
+        for(int i = 0; i < options.iterations + options.skip; i++) {
+
+          if(i == options.skip)
+            t_start = MPI_Wtime();
+
+          MPI_CHECK(MPI_Isend(s_buf, size, MPI_CHAR, 0, 1, comm, &rReq));
+          MPI_CHECK(MPI_Irecv(r_buf, size, MPI_CHAR, 0, 1, comm, &sReq));
+
+          MPI_CHECK(MPI_Wait(&rReq, MPI_STATUS_IGNORE));
+          MPI_CHECK(MPI_Wait(&sReq, MPI_STATUS_IGNORE));
+
+        }
+
+        double t_end = MPI_Wtime();
+
+        latency = (t_end - t_start) * 1.0e6 / (2.0 * options.iterations);
+        MPI_CHECK(MPI_Send(&latency, 1, MPI_DOUBLE, 0, 2, comm));
+
+      } else if(myRank == 0) {
+
+        double t_start = 0;
+
+        for(int i = 0; i < options.iterations + options.skip; i++) {
+
+          if(i == options.skip)
+            t_start = MPI_Wtime();
+
+          MPI_CHECK(MPI_Irecv(r_buf, size, MPI_CHAR, iRank, 1, comm, &rReq));
+          MPI_CHECK(MPI_Isend(s_buf, size, MPI_CHAR, iRank, 1, comm, &sReq));
+
+          MPI_CHECK(MPI_Wait(&rReq, MPI_STATUS_IGNORE));
+          MPI_CHECK(MPI_Wait(&sReq, MPI_STATUS_IGNORE));
+
+        }
+
+        double t_end = MPI_Wtime();
+
+        latency = (t_end - t_start) * 1.0e6 / (2.0 * options.iterations);
+
+      } // all other ranks are idle
+
+      MPI_CHECK(MPI_Barrier(comm));
+
+      if(iRank == 1)
+        all_sizes[iSize] = size;
+
+      if(0 == myRank) {
+
+        double peer_latency;
+        MPI_CHECK(MPI_Recv(&peer_latency, 1, MPI_DOUBLE, iRank, 2, comm, MPI_STATUS_IGNORE));
+        double avg_lat = (latency+peer_latency)/2.0;
+
+        if(all_min[iSize] > avg_lat || all_min[iSize] == 0)
+          all_min[iSize] = avg_lat;
+        if(all_max[iSize] < avg_lat)
+          all_max[iSize] = avg_lat;
+        all_avg[iSize] += avg_lat;
+
+        if(writeToFile) {
+          fprintf(fp, "%-10d %-10d %-10d %-10d %-15d %-15f\n", iRank, mpiSize, 0, options.iterations, size, avg_lat);
+        }
+
+      }
+
+      ++iSize;
+
+    }
+
+  }
+
+  if(myRank == 0) {
+    printf("%-10s %-13s %-13s %-13s\n", "bytes", "average", "minimum", "maximum");
+    for(int i = 0; i < loopCounter; ++i) {
+      printf("%-10d %-13f %-13f %-13f\n", all_sizes[i], all_avg[i]/((double)(mpiSize-1)), all_min[i], all_max[i]);
+    }
+    double avg_sum = 0;
+    for(int i = 0; i < loopCounter; ++i)
+      avg_sum += all_avg[i];
+    printf("\nGlobal average: %f\n\n", avg_sum/(double)loopCounter);
+    fflush(stdout);
+
+    if(writeToFile)
+      fclose(fp);
+  }
+
+  free(all_sizes);
+  free(all_min);
+  free(all_max);
+  free(all_avg);
+
 }

@@ -25,7 +25,7 @@ int main(int argc, char **argv)
   setupAide options;
 
   if(argc<6){
-    if(rank ==0) printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <ogs_mode> <nRepetitions> <enable timers> <run dummy kernel> <use FP32> <GPU aware MPI> <DEVICE-ID>\n");
+    if(rank ==0) printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <ogs_mode> <nRepetitions> <enable timers> <run dummy kernel> <use FP32> <GPU aware MPI> <create detailed pingpong file> <DEVICE-ID>\n");
 
     MPI_Finalize();
     exit(1);
@@ -72,14 +72,17 @@ int main(int argc, char **argv)
   if(argc>11) {
     if(argv[11]) {
       enabledGPUMPI = 1;
-      ogs_mode_list.push_back(OGS_DEVICEMPI); 
+      ogs_mode_list.push_back(OGS_DEVICEMPI);
     }
   }
 
+  int createDetailedPingPongFile = 0;
+  if(argc>12 && std::stoi(argv[12])) createDetailedPingPongFile = 1;
+
   options.setArgs("DEVICE NUMBER", "LOCAL-RANK");
-  if(argc>12) {
+  if(argc>13) {
     std::string deviceNumber;
-    deviceNumber.assign(strdup(argv[12]));
+    deviceNumber.assign(strdup(argv[13]));
     options.setArgs("DEVICE NUMBER", deviceNumber);
   }
 
@@ -198,11 +201,11 @@ int main(int argc, char **argv)
   MPI_Barrier(mesh->comm);
   {
     const int nPairs = mesh->size/2;
-    pingPongMulti(nPairs, 0, mesh->device, mesh->comm);
-    if(enabledGPUMPI) pingPongMulti(nPairs, enabledGPUMPI, mesh->device, mesh->comm);
+    pingPongMulti(nPairs, 0, createDetailedPingPongFile, mesh->device, mesh->comm);
+    if(enabledGPUMPI) pingPongMulti(nPairs, enabledGPUMPI, createDetailedPingPongFile, mesh->device, mesh->comm);
   }
 
-  for (auto const& ogs_mode_enum : ogs_mode_list) { 
+  for (auto const& ogs_mode_enum : ogs_mode_list) {
 
   occa::stream defaultStream = mesh->device.getStream();
   occa::stream kernelStream  = mesh->device.createStream();
