@@ -131,6 +131,8 @@ static void multi_latency(MPI_Comm comm)
             options.skip = options.skip;
         }
 
+        MPI_Request rReq, sReq;
+
         if (rank < pairs) {
             partner = rank + pairs;
 
@@ -141,9 +143,12 @@ static void multi_latency(MPI_Comm comm)
                     MPI_CHECK(MPI_Barrier(comm));
                 }
 
-                MPI_CHECK(MPI_Send(s_buf, size, MPI_CHAR, partner, 1, comm));
-                MPI_CHECK(MPI_Recv(r_buf, size, MPI_CHAR, partner, 1, comm,
-                         &reqstat));
+                MPI_CHECK(MPI_Isend(s_buf, size, MPI_CHAR, partner, 1, comm, &sReq));
+                MPI_CHECK(MPI_Irecv(r_buf, size, MPI_CHAR, partner, 1, comm, &rReq));
+
+                MPI_CHECK(MPI_Wait(&rReq, MPI_STATUS_IGNORE));
+                MPI_CHECK(MPI_Wait(&sReq, MPI_STATUS_IGNORE));
+
             }
 
             t_end = MPI_Wtime();
@@ -158,9 +163,12 @@ static void multi_latency(MPI_Comm comm)
                     MPI_CHECK(MPI_Barrier(comm));
                 }
 
-                MPI_CHECK(MPI_Recv(r_buf, size, MPI_CHAR, partner, 1, comm,
-                         &reqstat));
-                MPI_CHECK(MPI_Send(s_buf, size, MPI_CHAR, partner, 1, comm));
+                MPI_CHECK(MPI_Irecv(r_buf, size, MPI_CHAR, partner, 1, comm, &rReq));
+                MPI_CHECK(MPI_Isend(s_buf, size, MPI_CHAR, partner, 1, comm, &sReq));
+
+                MPI_CHECK(MPI_Wait(&rReq, MPI_STATUS_IGNORE));
+                MPI_CHECK(MPI_Wait(&sReq, MPI_STATUS_IGNORE));
+
             }
 
             t_end = MPI_Wtime();
