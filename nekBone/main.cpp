@@ -194,9 +194,9 @@ int main(int argc, char **argv){
     double etime[10];
     if(BP->profiling) {
       etime[0] = timer::query("Ax", "DEVICE:MAX");
-      etime[1] = timer::query("gs", "HOST:MAX");
+      etime[1] = timer::query("gs", "DEVICE:MAX");
       etime[2] = timer::query("updatePCG", "HOST:MAX");
-      etime[3] = timer::query("dot", "HOST:MAX");
+      etime[3] = timer::query("dot", "DEVICE:MAX");
       etime[4] = timer::query("preco", "DEVICE:MAX");
     }
 
