@@ -99,8 +99,6 @@ SOFTWARE.
 
             r_q  += gwJ * lambda_1;
 
-            if(allNeumann)
-              r_q += allNeumannScale;
           }
           Aq[id] = r_q;
         }
