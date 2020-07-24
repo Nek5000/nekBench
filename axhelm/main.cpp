@@ -163,7 +163,8 @@ int main(int argc, char **argv){
 
   // print statistics
   const dfloat GDOFPerSecond = (size*Ndim*(N*N*N)*Nelements/elapsed)/1.e9;
-  const long long bytesMoved = (Ndim*2*Np+7*Np+2*Np)*sizeof(dfloat); // x, Mx, opa, lambda
+  long long bytesMoved = (Ndim*2*Np+7*Np)*sizeof(dfloat); // x, Ax, geo
+  if(!BKmode) bytesMoved += 2*Np*sizeof(dfloat);
   const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
   double flopCount = Ndim*Np*12*Nq;
   flopCount += 15*Np;
