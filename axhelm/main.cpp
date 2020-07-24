@@ -166,7 +166,7 @@ int main(int argc, char **argv){
   long long bytesMoved = (Ndim*2*Np+7*Np)*sizeof(dfloat); // x, Ax, geo
   if(!BKmode) bytesMoved += 2*Np*sizeof(dfloat);
   const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
-  double flopCount = Ndim*Np*12*Nq;
+  double flopCount = Np*12*Nq;
   flopCount += 15*Np;
   if(!BKmode) flopCount += 5*Np;
   flopCount *= Ndim;

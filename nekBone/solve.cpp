@@ -245,7 +245,7 @@ dfloat AxOperator(BP_t *BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
   setupAide &options = BP->options;
   ogs_t *ogs = BP->ogs;
 
-  occa::kernel &kernel = BP->BPKernel[BP->BPid];
+  occa::kernel &kernel = BP->BPKernel[0];
   
   const dlong fieldOffset = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
 

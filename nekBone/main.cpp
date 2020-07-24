@@ -87,22 +87,8 @@ int main(int argc, char **argv){
 
   dfloat lambda1 = 1;
   options.getArgs("LAMBDA", lambda1);
-  
-  BP_t *BP = setup(mesh, lambda1, kernelInfo, options);
-  if (options.compareArgs("VERBOSE", "TRUE")){
-    fflush(stdout);
-    MPI_Barrier(mesh->comm);
-    printf("rank %d has %d internal elements and %d non-internal elements\n",
-           mesh->rank,
-           mesh->NinternalElements,
-           mesh->NnotInternalElements);
-  }
-
-  BP->profiling = 0;
-  if(options.compareArgs("PROFILING", "TRUE")) BP->profiling =1;
-  int sync = 0;
-  if(options.compareArgs("TIMER SYNC", "TRUE")) sync = 1;
-  if(BP->profiling) timer::init(MPI_COMM_WORLD, mesh->device, sync); 
+ 
+  BP_t *BP = setup(mesh, &lambda1, kernelInfo, options);
  
   dlong Ndofs = BP->Nfields*mesh->Np*mesh->Nelements;
  
@@ -111,10 +97,7 @@ int main(int argc, char **argv){
   options.getArgs("SOLVER TOLERANCE", tol); 
  
   int it;
-  int bpstart = BP->BPid;
-  int bpid = BP->BPid;
   {
-    BP->BPid = bpid;
     double opElapsed = 0;
     int Ntests = 10;
     options.getArgs("NREPETITIONS", Ntests);
@@ -164,32 +147,32 @@ int main(int argc, char **argv){
     elapsed /= Ntests; 
 
     // print statistics 
-    double NGbytes;
-    int useInvDeg = 1;
-
     hlong globalNelements, localNelements=mesh->Nelements;
     MPI_Reduce(&localNelements, &globalNelements, 1, MPI_HLONG, MPI_SUM, 0, mesh->comm);
   
     hlong globalNdofs = pow(mesh->N,3)*mesh->Nelements; // mesh->Nlocalized;
     MPI_Allreduce(MPI_IN_PLACE, &globalNdofs, 1, MPI_HLONG, MPI_SUM, mesh->comm);
+    const double gDOFs = BP->Nfields*(it*(globalNdofs/elapsed))/1.e9;
 
-    double Nbytes = Ndofs*sizeof(dfloat);
-    double gbytesPCG = 7.*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
-    double gbytesCopy = Nbytes/1.e9;
-    double gbytesOp = (2+7+2*BP->Nfields)*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
-    double gbytesDot = (2*BP->Nfields+1)*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
-    double gbytesPupdate = 3*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
- 
-    if(options.compareArgs("KRYLOV SOLVER", "PCG"))
-      // z=r, z.r/deg, p=z+beta*p, A*p (p in/Ap out), [x=x+alpha*p, r=r-alpha*Ap, r.r./deg]
-      NGbytes = mesh->Nlocalized*((BP->Nfields*(2+2+3+2+3+3+1)+2*useInvDeg)/1.e9);  
-            
-    NGbytes += mesh->Nelements*(mesh->Nggeo*mesh->Np/1.e9);
-    NGbytes += mesh->Nelements*(2*mesh->Np/1.e9); // lambda
-    NGbytes *= sizeof(dfloat);
-
+    const double gbytesPrecon = mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
+    const double gbytesScaledAdd = 2.*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
+    double gbytesAx = (7+2*BP->Nfields)*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
+    if(BP->BPid) gbytesAx += 2*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9); 
+    const double gbytesDot = (2*BP->Nfields+1)*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
+    const double gbytesPupdate = 4*mesh->Np*mesh->Nelements*(sizeof(dfloat)/1.e9);
+    const double NGbytes = gbytesPrecon + gbytesScaledAdd + gbytesAx + 2*gbytesDot + gbytesPupdate ;  
     double bw = (it*(NGbytes/(elapsed)));
     MPI_Allreduce(MPI_IN_PLACE, &bw, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
+ 
+    const double flopsPrecon = 0;
+    const double flopsScaledAdd = 2*mesh->Np;
+    double flopsAx = mesh->Np*12*mesh->Nq + 15*mesh->Np;
+    if(BP->BPid) flopsAx += 15*mesh->Np; 
+    const double flopsDot = 3*mesh->Np;
+    const double flopsPupdate = 6*mesh->Np; 
+    const double flops = flopsPrecon + flopsScaledAdd + flopsAx + 2*flopsDot + flopsPupdate;
+    double gFlops = (it*(mesh->Nelements*flops/(elapsed)))/1e9;
+    MPI_Allreduce(MPI_IN_PLACE, &gFlops, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
     double etime[10];
     if(BP->profiling) {
@@ -214,8 +197,9 @@ int main(int argc, char **argv){
            << "  iterations   : " << it << "\n"
            << "  Nrepetitions : " << Ntests << "\n"
            << "  elapsed time : " << Ntests*elapsed << " s\n"
-           << "  throughput   : " << BP->Nfields*(it*(globalNdofs/elapsed))/1.e9 << " GDOF/s/iter\n"
-           << "  bandwidth    : " << bw << " GB/s\n";
+           << "  throughput   : " << gDOFs << " GDOF/s/iter\n"
+           << "  bandwidth    : " << bw << " GB/s\n"
+           << "  GFLOPS/s     : " << gFlops << endl;
 
       if(BP->profiling) {
         cout << "\nbreakdown\n" 

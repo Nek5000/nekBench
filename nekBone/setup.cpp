@@ -27,19 +27,25 @@ SOFTWARE.
 #include <unistd.h>
 #include "BP.hpp"
 #include "../axhelm/kernelHelper.cpp"
-
+#include "timer.hpp"
 
 void reportMemoryUsage(occa::device &device, const char *mess);
 
-BP_t *setup(mesh_t *mesh, dfloat lambda1, occa::properties &kernelInfo, setupAide &options){
+BP_t *setup(mesh_t *mesh, dfloat *lambda1_in, occa::properties &kernelInfo, setupAide &options){
 
   BP_t *BP = new BP_t();
 
-  BP->BPid = 5;
-
+  BP->BPid = 0;
   BP->Nfields = 1;
-  //options.getArgs("NUMBER OF FIELDS", BP->Nfields);
-  if(BP->Nfields > 1) BP->BPid = 6;
+  if(options.compareArgs("BPMODE", "TRUE")) {
+    options.setArgs("PRECONDITIONER", "COPY");
+    BP->BPid = 5;
+    //options.getArgs("NUMBER OF FIELDS", BP->Nfields);
+    //if(BP->Nfields == 3) BP->BPid = 6;
+  };
+
+  if(BP->BPid) *lambda1_in = 0;
+  const dfloat lambda1 = *lambda1_in;
 
   options.getArgs("MESH DIMENSION", BP->dim);
   options.getArgs("ELEMENT TYPE", BP->elementType);
@@ -86,7 +92,7 @@ BP_t *setup(mesh_t *mesh, dfloat lambda1, occa::properties &kernelInfo, setupAid
  
   BP->lambda = (dfloat*) calloc(2*Nall, sizeof(dfloat));
   for(int i=0; i<BP->fieldOffset; i++) {
-    BP->lambda[i]        = 1.0;
+    BP->lambda[i]        = 1.0; // don't change
     BP->lambda[i+BP->fieldOffset] = lambda1;
   }
   BP->o_lambda = mesh->device.malloc(2*Nall*sizeof(dfloat), BP->lambda);
@@ -98,7 +104,22 @@ BP_t *setup(mesh_t *mesh, dfloat lambda1, occa::properties &kernelInfo, setupAid
 
   if (mesh->rank==0)
     reportMemoryUsage(mesh->device, "setup done");
-  
+ 
+  if (options.compareArgs("VERBOSE", "TRUE")){
+    fflush(stdout);
+    MPI_Barrier(mesh->comm);
+    printf("rank %d has %d internal elements and %d non-internal elements\n",
+           mesh->rank,
+           mesh->NinternalElements,
+           mesh->NnotInternalElements);
+  }
+
+  BP->profiling = 0;
+  if(options.compareArgs("PROFILING", "TRUE")) BP->profiling =1;
+  int sync = 0;
+  if(options.compareArgs("TIMER SYNC", "TRUE")) sync = 1;
+  if(BP->profiling) timer::init(MPI_COMM_WORLD, mesh->device, sync);
+ 
   return BP;
 }
 
@@ -230,7 +251,6 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
   options.getArgs("THREAD MODEL", threadModel);
   string arch = "VOLTA";
   options.getArgs("ARCH", arch);
-  int bpid = BP->BPid;
   for (int r=0;r<2;r++){
     if ((r==0 && mesh->rank==0) || (r==1 && mesh->rank>0)) {      
       
@@ -317,7 +337,7 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
       kernelInfo["defines/" "p_NthreadsUpdatePCG"] = (int) NthreadsUpdatePCG; // WARNING SHOULD BE MULTIPLE OF 32
       kernelInfo["defines/" "p_NwarpsUpdatePCG"] = (int) (NthreadsUpdatePCG/32); // WARNING: CUDA SPECIFIC
 
-      BP->BPKernel = (occa::kernel*) new occa::kernel[20];
+      BP->BPKernel = (occa::kernel*) new occa::kernel[1];
 
       int combineDot = 0;
       combineDot = 0; //options.compareArgs("COMBINE DOT PRODUCT", "TRUE");
@@ -348,9 +368,10 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
   }
 
   string kernelName = "axhelm";
+  if(BP->BPid) kernelName = "axhelm_bk";
   if(BP->Nfields > 1) kernelName += "_n" + std::to_string(BP->Nfields);
   kernelName += "_v" + std::to_string(knlId);
-  BP->BPKernel[bpid] = loadAxKernel(mesh->device, threadModel, arch, kernelName, mesh->N, mesh->Nelements);
+  BP->BPKernel[0] = loadAxKernel(mesh->device, threadModel, arch, kernelName, mesh->N, mesh->Nelements);
 
   // WARNING C0 appropriate only
   mesh->sumKernel(mesh->Nelements*mesh->Np, BP->o_invDegree, BP->o_tmp);

@@ -184,7 +184,7 @@ typedef struct {
   
 }BP_t;
 
-BP_t *setup(mesh_t *mesh, dfloat lambda, occa::properties &kernelInfo, setupAide &options);
+BP_t *setup(mesh_t *mesh, dfloat *lambda, occa::properties &kernelInfo, setupAide &options);
 
 void solveSetup(BP_t *BP, dfloat lambda, occa::properties &kernelInfo);
 
