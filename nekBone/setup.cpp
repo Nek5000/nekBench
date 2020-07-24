@@ -367,8 +367,8 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
     MPI_Barrier(mesh->comm);
   }
 
-  string kernelName = "axhelm";
-  if(BP->BPid) kernelName = "axhelm_bk";
+  string kernelName = "axhelmPartial";
+  if(BP->BPid) kernelName = "axhelmPartial_bk";
   if(BP->Nfields > 1) kernelName += "_n" + std::to_string(BP->Nfields);
   kernelName += "_v" + std::to_string(knlId);
   BP->BPKernel[0] = loadAxKernel(mesh->device, threadModel, arch, kernelName, mesh->N, mesh->Nelements);

@@ -249,13 +249,17 @@ dfloat AxOperator(BP_t *BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
   
   const dlong fieldOffset = mesh->Np*(mesh->Nelements+mesh->totalHaloPairs);
 
-  if(BP->profiling) timer::tic("Ax");
-  kernel(mesh->Nelements, fieldOffset, mesh->o_ggeo, mesh->o_D, o_lambda, o_q, o_Aq);
-  if(BP->profiling) timer::toc("Ax");
-  
-  if(BP->profiling) timer::tic("gs");
-  ogsGatherScatterMany(o_Aq, BP->Nfields, fieldOffset, ogsDfloat, ogsAdd, ogs);
-  if(BP->profiling) timer::toc("gs");
+  // call kernel on halo elements
+  kernel(mesh->NglobalGatherElements, fieldOffset, mesh->o_globalGatherElementList, mesh->o_ggeo, mesh->o_D, o_lambda, o_q, o_Aq);
+
+  // start gather/scatter
+  ogsGatherScatterStart(o_Aq, ogsDfloat, ogsAdd, ogs);
+
+  // call kernel on interior
+  kernel(mesh->NlocalGatherElements, mesh->o_localGatherElementList, mesh->o_ggeo, mesh->o_D, o_lambda, o_q, o_Aq);
+
+  // finish gather/scatter
+  ogsGatherScatterFinish(o_Aq, ogsDfloat, ogsAdd, ogs);
 
   dfloat pAp = BPWeightedInnerProduct(BP, BP->o_invDegree, o_q, o_Aq);
  
