@@ -28,7 +28,7 @@ dfloat *drandAlloc(int N){
 int main(int argc, char **argv){
 
   if(argc<6){
-    printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|HIP|OPENCL CPU|VOLTA [nRepetitions] [kernelVersion]\n");
+    printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|HIP|OPENCL CPU|VOLTA [BK5mode] [nRepetitions] [kernelVersion]\n");
     return 1;
   }
 
@@ -47,13 +47,17 @@ int main(int argc, char **argv){
   if(argc>=6)
     arch.assign(argv[5]);
 
-  int Ntests = 1;
+  int BK5mode = 0;
   if(argc>=7)
-    Ntests = atoi(argv[6]);
+    BK5mode = atoi(argv[6]);
+
+  int Ntests = 100;
+  if(argc>=8)
+    Ntests = atoi(argv[7]);
 
   int kernelVersion = 0;
-  if(argc>=8)
-    kernelVersion = atoi(argv[7]);
+  if(argc>=9)
+    kernelVersion = atoi(argv[8]);
 
   const int deviceId = 0;
   const int platformId = 0;
@@ -104,6 +108,7 @@ int main(int argc, char **argv){
   // load kernel
   std::string kernelName = "axhelm";
   if(assembled) kernelName = "axhelm_partial"; 
+  if(BK5mode) kernelName = "axhelm_bk5";
   if(Ndim > 1) kernelName += "_n" + std::to_string(Ndim);
   kernelName += "_v" + std::to_string(kernelVersion);
   axKernel = loadAxKernel(device, threadModel, arch, kernelName, N, Nelements);
@@ -118,10 +123,11 @@ int main(int argc, char **argv){
   occa::memory o_Aq     = device.malloc((Ndim*Np)*Nelements*sizeof(dfloat), Aq);
   occa::memory o_DrV    = device.malloc(Nq*Nq*sizeof(dfloat), DrV);
 
-  const dfloat lambda1 = 1.1;
+  dfloat lambda1 = 1.1;
+  if(BK5mode) lambda1 = 0;
   dfloat *lambda = (dfloat*) calloc(2*offset, sizeof(dfloat));
   for(int i=0; i<offset; i++) {
-    lambda[i]        = 1.0;
+    lambda[i]        = 1.0; // don't change
     lambda[i+offset] = lambda1;
   }
   occa::memory o_lambda = device.malloc(2*offset*sizeof(dfloat), lambda);
@@ -160,8 +166,9 @@ int main(int argc, char **argv){
   const long long bytesMoved = (Ndim*2*Np+7*Np+2*Np)*sizeof(dfloat); // x, Mx, opa, lambda
   const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
   double flopCount = Ndim*Np*12*Nq;
-  if(Ndim == 1) flopCount += 23*Np;
-  if(Ndim == 3) flopCount *= Ndim;
+  flopCount += 15*Np;
+  if(!BK5mode) flopCount += 5*Np;
+  flopCount *= Ndim;
   double gflops = (size*flopCount*Nelements/elapsed)/1.e9;
   if(rank==0) {
     std::cout << "MPItasks=" << size
