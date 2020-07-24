@@ -131,7 +131,7 @@ int main(int argc, char **argv){
 
     if(options.compareArgs("FIXED ITERATION COUNT", "TRUE")) tol = 0;
     if(mesh->rank==0) cout << "\nrunning solver ..."; fflush(stdout);
-    double elapsed;
+    double elapsed = 0;
     for(int test=0;test<Ntests;++test){
       BP->vecScaleKernel(mesh->Nelements*mesh->Np, 0, BP->o_x); // reset 
       BP->o_r.copyFrom(BP->r); // reset 

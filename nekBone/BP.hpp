@@ -55,6 +55,7 @@ typedef struct {
   int profiling;
   int BPid;
   int knlId;
+  bool overlap;
   
   int dim;
   int elementType; // number of edges (3=tri, 4=quad, 6=tet, 12=hex)

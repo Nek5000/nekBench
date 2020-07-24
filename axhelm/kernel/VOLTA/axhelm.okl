@@ -267,7 +267,7 @@
 
 	  // put this here for a performance bump
 	  r_Gqt = r_lam0*(r_G02*qr + r_G12*qs + r_G22*r_qt);
-	  r_Auk = 0;//r_GwJ*r_lam1*r_q[k];
+	  r_Auk = r_GwJ*r_lam1*r_q[k];
 	}
       }
 

@@ -44,6 +44,10 @@ BP_t *setup(mesh_t *mesh, dfloat *lambda1_in, occa::properties &kernelInfo, setu
     //if(BP->Nfields == 3) BP->BPid = 6;
   };
 
+  BP->overlap = true;
+  if(options.compareArgs("OVERLAP", "FALSE"))
+      BP->overlap = false;
+
   if(BP->BPid) *lambda1_in = 0;
   const dfloat lambda1 = *lambda1_in;
 
@@ -367,8 +371,17 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
     MPI_Barrier(mesh->comm);
   }
 
-  string kernelName = "axhelmPartial";
-  if(BP->BPid) kernelName = "axhelmPartial_bk";
+  string kernelName = "axhelm";
+  if(BP->overlap)
+    kernelName += "Partial";
+
+  if(BP->BPid) {
+    kernelName = "axhelm";
+    if(BP->overlap)
+      kernelName += "Partial";
+    kernelName += "_bk";
+  }
+
   if(BP->Nfields > 1) kernelName += "_n" + std::to_string(BP->Nfields);
   kernelName += "_v" + std::to_string(knlId);
   BP->BPKernel[0] = loadAxKernel(mesh->device, threadModel, arch, kernelName, mesh->N, mesh->Nelements);
