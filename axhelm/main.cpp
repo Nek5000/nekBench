@@ -28,7 +28,7 @@ dfloat *drandAlloc(int N){
 int main(int argc, char **argv){
 
   if(argc<6){
-    printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|HIP|OPENCL CPU|VOLTA [BK5mode] [nRepetitions] [kernelVersion]\n");
+    printf("Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|HIP|OPENCL CPU|VOLTA [BKmode] [nRepetitions] [kernelVersion]\n");
     return 1;
   }
 
@@ -47,9 +47,9 @@ int main(int argc, char **argv){
   if(argc>=6)
     arch.assign(argv[5]);
 
-  int BK5mode = 0;
+  int BKmode = 0;
   if(argc>=7)
-    BK5mode = atoi(argv[6]);
+    BKmode = atoi(argv[6]);
 
   int Ntests = 100;
   if(argc>=8)
@@ -108,7 +108,7 @@ int main(int argc, char **argv){
   // load kernel
   std::string kernelName = "axhelm";
   if(assembled) kernelName = "axhelm_partial"; 
-  if(BK5mode) kernelName = "axhelm_bk5";
+  if(BKmode) kernelName = "axhelm_bk";
   if(Ndim > 1) kernelName += "_n" + std::to_string(Ndim);
   kernelName += "_v" + std::to_string(kernelVersion);
   axKernel = loadAxKernel(device, threadModel, arch, kernelName, N, Nelements);
@@ -124,7 +124,7 @@ int main(int argc, char **argv){
   occa::memory o_DrV    = device.malloc(Nq*Nq*sizeof(dfloat), DrV);
 
   dfloat lambda1 = 1.1;
-  if(BK5mode) lambda1 = 0;
+  if(BKmode) lambda1 = 0;
   dfloat *lambda = (dfloat*) calloc(2*offset, sizeof(dfloat));
   for(int i=0; i<offset; i++) {
     lambda[i]        = 1.0; // don't change
@@ -167,7 +167,7 @@ int main(int argc, char **argv){
   const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
   double flopCount = Ndim*Np*12*Nq;
   flopCount += 15*Np;
-  if(!BK5mode) flopCount += 5*Np;
+  if(!BKmode) flopCount += 5*Np;
   flopCount *= Ndim;
   double gflops = (size*flopCount*Nelements/elapsed)/1.e9;
   if(rank==0) {

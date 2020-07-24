@@ -363,13 +363,13 @@
   }
 }
 
-@kernel void axhelm_bk5_v0(const dlong Nelements,
-                           const dlong offset,
-		           @restrict const  dfloat *  ggeo,
-		           @restrict const  dfloat *  D,
-                           @restrict const  dfloat *  lambda,
-		           @restrict const  dfloat *  q,
-		           @restrict dfloat *  Aq){
+@kernel void axhelm_bk_v0(const dlong Nelements,
+                          const dlong offset,
+		          @restrict const  dfloat *  ggeo,
+		          @restrict const  dfloat *  D,
+                          @restrict const  dfloat *  lambda,
+		          @restrict const  dfloat *  q,
+		          @restrict dfloat *  Aq){
 
   for(dlong e=0; e<Nelements; ++e; @outer(0)){
 
