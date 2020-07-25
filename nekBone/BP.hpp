@@ -65,7 +65,7 @@ typedef struct {
   
   mesh_t *mesh;
 
-  ogs_t *ogs;
+  void *ogs;
 
   setupAide options;
 

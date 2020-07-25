@@ -119,6 +119,11 @@ SOFTWARE.
 #include "mpi.h"
 #include "types.h"
 
+//#define OGS_ENABLE_TIMER
+#ifdef OGS_ENABLE_TIMER
+#include "timer.hpp"
+#endif
+
 #define ogsFloat  "float"
 #define ogsDouble "double"
 #define ogsDfloat dfloatString
@@ -224,5 +229,36 @@ void ogsScatterManyStart (occa::memory  o_Sv, occa::memory  o_v, const int k, co
 void ogsScatterManyFinish(occa::memory  o_Sv, occa::memory  o_v, const int k, const dlong sstride, const dlong stride, const char *type, const char *op, ogs_t *ogs);
 
 void *ogsHostMallocPinned(occa::device &device, size_t size, void *source, occa::memory &mem, occa::memory &h_mem);
+
+#define USE_OOGS
+
+enum oogs_mode { OOGS_AUTO, OOGS_DEFAULT, OOGS_HOSTMPI, OOGS_DEVICEMPI };
+
+typedef struct {
+
+  ogs_t *ogs;
+
+  occa::memory h_buffSend, h_buffRecv;
+  unsigned char *bufSend, *bufRecv;
+
+  occa::memory o_bufSend, o_bufRecv;
+
+  occa::memory o_scatterOffsets, o_gatherOffsets;
+  occa::memory o_scatterIds, o_gatherIds;
+
+  oogs_mode mode;
+
+} oogs_t;
+
+namespace oogs{
+
+void gatherScatter(void *v, const char *type, const char *op, oogs_t *h);
+void gatherScatter(occa::memory o_v, const char *type, const char *op, oogs_t *h);
+void start(occa::memory o_v, const char *type, const char *op, oogs_t *h);
+void finish(occa::memory o_v, const char *type, const char *op, oogs_t *h);
+oogs_t *setup(dlong N, hlong *ids, const char *type, MPI_Comm &comm,
+              int verbose, occa::device device, oogs_mode mode);
+
+}
 
 #endif

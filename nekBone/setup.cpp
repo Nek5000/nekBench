@@ -246,8 +246,9 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
   memcpy(mesh->maskedGlobalIds, mesh->globalIds, Ntotal*sizeof(hlong));
 
   //use the masked ids to make another gs handle
-  BP->ogs = ogsSetup(Ntotal, mesh->maskedGlobalIds, mesh->comm, 1, mesh->device);
-  BP->o_invDegree = BP->ogs->o_invDegree;
+  //BP->ogs = ogsSetup(Ntotal, mesh->maskedGlobalIds, mesh->comm, 1, mesh->device);
+  BP->ogs = (void*) oogs::setup(Ntotal, mesh->maskedGlobalIds, ogsDfloat, mesh->comm, 1, mesh->device, OOGS_AUTO);
+  BP->o_invDegree = ((oogs_t *)BP->ogs)->ogs->o_invDegree;
 
   kernelInfo["defines/p_Nalign"] = USE_OCCA_MEM_BYTE_ALIGN;
   kernelInfo["defines/" "p_blockSize"]= blockSize;

@@ -219,7 +219,9 @@ void updateJacobi(BP_t *BP, occa::memory &o_lambda, occa::memory &o_invDiagA){
                          o_invDiagA);
 
   const dfloat one = 1.0;
-  ogsGatherScatter(o_invDiagA, ogsDfloat, ogsAdd, BP->ogs);
+  //ogsGatherScatter(o_invDiagA, ogsDfloat, ogsAdd, BP->ogs);
+  oogs::start(o_invDiagA, ogsDfloat, ogsAdd, (oogs_t *)BP->ogs);
+  oogs::finish(o_invDiagA, ogsDfloat, ogsAdd,(oogs_t *)BP->ogs);
   BP->vecInvKernel(Nlocal, o_invDiagA);
 }
 
@@ -243,7 +245,8 @@ dfloat AxOperator(BP_t *BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
 
   mesh_t *mesh = BP->mesh;
   setupAide &options = BP->options;
-  ogs_t *ogs = BP->ogs;
+  //ogs_t *ogs = BP->ogs;
+  oogs_t *ogs = (oogs_t*) BP->ogs;
 
   occa::kernel &kernel = BP->BPKernel[0];
   
@@ -257,11 +260,13 @@ dfloat AxOperator(BP_t *BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
     if(BP->profiling) timer::toc("Ax1");
 
     if(BP->profiling) timer::tic("AxGs");
-    ogsGatherScatterStart(o_Aq, ogsDfloat, ogsAdd, ogs);
+    //ogsGatherScatterStart(o_Aq, ogsDfloat, ogsAdd, ogs);
+    oogs::start(o_Aq, ogsDfloat, ogsAdd, ogs);
     if(BP->profiling) timer::tic("Ax2");
     kernel(mesh->NlocalGatherElements, fieldOffset, mesh->o_localGatherElementList, mesh->o_ggeo, mesh->o_D, o_lambda, o_q, o_Aq);
     if(BP->profiling) timer::toc("Ax2");
-    ogsGatherScatterFinish(o_Aq, ogsDfloat, ogsAdd, ogs);
+    //ogsGatherScatterFinish(o_Aq, ogsDfloat, ogsAdd, ogs);
+    oogs::finish(o_Aq, ogsDfloat, ogsAdd, ogs);
     if(BP->profiling) timer::toc("AxGs");
 
   } else {
@@ -271,7 +276,9 @@ dfloat AxOperator(BP_t *BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
     if(BP->profiling) timer::toc("Ax");
 
     if(BP->profiling) timer::tic("gs");
-    ogsGatherScatter(o_Aq, ogsDfloat, ogsAdd, ogs);
+    //ogsGatherScatter(o_Aq, ogsDfloat, ogsAdd, ogs);
+    oogs::start(o_Aq, ogsDfloat, ogsAdd, ogs);
+    oogs::finish(o_Aq, ogsDfloat, ogsAdd, ogs);
     if(BP->profiling) timer::toc("gs");
 
   }
@@ -327,6 +334,7 @@ dfloat BPWeightedNorm2(BP_t *BP, occa::memory &o_w, occa::memory &o_a){
 dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b){
 
   mesh_t *mesh = BP->mesh;
+  mesh->device.finish();
   if(BP->profiling) timer::tic("dot");
   setupAide &options = BP->options;
 
@@ -370,7 +378,7 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
   }
 
   dfloat globalwab = 0;
-  MPI_Allreduce(&wab, &globalwab, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
+  //MPI_Allreduce(&wab, &globalwab, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
   if(BP->profiling) timer::toc("dot");
   return globalwab;
