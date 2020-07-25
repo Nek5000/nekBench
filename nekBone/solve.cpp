@@ -251,22 +251,18 @@ dfloat AxOperator(BP_t *BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
 
   if(BP->overlap) {
 
-    if(BP->profiling) timer::tic("Axgs");
-
-    // call kernel on halo elements
+    if(BP->profiling) timer::tic("Ax1");
     if(mesh->NglobalGatherElements)
       kernel(mesh->NglobalGatherElements, fieldOffset, mesh->o_globalGatherElementList, mesh->o_ggeo, mesh->o_D, o_lambda, o_q, o_Aq);
+    if(BP->profiling) timer::toc("Ax1");
 
-    // start gather/scatter
+    if(BP->profiling) timer::tic("AxGs");
     ogsGatherScatterStart(o_Aq, ogsDfloat, ogsAdd, ogs);
-
-    // call kernel on interior
+    if(BP->profiling) timer::tic("Ax2");
     kernel(mesh->NlocalGatherElements, fieldOffset, mesh->o_localGatherElementList, mesh->o_ggeo, mesh->o_D, o_lambda, o_q, o_Aq);
-
-    // finish gather/scatter
+    if(BP->profiling) timer::toc("Ax2");
     ogsGatherScatterFinish(o_Aq, ogsDfloat, ogsAdd, ogs);
-
-    if(BP->profiling) timer::toc("Axgs");
+    if(BP->profiling) timer::toc("AxGs");
 
   } else {
 
@@ -275,7 +271,7 @@ dfloat AxOperator(BP_t *BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
     if(BP->profiling) timer::toc("Ax");
 
     if(BP->profiling) timer::tic("gs");
-    ogsGatherScatterMany(o_Aq, BP->Nfields, fieldOffset, ogsDfloat, ogsAdd, ogs);
+    ogsGatherScatter(o_Aq, ogsDfloat, ogsAdd, ogs);
     if(BP->profiling) timer::toc("gs");
 
   }
@@ -331,7 +327,6 @@ dfloat BPWeightedNorm2(BP_t *BP, occa::memory &o_w, occa::memory &o_a){
 dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b){
 
   mesh_t *mesh = BP->mesh;
-  mesh->device.finish();
   if(BP->profiling) timer::tic("dot");
   setupAide &options = BP->options;
 
@@ -357,7 +352,7 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
     wab = tmp[0];
   } else {
     /* add a second sweep if Nblock>Ncutoff */
-    dlong Ncutoff = 1000;
+    dlong Ncutoff = 8000;
     dlong Nfinal;
     if(Nblock>Ncutoff){
       mesh->sumKernel(Nblock, o_tmp, o_tmp2);

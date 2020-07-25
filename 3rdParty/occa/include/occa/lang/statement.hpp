@@ -5,6 +5,7 @@
 #include <occa/lang/statement/blockStatement.hpp>
 
 #include <occa/lang/statement/classAccessStatement.hpp>
+#include <occa/lang/statement/commentStatement.hpp>
 #include <occa/lang/statement/defaultStatement.hpp>
 #include <occa/lang/statement/elseStatement.hpp>
 #include <occa/lang/statement/forStatement.hpp>
@@ -17,7 +18,6 @@
 #include <occa/lang/statement/functionDeclStatement.hpp>
 #include <occa/lang/statement/gotoStatement.hpp>
 #include <occa/lang/statement/pragmaStatement.hpp>
-#include <occa/lang/statement/structStatement.hpp>
 #include <occa/lang/statement/switchStatement.hpp>
 #include <occa/lang/statement/caseStatement.hpp>
 #include <occa/lang/statement/declarationStatement.hpp>

@@ -47,6 +47,8 @@ namespace occa {
 
       filePosition(const filePosition &other);
 
+      filePosition& operator = (const filePosition &other);
+
       size_t size() const;
       std::string str() const;
     };
@@ -92,7 +94,12 @@ namespace occa {
       fileOrigin from(const bool fromInclude_,
                       const fileOrigin &origin);
 
+      int emptyLinesBefore(const char *pos);
+      int emptyLinesAfter(const char *pos);
+
       dim_t distanceTo(const fileOrigin &origin);
+
+      bool operator == (const fileOrigin &origin);
 
       void preprint(io::output &out) const;
       void postprint(io::output &out) const;

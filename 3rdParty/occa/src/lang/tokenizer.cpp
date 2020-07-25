@@ -152,6 +152,9 @@ namespace occa {
     }
 
     void tokenizer_t::clear() {
+      lastTokenType = tokenType::none;
+      lastNonNewlineTokenType = tokenType::none;
+
       errors   = 0;
       warnings = 0;
 
@@ -184,7 +187,12 @@ namespace occa {
       while (!reachedTheEnd() &&
              outputCache.empty()) {
         token_t *token = getToken();
+
+        lastTokenType = token_t::safeType(token);
         if (token) {
+          if (lastTokenType != tokenType::newline) {
+            lastNonNewlineTokenType = lastTokenType;
+          }
           outputCache.push_back(token);
         }
       }
@@ -384,12 +392,19 @@ namespace occa {
       if (c == '\0') {
         return tokenType::none;
       }
-      // Primitive must be checked before identifiers
-      //   and operators since:
+
+      const char *pos = fp.start;
+      const bool isPrimitive = (
+        primitive::load(pos, false).type != occa::primitiveType::none
+      );
+
+      // Primitive must be checked before identifiers and operators since:
       //   - true/false
       //   - Operators can start with a . (for example, .01)
-      const char *pos = fp.start;
-      if (primitive::load(pos, false).type != occa::primitiveType::none) {
+      // However, make sure we aren't parsing an identifier:
+      //   - true_var
+      //   - false_case
+      if (isPrimitive && !lex::inCharset(*pos, charcodes::identifierStart)) {
         return tokenType::primitive;
       }
       if (lex::inCharset(c, charcodes::identifierStart)) {
@@ -412,9 +427,13 @@ namespace occa {
 
     int tokenizer_t::peekForIdentifier() {
       push();
+
+      // Go through the identifier keys
       ++fp.start;
       skipFrom(charcodes::identifier);
+
       const std::string identifier = str();
+
       int type = shallowPeek();
       popAndRewind();
 
@@ -448,16 +467,6 @@ namespace occa {
         printError("Not able to parse operator");
         popAndRewind();
         return tokenType::none;
-      }
-      const operator_t &op = *(result.value());
-      if (op.opType & operatorType::comment) {
-        pop();
-        if (op.opType == operatorType::lineComment) {
-          return skipLineCommentAndPeek();
-        }
-        else if (op.opType == operatorType::blockCommentStart) {
-          return skipBlockCommentAndPeek();
-        }
       }
       popAndRewind();
       return tokenType::op;
@@ -559,28 +568,6 @@ namespace occa {
       fp.start += chars;
     }
 
-    int tokenizer_t::skipLineCommentAndPeek() {
-      skipTo('\n');
-      return (fp.start
-              ? tokenType::newline
-              : tokenType::none);
-    }
-
-    int tokenizer_t::skipBlockCommentAndPeek() {
-      while (*fp.start != '\0') {
-        skipTo('*');
-        if (*fp.start == '*') {
-          ++fp.start;
-          if (*fp.start == '/') {
-            ++fp.start;
-            skipWhitespace();
-            return peek();
-          }
-        }
-      }
-      return tokenType::none;
-    }
-
     token_t* tokenizer_t::getToken() {
       if (reachedTheEnd()) {
         return NULL;
@@ -666,9 +653,87 @@ namespace occa {
         printError("Not able to parse operator");
         return NULL;
       }
+
+      const operator_t &op = *(result.value());
+
+      if (op.opType & operatorType::comment) {
+        if (op.opType == operatorType::lineComment) {
+          return getLineCommentToken();
+        }
+        else if (op.opType == operatorType::blockCommentStart) {
+          return getBlockCommentToken();
+        }
+      }
+
       fp.start += result.length; // Skip operator
       return new operatorToken(popTokenOrigin(),
-                               *(result.value()));
+                               op);
+    }
+
+    token_t* tokenizer_t::getLineCommentToken() {
+      int spacingType = spacingType_t::none;
+
+      if (
+        // Don't double the newlines
+        (lastNonNewlineTokenType != tokenType::comment)
+        // Shift by 1 to undo the '/' operator peek
+        && (1 < origin.emptyLinesBefore(fp.start - 1))
+      ) {
+        spacingType |= spacingType_t::left;
+      }
+
+      push();
+      skipTo('\n');
+
+      const std::string comment = str();
+
+      pop();
+
+      if (1 < origin.emptyLinesAfter(fp.start + 1)) {
+            spacingType |= spacingType_t::right;
+      }
+
+      return new commentToken(popTokenOrigin(),
+                              comment,
+                              spacingType);
+    }
+
+    token_t* tokenizer_t::getBlockCommentToken() {
+      int spacingType = spacingType_t::none;
+
+      if (
+        // Don't double the newlines
+        (lastNonNewlineTokenType != tokenType::comment)
+        // Shift by 2 to undo the '/*' operator peek
+        && (1 < origin.emptyLinesBefore(fp.start - 2))
+      ) {
+        spacingType |= spacingType_t::left;
+      }
+
+      push();
+
+      bool finishedComment = false;
+      while (!finishedComment && *fp.start != '\0') {
+        skipTo('*');
+        if (*fp.start == '*') {
+          ++fp.start;
+          if (*fp.start == '/') {
+            ++fp.start;
+            finishedComment = true;
+          }
+        }
+      }
+
+      const std::string comment = str();
+      pop();
+
+      if (1 <= origin.emptyLinesAfter(fp.start)) {
+        spacingType |= spacingType_t::right;
+      }
+
+      return new commentToken(popTokenOrigin(),
+                              comment,
+                              spacingType);
     }
 
     token_t* tokenizer_t::getStringToken(const int encoding) {
@@ -799,16 +864,16 @@ namespace occa {
 
     tokenVector tokenizer_t::tokenize(const std::string &source) {
       tokenVector tokens;
-      fileOrigin origin = originSource::string;
-      tokenize(tokens, origin, source);
+      fileOrigin origin_ = originSource::string;
+      tokenize(tokens, origin_, source);
       return tokens;
     }
 
     void tokenizer_t::tokenize(tokenVector &tokens,
-                               fileOrigin origin,
+                               fileOrigin origin_,
                                const std::string &source) {
       // TODO: Make a string file_t
-      fileOrigin fakeOrigin(*origin.file,
+      fileOrigin fakeOrigin(*origin_.file,
                             source.c_str());
 
       tokenizer_t tstream(fakeOrigin);

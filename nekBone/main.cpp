@@ -181,6 +181,13 @@ int main(int argc, char **argv){
       etime[2] = timer::query("updatePCG", "HOST:MAX");
       etime[3] = timer::query("dot", "DEVICE:MAX");
       etime[4] = timer::query("preco", "DEVICE:MAX");
+      etime[5] = timer::query("Ax1", "DEVICE:MAX");
+      etime[6] = timer::query("Ax2", "DEVICE:MAX");
+      etime[7] = timer::query("AxGs", "DEVICE:MAX");
+    }
+    if(BP->overlap) {
+      etime[0] = etime[5] + etime[6];
+      etime[1] = etime[7] - etime[6];
     }
 
     if(mesh->rank==0){
