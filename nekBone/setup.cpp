@@ -29,6 +29,8 @@ SOFTWARE.
 #include "../axhelm/kernelHelper.cpp"
 #include "timer.hpp"
 
+static occa::memory p_tmp;
+
 void reportMemoryUsage(occa::device &device, const char *mess);
 
 BP_t *setup(mesh_t *mesh, dfloat *lambda1_in, occa::properties &kernelInfo, setupAide &options){
@@ -49,6 +51,10 @@ BP_t *setup(mesh_t *mesh, dfloat *lambda1_in, occa::properties &kernelInfo, setu
   if(options.compareArgs("THREAD MODEL", "SERIAL")) BP->overlap = false; 
   if(options.compareArgs("THREAD MODEL", "OPENMP")) BP->overlap = false;
   if(mesh->size == 1) BP->overlap = false;
+  if(BP->overlap) 
+    if(mesh->rank == 0) printf("overlap enabled\n");
+  else
+    if(mesh->rank == 0) printf("overlap disabled\n");
 
   if(BP->BPid) *lambda1_in = 0;
   const dfloat lambda1 = *lambda1_in;
@@ -177,9 +183,10 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
     free(mapB);
   }
 
-  BP->tmp  = (dfloat*) calloc(Nblock, sizeof(dfloat));
-  //  BP->tmp2 = (dfloat*) calloc(Nblock2, sizeof(dfloat));
-  
+  occa::properties props = kernelInfo;
+  props["mapped"] = true;
+  p_tmp = mesh->device.malloc(Nblock*sizeof(dfloat), props);
+  BP->tmp  = (dfloat*)p_tmp.ptr(props);
   BP->o_tmp = mesh->device.malloc(Nblock*sizeof(dfloat), BP->tmp);
   BP->o_tmp2 = mesh->device.malloc(Nblock2*sizeof(dfloat), BP->tmp);
 
@@ -245,10 +252,6 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
   mesh->maskedGlobalIds = (hlong *) calloc(Ntotal,sizeof(hlong));
   memcpy(mesh->maskedGlobalIds, mesh->globalIds, Ntotal*sizeof(hlong));
 
-  //use the masked ids to make another gs handle
-  //BP->ogs = ogsSetup(Ntotal, mesh->maskedGlobalIds, mesh->comm, 1, mesh->device);
-  BP->ogs = (void*) oogs::setup(Ntotal, mesh->maskedGlobalIds, ogsDfloat, mesh->comm, 1, mesh->device, OOGS_AUTO);
-  BP->o_invDegree = ((oogs_t *)BP->ogs)->ogs->o_invDegree;
 
   kernelInfo["defines/p_Nalign"] = USE_OCCA_MEM_BYTE_ALIGN;
   kernelInfo["defines/" "p_blockSize"]= blockSize;
@@ -385,8 +388,8 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
   BP->BPKernel[0] = loadAxKernel(mesh->device, threadModel, arch, kernelName, mesh->N, mesh->Nelements);
 
   // WARNING C0 appropriate only
-  mesh->sumKernel(mesh->Nelements*mesh->Np, BP->o_invDegree, BP->o_tmp);
-  BP->o_tmp.copyTo(BP->tmp);
+  //mesh->sumKernel(mesh->Nelements*mesh->Np, BP->o_invDegree, BP->o_tmp);
+  //BP->o_tmp.copyTo(BP->tmp);
 
   dfloat nullProjectWeightLocal = 0;
   dfloat nullProjectWeightGlobal = 0;
@@ -397,4 +400,19 @@ void solveSetup(BP_t *BP, dfloat lambda1, occa::properties &kernelInfo){
   
   BP->nullProjectWeightGlobal = 1./nullProjectWeightGlobal;
 
+  //use the masked ids to make another gs handle
+  //BP->ogs = ogsSetup(Ntotal, mesh->maskedGlobalIds, mesh->comm, 1, mesh->device);
+  auto callback = [&]() {
+   if(!BP->overlap) return;
+
+    mesh_t *mesh = BP->mesh;
+    const dlong fieldOffset = BP->fieldOffset;
+    occa::kernel &kernel = BP->BPKernel[0];
+    occa::memory &o_lambda = BP->o_solveWorkspace[1];
+    occa::memory &o_q  = BP->o_solveWorkspace[2];
+    occa::memory &o_Aq = BP->o_solveWorkspace[3];
+    kernel(mesh->NlocalGatherElements, fieldOffset, mesh->o_localGatherElementList, mesh->o_ggeo, mesh->o_D, o_lambda, o_q, o_Aq);
+  };
+  BP->ogs = (void*) oogs::setup(Ntotal, mesh->maskedGlobalIds, ogsDfloat, mesh->comm, 1, mesh->device, callback, OOGS_AUTO);
+  BP->o_invDegree = ((oogs_t *)BP->ogs)->ogs->o_invDegree;
 }

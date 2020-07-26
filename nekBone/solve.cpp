@@ -334,11 +334,10 @@ dfloat BPWeightedNorm2(BP_t *BP, occa::memory &o_w, occa::memory &o_a){
 dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b){
 
   mesh_t *mesh = BP->mesh;
-  mesh->device.finish();
+  //mesh->device.finish();
   if(BP->profiling) timer::tic("dot");
   setupAide &options = BP->options;
 
-  dfloat *tmp = BP->tmp;
   dlong Nblock = BP->Nblock;
   dlong Nblock2 = BP->Nblock2;
   dlong Ntotal = mesh->Nelements*mesh->Np;
@@ -356,29 +355,29 @@ dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, oc
 
   dfloat wab = 0;
   if(serial || omp){
-    o_tmp.copyTo(tmp);
-    wab = tmp[0];
+    o_tmp.copyTo(BP->tmp);
+    wab = BP->tmp[0];
   } else {
     /* add a second sweep if Nblock>Ncutoff */
     dlong Ncutoff = 8000;
     dlong Nfinal;
     if(Nblock>Ncutoff){
       mesh->sumKernel(Nblock, o_tmp, o_tmp2);
-      o_tmp2.copyTo(tmp);
+      o_tmp2.copyTo(BP->tmp);
       Nfinal = Nblock2;
     }
     else{
-      o_tmp.copyTo(tmp);
+      o_tmp.copyTo(BP->tmp);
       Nfinal = Nblock;
     }    
  
     for(dlong n=0;n<Nfinal;++n){
-      wab += tmp[n];
+      wab += BP->tmp[n];
     }
   }
 
   dfloat globalwab = 0;
-  //MPI_Allreduce(&wab, &globalwab, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
+  MPI_Allreduce(&wab, &globalwab, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
   if(BP->profiling) timer::toc("dot");
   return globalwab;

@@ -112,6 +112,7 @@ SOFTWARE.
 #ifndef OGS_HPP
 #define OGS_HPP 1
 
+#include <functional>
 #include <math.h>
 #include <stdlib.h>
 #include <occa.hpp>
@@ -257,7 +258,7 @@ void gatherScatter(occa::memory o_v, const char *type, const char *op, oogs_t *h
 void start(occa::memory o_v, const char *type, const char *op, oogs_t *h);
 void finish(occa::memory o_v, const char *type, const char *op, oogs_t *h);
 oogs_t *setup(dlong N, hlong *ids, const char *type, MPI_Comm &comm,
-              int verbose, occa::device device, oogs_mode mode);
+              int verbose, occa::device device, std::function<void()> callback, oogs_mode mode);
 
 }
 
