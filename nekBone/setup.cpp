@@ -40,6 +40,7 @@ BP_t* setup(mesh_t* mesh, occa::properties &kernelInfo, setupAide &options)
   BP->BPid = 0;
   BP->Nfields = 1;
   if(options.compareArgs("BPMODE", "TRUE")) {
+    if(mesh->rank == 0) printf("BP mode enabled\n");
     options.setArgs("PRECONDITIONER", "COPY");
     BP->BPid = 5;
     //options.getArgs("NUMBER OF FIELDS", BP->Nfields);
@@ -439,4 +440,11 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
                                 callback,
                                 OOGS_AUTO);
   BP->o_invDegree = ((oogs_t*)BP->ogs)->ogs->o_invDegree;
+
+/*
+  if(options.compareArgs("DISABLE HALOGS", "TRUE")) {
+    ((oogs_t*)BP->ogs)->ogs->NhaloGather = 0;
+  }
+*/
+
 }
