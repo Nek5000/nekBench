@@ -18,7 +18,7 @@ Tuned kernels for the following architectures are available:
 * CPU (generic)	
 
 # Examples
-Here a few examples how to run the benchmark for 8000 elements with a polynomial degree 7
+Here a few examples how to run the benchmark for 2000 elements with a polynomial degree 7
 
 ### Single Nvidia V100
 ```
