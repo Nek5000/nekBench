@@ -98,6 +98,7 @@ int main(int argc, char** argv)
   if(rank == 0) {
     std::cout << "word size: " << sizeof(dfloat) << " bytes\n";
     std::cout << "active occa mode: " << device.mode() << "\n";
+    if(BKmode) std::cout << "BK mode enabled\n";
   }
 
   // load kernel
