@@ -27,6 +27,16 @@
 #include "BP.hpp"
 void updateJacobi(BP_t* BP, occa::memory &o_lambda, occa::memory &o_invDiagA);
 
+static void   BPPreconditioner(BP_t* BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z);
+static dfloat BPWeightedNorm2(BP_t* BP, occa::memory &o_w, occa::memory &o_a);
+static dfloat BPWeightedInnerProduct(BP_t* BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b);
+static dfloat BPUpdatePCG(BP_t* BP, occa::memory &o_p, occa::memory &o_Ap, dfloat alpha,
+                          occa::memory &o_x, occa::memory &o_r);
+static dfloat BPUpdateOverlapPCG(BP_t* BP,
+                                 occa::memory &o_p, occa::memory &o_Ap, const dfloat alpha,
+                                 occa::memory &o_x, occa::memory &o_r);
+
+
 int BPPCG(BP_t* BP, occa::memory &o_lambda,
           occa::memory &o_r, occa::memory &o_x,
           const dfloat tol, const int MAXIT,
@@ -100,7 +110,11 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
     //  x <= x + alpha*p
     //  r <= r - alpha*A*p
     //  dot(r,r)
+#if 0      
+    dfloat rdotr = BPUpdateOverlapPCG(BP, o_p, o_Ap, alpha, o_x, o_r);
+#else
     dfloat rdotr = BPUpdatePCG(BP, o_p, o_Ap, alpha, o_x, o_r);
+#endif
 
     if (verbose && (mesh->rank == 0)) {
       if(rdotr < 0)
@@ -179,14 +193,14 @@ dfloat BPUpdatePCG(BP_t* BP,
     BP->updateMultiplePCGKernel(Nlocal, BP->fieldOffset, BP->NblocksUpdatePCG,
                                 BP->o_invDegree, o_p, o_Ap, alpha, o_x, o_r, BP->o_tmpNormr);
 
-  BP->o_tmpNormr.copyTo(BP->tmpNormr);
+  BP->o_tmpNormr.copyTo(BP->tmp);
 
   dfloat rdotr1 = 0;
   if(serial || omp)
-    rdotr1 = BP->tmpNormr[0];
+    rdotr1 = BP->tmp[0];
   else
     for(int n = 0; n < BP->NblocksUpdatePCG; ++n)
-      rdotr1 += BP->tmpNormr[n];
+      rdotr1 += BP->tmp[n];
 
   dfloat globalrdotr1;
   MPI_Allreduce(&rdotr1, &globalrdotr1, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
@@ -195,6 +209,58 @@ dfloat BPUpdatePCG(BP_t* BP,
   if(BP->profiling) timer::toc("updatePCG");
   return rdotr1;
 }
+
+dfloat BPUpdateOverlapPCG(BP_t* BP,
+                          occa::memory &o_p, occa::memory &o_Ap, const dfloat alpha,
+                          occa::memory &o_x, occa::memory &o_r)
+{
+  if(BP->profiling) timer::tic("updatePCG");
+
+  setupAide &options = BP->options;
+
+  int fixedIterationCountFlag = 0;
+  int flexible = options.compareArgs("KRYLOV SOLVER", "FLEXIBLE");
+  int verbose = options.compareArgs("VERBOSE", "TRUE");
+  int serial = options.compareArgs("THREAD MODEL", "SERIAL");
+  int omp = options.compareArgs("THREAD MODEL", "OPENMP");
+
+  mesh_t* mesh = BP->mesh;
+  const dlong Nlocal = mesh->Nelements * mesh->Np;
+
+  // r <= r - alpha*A*p
+  // dot(r,r)
+  if(BP->Nfields == 1)
+    BP->updateOverlapPCGKernel(Nlocal, BP->NblocksUpdatePCG,
+                               BP->o_invDegree, o_p, o_Ap, alpha, o_r, BP->o_tmpNormr);
+  else
+    BP->updateOverlapMultiplePCGKernel(Nlocal, BP->fieldOffset, BP->NblocksUpdatePCG,
+                                      BP->o_invDegree, o_p, o_Ap, alpha, o_r, BP->o_tmpNormr);
+
+  // x <= x + alpha*p
+  BP->scaledAddKernel(Nlocal, alpha, o_p, 1.0, o_x);
+
+  mesh->device.setStream(BP->stream1);
+  BP->o_tmpNormr.copyTo(BP->tmp, BP->NblocksUpdatePCG*sizeof(dfloat), 0, "async: true");
+  mesh->device.finish();
+
+  dfloat rdotr1 = 0;
+  if(serial || omp)
+    rdotr1 = BP->tmp[0];
+  else
+    for(int n = 0; n < BP->NblocksUpdatePCG; ++n)
+      rdotr1 += BP->tmp[n];
+
+  dfloat globalrdotr1;
+  MPI_Allreduce(&rdotr1, &globalrdotr1, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
+  rdotr1 = globalrdotr1;
+
+  mesh->device.setStream(BP->streamDefault);
+  mesh->device.finish();
+
+  if(BP->profiling) timer::toc("updatePCG");
+  return rdotr1;
+}
+
 
 #include "../axhelm/kernelHelper.cpp"
 

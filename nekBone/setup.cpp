@@ -360,10 +360,17 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
       if(strstr(threadModel.c_str(),
                 "NATIVE+SERIAL") || strstr(threadModel.c_str(), "NATIVE+OPENMP"))
         fileName = "kernel/" + arch + "/updatePCG.c";
+
       BP->updatePCGKernel =
         mesh->device.buildKernel(fileName.c_str(), "BPUpdatePCG", props);
       BP->updateMultiplePCGKernel =
         mesh->device.buildKernel(fileName.c_str(), "BPMultipleUpdatePCG", props);
+
+      fileName = DBP "/kernel/" + arch + "/updateOverlapPCG.okl"; 
+      BP->updateOverlapPCGKernel =
+        mesh->device.buildKernel(fileName.c_str(), "BPUpdateOverlapPCG", props);
+      BP->updateOverlapMultiplePCGKernel =
+        mesh->device.buildKernel(fileName.c_str(), "BPMultipleUpdateOverlapPCG", props);
 
       fileName = DBP "/kernel/utils.okl";
       if(strstr(threadModel.c_str(),
@@ -447,4 +454,6 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
   }
 */
 
+  BP->streamDefault = mesh->device.getStream();
+  BP->stream1 = mesh->device.createStream();
 }

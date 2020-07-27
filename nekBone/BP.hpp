@@ -71,6 +71,9 @@ typedef struct
   dlong Nblock;
   dlong Nblock2; // second reduction
 
+  occa::stream streamDefault;
+  occa::stream stream1;
+
   dfloat tau;
 
   int* BCType;
@@ -169,8 +172,8 @@ typedef struct
   dfloat* tmpNormr;
   occa::memory o_tmpNormr;
 
-  occa::kernel updatePCGKernel;
-  occa::kernel updateMultiplePCGKernel;
+  occa::kernel updatePCGKernel, updateOverlapPCGKernel;
+  occa::kernel updateMultiplePCGKernel, updateOverlapMultiplePCGKernel;
 
   occa::memory o_zeroAtomic;
   occa::memory o_tmpAtomic;
@@ -209,7 +212,6 @@ int BPPCG   (BP_t* BP,
              double* opElapsed);
 
 void BPScaledAdd(BP_t* BP, dfloat alpha, occa::memory &o_a, dfloat beta, occa::memory &o_b);
-dfloat BPWeightedInnerProduct(BP_t* BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b);
 
 dfloat AxOperator(BP_t* BP,
                   occa::memory &o_lambda,
@@ -217,17 +219,10 @@ dfloat AxOperator(BP_t* BP,
                   occa::memory &o_Aq,
                   const char* precision);
 
-void BPPreconditioner(BP_t* BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z);
-
-dfloat BPWeightedNorm2(BP_t* BP, occa::memory &o_w, occa::memory &o_a);
-
 void BPBuildContinuous(BP_t* BP, dfloat lambda, nonZero_t** A,
                        dlong* nnz, ogs_t** ogs, hlong* globalStarts);
 
 void BPBuildJacobi(BP_t* BP, dfloat lambda, dfloat** invDiagA);
-
-dfloat BPUpdatePCG(BP_t* BP, occa::memory &o_p, occa::memory &o_Ap, dfloat alpha,
-                   occa::memory &o_x, occa::memory &o_r);
 
 #define maxNthreads 256
 
