@@ -6,28 +6,29 @@
 #include "occa.hpp"
 #include "mpi.h"
 
-namespace timer{
-  void init(MPI_Comm comm,occa::device device,int ifsync=0);
-  void reset();
-  void update();
-  void update(const std::string tag);
-  void hostUpdate(const std::string tag);
-  void reset(const std::string tag);
-  void finalize();
+namespace timer
+{
+void init(MPI_Comm comm,occa::device device,int ifsync = 0);
+void reset();
+void update();
+void update(const std::string tag);
+void hostUpdate(const std::string tag);
+void reset(const std::string tag);
+void finalize();
 
-  void tic(const std::string tag);
-  void tic(const std::string tag,int ifSync);
-  void toc(const std::string tag);
-  void hostTic(const std::string tag);
-  void hostTic(const std::string tag,int ifSync);
-  void hostToc(const std::string tag);
-  void deviceTic(const std::string tag);
-  void deviceTic(const std::string tag,int ifSync);
-  void deviceToc(const std::string tag);
+void tic(const std::string tag);
+void tic(const std::string tag,int ifSync);
+void toc(const std::string tag);
+void hostTic(const std::string tag);
+void hostTic(const std::string tag,int ifSync);
+void hostToc(const std::string tag);
+void deviceTic(const std::string tag);
+void deviceTic(const std::string tag,int ifSync);
+void deviceToc(const std::string tag);
 
-  int count(const std::string tag);
-  double query(const std::string tag,std::string metric);
-  void printStat();
+int count(const std::string tag);
+double query(const std::string tag,std::string metric);
+void printStat();
 }
 
 #endif

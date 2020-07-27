@@ -27,10 +27,13 @@ namespace occa {
     preprocessor_t::preprocessor_t(const occa::properties &settings_) {
       init();
       initDirectives();
+      initStandardHeaders();
+
+      setSettings(settings_);
 
       includePaths = env::OCCA_INCLUDE_PATH;
 
-      json oklIncludePaths = settings_["okl/include_paths"];
+      json oklIncludePaths = settings["okl/include_paths"];
       if (oklIncludePaths.isArray()) {
         jsonArray pathArray = oklIncludePaths.array();
         const int pathCount = (int) pathArray.size();
@@ -49,8 +52,7 @@ namespace occa {
     }
 
     preprocessor_t::preprocessor_t(const preprocessor_t &pp) :
-      withInputCache(pp),
-      withOutputCache(pp) {
+      withCache(pp) {
       *this = pp;
     }
 
@@ -78,6 +80,25 @@ namespace occa {
         compilerMacros[specialMacros[i]->name()] = specialMacros[i];
       }
 
+      // OCCA-specific macros
+      addCompilerDefine("OCCA_MAJOR_VERSION", toString(OCCA_MAJOR_VERSION));
+      addCompilerDefine("OCCA_MINOR_VERSION", toString(OCCA_MINOR_VERSION));
+      addCompilerDefine("OCCA_PATCH_VERSION", toString(OCCA_PATCH_VERSION));
+      addCompilerDefine("OCCA_VERSION", toString(OCCA_VERSION));
+      addCompilerDefine("OKL_VERSION" , toString(OKL_VERSION));
+      addCompilerDefine("__OKL__" , "1");
+      addCompilerDefine("__OCCA__" , "1");
+
+      // Add kernel hash as a define
+      std::string hashValue = settings.get<std::string>("hash", "");
+      if (hashValue.size()) {
+        hash_t hash = hash_t::fromString(hashValue);
+        hashValue = hash.getString();
+      } else {
+        hashValue = "unknown";
+      }
+      addCompilerDefine("OKL_KERNEL_HASH", "\"" + hashValue + "\"");
+
       // Alternative representations
       addCompilerDefine("and"   , "&&");
       addCompilerDefine("and_eq", "&=");
@@ -95,7 +116,6 @@ namespace occa {
       errors   = 0;
 
       tokenizer = NULL;
-      hasLoadedTokenizer = false;
     }
 
     void preprocessor_t::clear() {
@@ -108,7 +128,6 @@ namespace occa {
       warnings = 0;
 
       tokenizer = NULL;
-      hasLoadedTokenizer = false;
 
       while (inputCache.size()) {
         delete inputCache.front();
@@ -186,6 +205,10 @@ namespace occa {
       return *this;
     }
 
+    void preprocessor_t::setSettings(occa::properties settings_) {
+      settings = settings_;
+    }
+
     void preprocessor_t::initDirectives() {
       directives["if"]      = &preprocessor_t::processIf;
       directives["ifdef"]   = &preprocessor_t::processIfdef;
@@ -203,6 +226,128 @@ namespace occa {
       directives["include"] = &preprocessor_t::processInclude;
       directives["pragma"]  = &preprocessor_t::processPragma;
       directives["line"]    = &preprocessor_t::processLine;
+    }
+
+    void preprocessor_t::initStandardHeaders() {
+      standardHeaders["algorithm"] = true;
+      standardHeaders["any"] = true;
+      standardHeaders["array"] = true;
+      standardHeaders["assert.h"] = true;
+      standardHeaders["atomic"] = true;
+      standardHeaders["bitset"] = true;
+      standardHeaders["cassert"] = true;
+      standardHeaders["ccomplex"] = true;
+      standardHeaders["cctype"] = true;
+      standardHeaders["cerrno"] = true;
+      standardHeaders["cfenv"] = true;
+      standardHeaders["cfloat"] = true;
+      standardHeaders["charconv"] = true;
+      standardHeaders["chrono"] = true;
+      standardHeaders["cinttypes"] = true;
+      standardHeaders["ciso646"] = true;
+      standardHeaders["climits"] = true;
+      standardHeaders["clocale"] = true;
+      standardHeaders["cmath"] = true;
+      standardHeaders["codecvt"] = true;
+      standardHeaders["compare"] = true;
+      standardHeaders["complex.h"] = true;
+      standardHeaders["complex"] = true;
+      standardHeaders["condition_variable"] = true;
+      standardHeaders["csetjmp"] = true;
+      standardHeaders["csignal"] = true;
+      standardHeaders["cstdalign"] = true;
+      standardHeaders["cstdarg"] = true;
+      standardHeaders["cstdbool"] = true;
+      standardHeaders["cstddef"] = true;
+      standardHeaders["cstdint"] = true;
+      standardHeaders["cstdio"] = true;
+      standardHeaders["cstdlib"] = true;
+      standardHeaders["cstring"] = true;
+      standardHeaders["ctgmath"] = true;
+      standardHeaders["ctime"] = true;
+      standardHeaders["ctype.h"] = true;
+      standardHeaders["cuchar"] = true;
+      standardHeaders["cwchar"] = true;
+      standardHeaders["cwctype"] = true;
+      standardHeaders["deque"] = true;
+      standardHeaders["errno.h"] = true;
+      standardHeaders["exception"] = true;
+      standardHeaders["execution"] = true;
+      standardHeaders["fenv.h"] = true;
+      standardHeaders["filesystem"] = true;
+      standardHeaders["float.h"] = true;
+      standardHeaders["forward_list"] = true;
+      standardHeaders["fstream"] = true;
+      standardHeaders["functional"] = true;
+      standardHeaders["future"] = true;
+      standardHeaders["initializer_list"] = true;
+      standardHeaders["inttypes.h"] = true;
+      standardHeaders["iomanip"] = true;
+      standardHeaders["ios"] = true;
+      standardHeaders["iosfwd"] = true;
+      standardHeaders["iostream"] = true;
+      standardHeaders["iso646.h"] = true;
+      standardHeaders["istream"] = true;
+      standardHeaders["iterator"] = true;
+      standardHeaders["limits.h"] = true;
+      standardHeaders["limits"] = true;
+      standardHeaders["list"] = true;
+      standardHeaders["locale.h"] = true;
+      standardHeaders["locale"] = true;
+      standardHeaders["map"] = true;
+      standardHeaders["math.h"] = true;
+      standardHeaders["memory"] = true;
+      standardHeaders["memory_resource"] = true;
+      standardHeaders["mutex"] = true;
+      standardHeaders["new"] = true;
+      standardHeaders["numeric"] = true;
+      standardHeaders["optional"] = true;
+      standardHeaders["ostream"] = true;
+      standardHeaders["queue"] = true;
+      standardHeaders["random"] = true;
+      standardHeaders["ratio"] = true;
+      standardHeaders["regex"] = true;
+      standardHeaders["scoped_allocator"] = true;
+      standardHeaders["set"] = true;
+      standardHeaders["setjmp.h"] = true;
+      standardHeaders["shared_mutex"] = true;
+      standardHeaders["signal.h"] = true;
+      standardHeaders["sstream"] = true;
+      standardHeaders["stack"] = true;
+      standardHeaders["stdalign.h"] = true;
+      standardHeaders["stdarg.h"] = true;
+      standardHeaders["stdatomic.h"] = true;
+      standardHeaders["stdbool.h"] = true;
+      standardHeaders["stddef.h"] = true;
+      standardHeaders["stdexcept"] = true;
+      standardHeaders["stdint.h"] = true;
+      standardHeaders["stdio.h"] = true;
+      standardHeaders["stdlib.h"] = true;
+      standardHeaders["stdnoreturn.h"] = true;
+      standardHeaders["streambuf"] = true;
+      standardHeaders["string.h"] = true;
+      standardHeaders["string"] = true;
+      standardHeaders["string_view"] = true;
+      standardHeaders["strstream"] = true;
+      standardHeaders["syncstream"] = true;
+      standardHeaders["system_error"] = true;
+      standardHeaders["tgmath.h"] = true;
+      standardHeaders["thread"] = true;
+      standardHeaders["threads.h"] = true;
+      standardHeaders["time.h"] = true;
+      standardHeaders["tuple"] = true;
+      standardHeaders["type_traits"] = true;
+      standardHeaders["typeindex"] = true;
+      standardHeaders["typeinfo"] = true;
+      standardHeaders["uchar.h"] = true;
+      standardHeaders["unordered_map"] = true;
+      standardHeaders["unordered_set"] = true;
+      standardHeaders["utility"] = true;
+      standardHeaders["valarray"] = true;
+      standardHeaders["variant"] = true;
+      standardHeaders["vector"] = true;
+      standardHeaders["wchar.h"] = true;
+      standardHeaders["wctype.h"] = true;
     }
 
     void preprocessor_t::warningOn(token_t *token,
@@ -338,9 +483,8 @@ namespace occa {
     //==================================
 
     void preprocessor_t::loadTokenizer() {
-      if (!hasLoadedTokenizer) {
+      if (!tokenizer) {
         tokenizer = (tokenizer_t*) getInput("tokenizer_t");
-        hasLoadedTokenizer = true;
       }
     }
 
@@ -477,7 +621,8 @@ namespace occa {
       getLineTokens(lineTokens);
       if (lineTokens.size()) {
         // Don't account for the newline token
-        if (lineTokens[0]->type() != tokenType::newline) {
+        if (!(lineTokens[0]->type() & (tokenType::newline |
+                                       tokenType::comment))) {
           warningOn(lineTokens[0],
                     message);
         }
@@ -1159,22 +1304,18 @@ namespace occa {
       }
 
       // Expand non-absolute path
-      std::string header = io::filename(tokenizer->getHeader(), false);
-      // Test includePaths until one exists
-      // Default to a relative path if none are found
-      if (!io::isAbsolutePath(header)) {
-        const int pathCount = (int) includePaths.size();
-        for (int i = 0; i < pathCount; ++i) {
-          const std::string path = includePaths[i];
-          if (io::exists(path + header)) {
-            header = path + header;
-            break;
-          } else if (i == (pathCount - 1)) {
-            header = env::CWD + header;
-          }
-        }
-      }
+      std::string header = io::findInPaths(io::filename(tokenizer->getHeader(), false), includePaths);
+
       if (!io::exists(header)) {
+        // Default to standard headers if they exist
+        if (standardHeaders.find(header) != standardHeaders.end()) {
+          warningOn(&directive,
+                    "Including standard headers may not be portable for all modes");
+          pushOutput(new directiveToken(directive.origin,
+                                        "include <" + header + ">"));
+          return;
+        }
+
         errorOn(&directive,
                 "File does not exist");
         skipToNewline();
@@ -1212,6 +1353,7 @@ namespace occa {
       }
 
       // Push source after updating origin to the [\n] token
+      input->clearCache();
       tokenizer->pushSource(header);
     }
 

@@ -91,10 +91,12 @@ namespace ogs {
   occa::kernel gatherScatterManyKernel_longMax;
 
   occa::kernel gatherKernel_floatAdd;
+  occa::kernel gatherKernel_floatAddSelf;
   occa::kernel gatherKernel_floatMul;
   occa::kernel gatherKernel_floatMin;
   occa::kernel gatherKernel_floatMax;
   occa::kernel gatherKernel_doubleAdd;
+  occa::kernel gatherKernel_doubleAddSelf;
   occa::kernel gatherKernel_doubleMul;
   occa::kernel gatherKernel_doubleMin;
   occa::kernel gatherKernel_doubleMax;
@@ -266,11 +268,13 @@ void ogs::initKernels(MPI_Comm comm, occa::device device) {
 
 
       ogs::gatherKernel_floatAdd = device.buildKernel(DOGS "/okl/gather.okl", "gather_floatAdd", kernelInfo);
+      ogs::gatherKernel_floatAddSelf = device.buildKernel(DOGS "/okl/gather.okl", "gather_floatAddSelf", kernelInfo);
       ogs::gatherKernel_floatMul = device.buildKernel(DOGS "/okl/gather.okl", "gather_floatMul", kernelInfo);
       ogs::gatherKernel_floatMin = device.buildKernel(DOGS "/okl/gather.okl", "gather_floatMin", kernelInfo);
       ogs::gatherKernel_floatMax = device.buildKernel(DOGS "/okl/gather.okl", "gather_floatMax", kernelInfo);
 
       ogs::gatherKernel_doubleAdd = device.buildKernel(DOGS "/okl/gather.okl", "gather_doubleAdd", kernelInfo);
+      ogs::gatherKernel_doubleAddSelf = device.buildKernel(DOGS "/okl/gather.okl", "gather_doubleAddSelf", kernelInfo);
       ogs::gatherKernel_doubleMul = device.buildKernel(DOGS "/okl/gather.okl", "gather_doubleMul", kernelInfo);
       ogs::gatherKernel_doubleMin = device.buildKernel(DOGS "/okl/gather.okl", "gather_doubleMin", kernelInfo);
       ogs::gatherKernel_doubleMax = device.buildKernel(DOGS "/okl/gather.okl", "gather_doubleMax", kernelInfo);

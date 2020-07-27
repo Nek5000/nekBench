@@ -1,28 +1,28 @@
 /*
 
-The MIT License (MIT)
+   The MIT License (MIT)
 
-Copyright (c) 2017 Tim Warburton, Noel Chalmers, Jesse Chan, Ali Karakus
+   Copyright (c) 2017 Tim Warburton, Noel Chalmers, Jesse Chan, Ali Karakus
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
 
-*/
+ */
 
 #ifndef BP_H
 #define BP_H 1
@@ -39,62 +39,62 @@ SOFTWARE.
 // block size for reduction (hard coded)
 #define blockSize 256
 
-
-typedef struct{
-
+typedef struct
+{
   hlong row;
   hlong col;
   int ownerRank;
   dfloat val;
-
 }nonZero_t;
 
-
-typedef struct {
-
+typedef struct
+{
   int profiling;
   int BPid;
   int knlId;
-  
+  bool overlap;
+
   int dim;
   int elementType; // number of edges (3=tri, 4=quad, 6=tet, 12=hex)
   int Nfields;
 
   dlong fieldOffset;
-  
-  mesh_t *mesh;
 
-  ogs_t *ogs;
+  mesh_t* mesh;
+
+  void* ogs;
 
   setupAide options;
 
-  char *type;
+  char* type;
 
   dlong Nblock;
   dlong Nblock2; // second reduction
 
   dfloat tau;
 
-  int *BCType;
+  int* BCType;
 
   bool allNeumann;
   dfloat allNeumannPenalty;
   dfloat allNeumannScale;
 
   // field
-  dfloat *q;
-  
+  dfloat* q;
+
+  dfloat lambda1;
+
   // HOST shadow copies
-  dfloat *x, *r, *lambda;
-  dfloat *solveWorkspace;
-  dfloat *tmp;
-  
-  dfloat *invDegree;
+  dfloat* x, * r, * lambda;
+  dfloat* solveWorkspace;
+  dfloat* tmp;
 
-  int *EToB;
+  dfloat* invDegree;
 
-  dfloat *sendBuffer, *recvBuffer;
-  dfloat *gradSendBuffer, *gradRecvBuffer;
+  int* EToB;
+
+  dfloat* sendBuffer, * recvBuffer;
+  dfloat* gradSendBuffer, * gradRecvBuffer;
 
   occa::memory o_sendBuffer, o_recvBuffer;
   occa::memory h_sendBuffer, h_recvBuffer;
@@ -107,12 +107,12 @@ typedef struct {
   occa::memory o_invDiagA;
 
   occa::memory o_gr; // gathered RHS
-  
+
   // PCG storage
   int NsolveWorkspace;
-  dlong offsetSolveWorkspace; 
+  dlong offsetSolveWorkspace;
 
-  occa::memory *o_solveWorkspace; 
+  occa::memory* o_solveWorkspace;
   occa::memory o_res;
   occa::memory o_Sres;
   occa::memory o_tmp; // temporary
@@ -127,7 +127,7 @@ typedef struct {
   occa::memory o_EXYZ; // element vertices for reconstructing geofacs (trilinear hexes only)
   occa::memory o_gllzw; // GLL nodes and weights
 
-  occa::kernel *BPKernel;
+  occa::kernel* BPKernel;
 
   occa::kernel updateJacobiKernel;
 
@@ -139,7 +139,7 @@ typedef struct {
 
   occa::kernel innerProduct2Kernel;
   occa::kernel multipleInnerProduct2Kernel;
-  
+
   occa::kernel scaledAddKernel;
   occa::kernel dotMultiplyKernel;
   occa::kernel dotMultiplyAddKernel;
@@ -147,10 +147,10 @@ typedef struct {
 
   occa::kernel weightedNorm2Kernel;
   occa::kernel weightedMultipleNorm2Kernel;
-  
+
   occa::kernel norm2Kernel;
   occa::kernel multipleNorm2Kernel;
- 
+
   occa::kernel vecInvKernel;
   occa::kernel vecZeroKernel;
   occa::kernel vecScaleKernel;
@@ -161,69 +161,83 @@ typedef struct {
   occa::kernel vecAtomicInnerProductKernel;
   occa::kernel vecScatterKernel;
   occa::kernel vecMultipleScatterKernel;
-  
+
   // combined PCG update step
-  int             NthreadsUpdatePCG;
-  dlong           NblocksUpdatePCG;
+  int NthreadsUpdatePCG;
+  dlong NblocksUpdatePCG;
 
-  dfloat         *tmpNormr;
-  occa::memory  o_tmpNormr;
+  dfloat* tmpNormr;
+  occa::memory o_tmpNormr;
 
-  occa::kernel  updatePCGKernel;
-  occa::kernel  updateMultiplePCGKernel;
+  occa::kernel updatePCGKernel;
+  occa::kernel updateMultiplePCGKernel;
 
   occa::memory o_zeroAtomic;
   occa::memory o_tmpAtomic;
 
-  dfloat *tmpAtomic;
-  
-  occa::memory *o_pcgWork;
+  dfloat* tmpAtomic;
+
+  occa::memory* o_pcgWork;
 
   hlong NelementsGlobal;
   dfloat nullProjectWeightGlobal;
-  
 }BP_t;
 
-BP_t *setup(mesh_t *mesh, dfloat *lambda, occa::properties &kernelInfo, setupAide &options);
+BP_t* setup(mesh_t* mesh, occa::properties &kernelInfo, setupAide &options);
 
-void solveSetup(BP_t *BP, dfloat lambda, occa::properties &kernelInfo);
+void solveSetup(BP_t* BP, occa::properties &kernelInfo);
 
-void BPStartHaloExchange(BP_t *BP, occa::memory &o_q, int Nentries, dfloat *sendBuffer, dfloat *recvBuffer);
-void BPInterimHaloExchange(BP_t *BP, occa::memory &o_q, int Nentries, dfloat *sendBuffer, dfloat *recvBuffer);
-void BPEndHaloExchange(BP_t *BP, occa::memory &o_q, int Nentries, dfloat *recvBuffer);
+void BPStartHaloExchange(BP_t* BP,
+                         occa::memory &o_q,
+                         int Nentries,
+                         dfloat* sendBuffer,
+                         dfloat* recvBuffer);
+void BPInterimHaloExchange(BP_t* BP,
+                           occa::memory &o_q,
+                           int Nentries,
+                           dfloat* sendBuffer,
+                           dfloat* recvBuffer);
+void BPEndHaloExchange(BP_t* BP, occa::memory &o_q, int Nentries, dfloat* recvBuffer);
 
 //Linear solvers
-int BPPCG   (BP_t* BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_x, const dfloat tol, const int MAXIT, double *opElapsed);
+int BPPCG   (BP_t* BP,
+             occa::memory &o_lambda,
+             occa::memory &o_r,
+             occa::memory &o_x,
+             const dfloat tol,
+             const int MAXIT,
+             double* opElapsed);
 
-void BPScaledAdd(BP_t *BP, dfloat alpha, occa::memory &o_a, dfloat beta, occa::memory &o_b);
-dfloat BPWeightedInnerProduct(BP_t *BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b);
+void BPScaledAdd(BP_t* BP, dfloat alpha, occa::memory &o_a, dfloat beta, occa::memory &o_b);
+dfloat BPWeightedInnerProduct(BP_t* BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b);
 
-dfloat AxOperator(BP_t *BP, occa::memory &o_lambda, occa::memory &o_q, occa::memory &o_Aq, const char *precision);
+dfloat AxOperator(BP_t* BP,
+                  occa::memory &o_lambda,
+                  occa::memory &o_q,
+                  occa::memory &o_Aq,
+                  const char* precision);
 
-void BPPreconditioner(BP_t *BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z);
+void BPPreconditioner(BP_t* BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z);
 
-dfloat BPWeightedNorm2(BP_t *BP, occa::memory &o_w, occa::memory &o_a);
+dfloat BPWeightedNorm2(BP_t* BP, occa::memory &o_w, occa::memory &o_a);
 
-void BPBuildContinuous(BP_t* BP, dfloat lambda, nonZero_t **A,
-                                  dlong *nnz, ogs_t **ogs, hlong *globalStarts);
+void BPBuildContinuous(BP_t* BP, dfloat lambda, nonZero_t** A,
+                       dlong* nnz, ogs_t** ogs, hlong* globalStarts);
 
-void BPBuildJacobi(BP_t *BP, dfloat lambda, dfloat **invDiagA);
+void BPBuildJacobi(BP_t* BP, dfloat lambda, dfloat** invDiagA);
 
-dfloat BPUpdatePCG(BP_t *BP, occa::memory &o_p, occa::memory &o_Ap, dfloat alpha,
-		    occa::memory &o_x, occa::memory &o_r);
+dfloat BPUpdatePCG(BP_t* BP, occa::memory &o_p, occa::memory &o_Ap, dfloat alpha,
+                   occa::memory &o_x, occa::memory &o_r);
 
 #define maxNthreads 256
 
+occa::properties BPKernelInfo(mesh_t* mesh);
 
-occa::properties BPKernelInfo(mesh_t *mesh);
+void BPZeroMean(BP_t* BP, occa::memory &o_q);
 
-void BPZeroMean(BP_t *BP, occa::memory &o_q);
+dfloat BPNorm2(BP_t* BP, dlong Ntotal, dlong offset, occa::memory &o_a);
+dfloat BPInnerProduct(BP_t* BP, dlong Ntotal, dlong offset, occa::memory &o_a, occa::memory &o_b);
 
-dfloat BPNorm2(BP_t *BP, dlong Ntotal, dlong offset, occa::memory &o_a);
-dfloat BPInnerProduct(BP_t *BP, dlong Ntotal, dlong offset, occa::memory &o_a, occa::memory &o_b);
-
-dfloat BPAtomicInnerProduct(BP_t *BP, dlong N, occa::memory &o_a, occa::memory &o_b);
-
+dfloat BPAtomicInnerProduct(BP_t* BP, dlong N, occa::memory &o_a, occa::memory &o_b);
 
 #endif
-

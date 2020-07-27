@@ -136,7 +136,9 @@ bool runTranslate(const json &args) {
   const json &options = args["options"];
   const json &arguments = args["arguments"];
 
-  const std::string mode = options["mode"];
+  const std::string originalMode = options["mode"];
+  const std::string mode = lowercase(originalMode);
+
   const bool printLauncher = options["launcher"];
   const std::string filename = arguments[0];
 
@@ -151,22 +153,22 @@ bool runTranslate(const json &args) {
 
   lang::parser_t *parser = NULL;
   lang::parser_t *launcherParser = NULL;
-  if (mode == "Serial") {
+  if (mode == "" || mode == "serial") {
     parser = new lang::okl::serialParser(kernelProps);
-  } else if (mode == "OpenMP") {
+  } else if (mode == "openmp") {
     parser = new lang::okl::openmpParser(kernelProps);
-  } else if (mode == "CUDA") {
+  } else if (mode == "cuda") {
     parser = new lang::okl::cudaParser(kernelProps);
-  } else if (mode == "HIP") {
+  } else if (mode == "hip") {
     parser = new lang::okl::hipParser(kernelProps);
-  } else if (mode == "OpenCL") {
+  } else if (mode == "opencl") {
     parser = new lang::okl::openclParser(kernelProps);
-  } else if (mode == "Metal") {
+  } else if (mode == "metal") {
     parser = new lang::okl::metalParser(kernelProps);
   }
 
   if (!parser) {
-    printError("Unable to translate for mode [" + mode + "]");
+    printError("Unable to translate for mode [" + originalMode + "]");
     ::exit(1);
   }
 
@@ -197,10 +199,10 @@ bool runTranslate(const json &args) {
       << "*/\n";
   }
 
-  if (printLauncher && ((mode == "CUDA")
-                        || (mode == "HIP")
-                        || (mode == "OpenCL")
-                        || (mode == "Metal"))) {
+  if (printLauncher && ((mode == "cuda")
+                        || (mode == "hip")
+                        || (mode == "opencl")
+                        || (mode == "metal"))) {
     launcherParser = &(((occa::lang::okl::withLauncher*) parser)->launcherParser);
     std::cout << launcherParser->toString();
   } else {
@@ -256,6 +258,7 @@ bool runEnv(const json &args) {
             << "  Backend Support:\n"
             << "    - OCCA_OPENMP_ENABLED        : " << envEcho("OCCA_OPENMP_ENABLED", OCCA_OPENMP_ENABLED) << "\n"
             << "    - OCCA_CUDA_ENABLED          : " << envEcho("OCCA_CUDA_ENABLED", OCCA_CUDA_ENABLED) << "\n"
+            << "    - OCCA_HIP_ENABLED           : " << envEcho("OCCA_HIP_ENABLED", OCCA_HIP_ENABLED) << "\n"
             << "    - OCCA_OPENCL_ENABLED        : " << envEcho("OCCA_OPENCL_ENABLED", OCCA_OPENCL_ENABLED) << "\n"
             << "    - OCCA_METAL_ENABLED         : " << envEcho("OCCA_METAL_ENABLED", OCCA_METAL_ENABLED) << "\n"
 
@@ -266,9 +269,12 @@ bool runEnv(const json &args) {
             << "    - OCCA_COMPILER_SHARED_FLAGS : " << envEcho("OCCA_COMPILER_SHARED_FLAGS") << "\n"
             << "    - OCCA_INCLUDE_PATH          : " << envEcho("OCCA_INCLUDE_PATH") << "\n"
             << "    - OCCA_LIBRARY_PATH          : " << envEcho("OCCA_LIBRARY_PATH") << "\n"
+            << "    - OCCA_KERNEL_PATH           : " << envEcho("OCCA_KERNEL_PATH") << "\n"
             << "    - OCCA_OPENCL_COMPILER_FLAGS : " << envEcho("OCCA_OPENCL_COMPILER_FLAGS") << "\n"
             << "    - OCCA_CUDA_COMPILER         : " << envEcho("OCCA_CUDA_COMPILER") << "\n"
-            << "    - OCCA_CUDA_COMPILER_FLAGS   : " << envEcho("OCCA_CUDA_COMPILER_FLAGS") << "\n";
+            << "    - OCCA_CUDA_COMPILER_FLAGS   : " << envEcho("OCCA_CUDA_COMPILER_FLAGS") << "\n"
+            << "    - OCCA_HIP_COMPILER          : " << envEcho("OCCA_HIP_COMPILER") << "\n"
+            << "    - OCCA_HIP_COMPILER_FLAGS    : " << envEcho("OCCA_HIP_COMPILER_FLAGS") << "\n";
   return true;
 }
 
@@ -278,10 +284,10 @@ bool runInfo(const json &args) {
 }
 
 bool runModes(const json &args) {
-  strToModeMap &modes = modeMap();
-  strToModeMap::iterator it = modes.begin();
-  while (it != modes.end()) {
-    std::cout << it->first << '\n';
+  strToModeMap &modeMap = getModeMap();
+  strToModeMap::iterator it = modeMap.begin();
+  while (it != modeMap.end()) {
+    std::cout << it->second->name() << '\n';
     ++it;
   }
   return true;
@@ -329,8 +335,7 @@ int main(const int argc, const char **argv) {
     .withCallback(runTranslate)
     .withDescription("Translate kernels")
     .addOption(cli::option('m', "mode",
-                           "Output mode")
-               .isRequired()
+                           "Output mode (Default: Serial)")
                .withArg()
                .expandsFunction("occa modes"))
     .addOption(cli::option('l', "launcher",

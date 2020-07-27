@@ -49,6 +49,7 @@ void ogsGatherStart(occa::memory o_gv,
                     const char *type, 
                     const char *op, 
                     ogs_t *ogs){
+
   size_t Nbytes;
   if (!strcmp(type, "float")) 
     Nbytes = sizeof(float);
@@ -103,8 +104,14 @@ void ogsGatherFinish(occa::memory o_gv,
     ogs->device.setStream(ogs::dataStream);
     ogs->device.finish();
 
+#ifdef OGS_ENABLE_TIMER
+  timer::tic("gsMPI",1);
+#endif
     // MPI based gather using libgs
     ogsHostGather(ogs::haloBuf, type, op, ogs->haloGshNonSym);
+#ifdef OGS_ENABLE_TIMER
+  timer::toc("gsMPI");
+#endif
 
     // copy totally gather halo data back from HOST to DEVICE
     if (ogs->NownedHalo)
@@ -306,6 +313,8 @@ void occaGather(const  dlong Ngather,
   
   if      ((!strcmp(type, "float"))&&(!strcmp(op, "add"))) 
     ogs::gatherKernel_floatAdd(Ngather, o_gatherStarts, o_gatherIds, o_v, o_gv);
+  else if ((!strcmp(type, "float"))&&(!strcmp(op, "add+self"))) 
+    ogs::gatherKernel_floatAddSelf(Ngather, o_gatherStarts, o_gatherIds, o_v, o_gv);
   else if ((!strcmp(type, "float"))&&(!strcmp(op, "mul"))) 
     ogs::gatherKernel_floatMul(Ngather, o_gatherStarts, o_gatherIds, o_v, o_gv);
   else if ((!strcmp(type, "float"))&&(!strcmp(op, "min"))) 
@@ -314,6 +323,8 @@ void occaGather(const  dlong Ngather,
     ogs::gatherKernel_floatMax(Ngather, o_gatherStarts, o_gatherIds, o_v, o_gv);
   else if ((!strcmp(type, "double"))&&(!strcmp(op, "add"))) 
     ogs::gatherKernel_doubleAdd(Ngather, o_gatherStarts, o_gatherIds, o_v, o_gv);
+  else if ((!strcmp(type, "double"))&&(!strcmp(op, "add+self"))) 
+    ogs::gatherKernel_doubleAddSelf(Ngather, o_gatherStarts, o_gatherIds, o_v, o_gv);
   else if ((!strcmp(type, "double"))&&(!strcmp(op, "mul"))) 
     ogs::gatherKernel_doubleMul(Ngather, o_gatherStarts, o_gatherIds, o_v, o_gv);
   else if ((!strcmp(type, "double"))&&(!strcmp(op, "min"))) 

@@ -38,15 +38,17 @@ namespace occa {
       occa::json &kernelProps = properties["kernel"];
       std::string compiler, compilerFlags;
 
-      if (kernelProps.get<std::string>("compiler").size()) {
-        compiler = (std::string) kernelProps["compiler"];
-      } else if (env::var("OCCA_CUDA_COMPILER").size()) {
+      if (env::var("OCCA_CUDA_COMPILER").size()) {
         compiler = env::var("OCCA_CUDA_COMPILER");
+      } else if (kernelProps.get<std::string>("compiler").size()) {
+        compiler = (std::string) kernelProps["compiler"];
       } else {
         compiler = "nvcc";
       }
 
-      if (kernelProps.get<std::string>("compiler_flags").size()) {
+      if (env::var("OCCA_CUDA_COMPILER_FLAGS").size()) {
+        compilerFlags = env::var("OCCA_CUDA_COMPILER_FLAGS");
+      } else if (kernelProps.get<std::string>("compiler_flags").size()) {
         compilerFlags = (std::string) kernelProps["compiler_flags"];
       } else {
         compilerFlags = "-O3";
@@ -77,8 +79,10 @@ namespace occa {
 
     device::~device() {
       if (cuContext) {
-        OCCA_CUDA_ERROR("Device: Freeing Context",
-                        cuCtxDestroy(cuContext) );
+        OCCA_CUDA_DESTRUCTOR_ERROR(
+          "Device: Freeing Context",
+          cuCtxDestroy(cuContext)
+        );
         cuContext = NULL;
       }
     }
@@ -124,7 +128,7 @@ namespace occa {
 
     //---[ Stream ]---------------------
     modeStream_t* device::createStream(const occa::properties &props) {
-      CUstream cuStream;
+      CUstream cuStream = NULL;
 
       OCCA_CUDA_ERROR("Device: Setting Context",
                       cuCtxSetCurrent(cuContext));
@@ -135,7 +139,7 @@ namespace occa {
     }
 
     occa::streamTag device::tagStream() {
-      CUevent cuEvent;
+      CUevent cuEvent = NULL;
 
       OCCA_CUDA_ERROR("Device: Setting Context",
                       cuCtxSetCurrent(cuContext));
@@ -143,7 +147,7 @@ namespace occa {
                       cuEventCreate(&cuEvent,
                                     CU_EVENT_DEFAULT));
       OCCA_CUDA_ERROR("Device: Tagging Stream",
-                      cuEventRecord(cuEvent, 0));
+                      cuEventRecord(cuEvent, getCuStream()));
 
       return new occa::cuda::streamTag(this, cuEvent);
     }
@@ -283,7 +287,8 @@ namespace occa {
               << " -D OCCA_OS=OCCA_WINDOWS_OS -D _MSC_VER=1800"
 #endif
               << " -I"        << env::OCCA_DIR << "include"
-              << " -L"        << env::OCCA_DIR << "lib -locca"
+              << " -I"        << env::OCCA_INSTALL_DIR << "include"
+              << " -L"        << env::OCCA_INSTALL_DIR << "lib -locca"
               << " -x cu -c " << sourceFilename
               << " -o "       << ptxBinaryFilename;
 
@@ -311,7 +316,8 @@ namespace occa {
               << " -D OCCA_OS=OCCA_WINDOWS_OS -D _MSC_VER=1800"
 #endif
               << " -I"        << env::OCCA_DIR << "include"
-              << " -L"        << env::OCCA_DIR << "lib -locca"
+              << " -I"        << env::OCCA_INSTALL_DIR << "include"
+              << " -L"        << env::OCCA_INSTALL_DIR << "lib -locca"
               << " -x cu " << sourceFilename
               << " -o "    << binaryFilename;
 
@@ -401,8 +407,8 @@ namespace occa {
     modeKernel_t* device::buildKernelFromBinary(const std::string &filename,
                                                 const std::string &kernelName,
                                                 const occa::properties &kernelProps) {
-      CUmodule cuModule;
-      CUfunction cuFunction;
+      CUmodule cuModule = NULL;
+      CUfunction cuFunction = NULL;
 
       OCCA_CUDA_ERROR("Kernel [" + kernelName + "]: Loading Module",
                       cuModuleLoad(&cuModule, filename.c_str()));

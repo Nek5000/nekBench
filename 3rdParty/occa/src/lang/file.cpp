@@ -1,6 +1,7 @@
 #include <occa/io.hpp>
-#include <occa/tools/string.hpp>
+#include <occa/tools/env.hpp>
 #include <occa/tools/lex.hpp>
+#include <occa/tools/string.hpp>
 
 #include <occa/lang/file.hpp>
 #include <occa/lang/tokenizer.hpp>
@@ -58,6 +59,15 @@ namespace occa {
       lineStart(other.lineStart),
       start(other.start),
       end(other.end) {}
+
+
+    filePosition& filePosition::operator = (const filePosition &other) {
+      line = other.line;
+      lineStart = other.lineStart;
+      start = other.start;
+      end = other.end;
+      return *this;
+    }
 
     size_t filePosition::size() const {
       return (end - start);
@@ -197,11 +207,61 @@ namespace occa {
       return fo;
     }
 
+    int fileOrigin::emptyLinesBefore(const char *pos) {
+      const char *start = file->content.c_str();
+      const char *end   = start + file->content.size();
+
+      if (pos < start || end < pos) {
+        return 0;
+      }
+
+      int count = 0;
+      for (const char *c = pos; c >= start; --c) {
+        if (!lex::isWhitespace(*c)) {
+          break;
+        }
+        if (*c == '\n') {
+          ++count;
+        }
+      }
+      return count;
+    }
+
+    int fileOrigin::emptyLinesAfter(const char *pos) {
+      const char *start = file->content.c_str();
+      const char *end   = start + file->content.size();
+
+      if (pos < start || end < pos) {
+        return 0;
+      }
+
+      int count = 0;
+      for (const char *c = pos; c <= end; --c) {
+        if (!lex::isWhitespace(*c)) {
+          break;
+        }
+        if (*c == '\n') {
+          ++count;
+        }
+      }
+      return count;
+    }
+
     dim_t fileOrigin::distanceTo(const fileOrigin &origin) {
       if (file != origin.file) {
         return -1;
       }
       return (origin.position.start - position.end);
+    }
+
+    bool fileOrigin::operator == (const fileOrigin &origin) {
+      if (file != origin.file) {
+        return false;
+      }
+      return (
+        position.start == origin.position.start
+        && position.end == origin.position.end
+      );
     }
 
     void fileOrigin::preprint(io::output &out) const {
@@ -244,9 +304,11 @@ namespace occa {
     }
 
     void fileOrigin::printWarning(const std::string &message) const {
-      preprint(io::stderr);
-      occa::printWarning(io::stderr, message);
-      postprint(io::stderr);
+      if (env::OCCA_VERBOSE) {
+        preprint(io::stderr);
+        occa::printWarning(io::stderr, message);
+        postprint(io::stderr);
+      }
     }
 
     void fileOrigin::printError(const std::string &message) const {

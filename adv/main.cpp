@@ -11,21 +11,21 @@
 
 static occa::kernel kernel;
 
-dfloat *drandAlloc(int N){
+dfloat* drandAlloc(int N)
+{
+  dfloat* v = (dfloat*) calloc(N, sizeof(dfloat));
 
-  dfloat *v = (dfloat*) calloc(N, sizeof(dfloat));
-
-  for(int n=0;n<N;++n){
+  for(int n = 0; n < N; ++n)
     v[n] = drand48();
-  }
 
   return v;
 }
 
-int main(int argc, char **argv){
-
-  if(argc<6){
-    printf("Usage: ./adv N cubN numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL CPU|VOLTA [nRepetitions] [kernelVersion]\n");
+int main(int argc, char** argv)
+{
+  if(argc < 6) {
+    printf(
+      "Usage: ./adv N cubN numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL CPU|VOLTA [nRepetitions] [kernelVersion]\n");
     return 1;
   }
 
@@ -41,44 +41,40 @@ int main(int argc, char **argv){
   threadModel.assign(strdup(argv[4]));
 
   std::string arch("");
-  if(argc>=6)
+  if(argc >= 6)
     arch.assign(argv[5]);
 
   int Ntests = 1;
-  if(argc>=7)
+  if(argc >= 7)
     Ntests = atoi(argv[6]);
 
   int kernelVersion = 0;
-  if(argc>=8)
+  if(argc >= 8)
     kernelVersion = atoi(argv[7]);
 
   const int deviceId = 0;
   const int platformId = 0;
 
-  const int Nq = N+1;
-  const int cubNq = cubN+1;
-  const int Np = Nq*Nq*Nq;
-  const int cubNp = cubNq*cubNq*cubNq;
-  
-  const dlong offset = Nelements*Np;
+  const int Nq = N + 1;
+  const int cubNq = cubN + 1;
+  const int Np = Nq * Nq * Nq;
+  const int cubNp = cubNq * cubNq * cubNq;
+
+  const dlong offset = Nelements * Np;
 
   // build device
   occa::device device;
   char deviceConfig[BUFSIZ];
 
-  if(strstr(threadModel.c_str(), "CUDA")){
+  if(strstr(threadModel.c_str(), "CUDA")) {
     sprintf(deviceConfig, "mode: 'CUDA', device_id: %d",deviceId);
-  }
-  else if(strstr(threadModel.c_str(),  "HIP")){
+  }else if(strstr(threadModel.c_str(),  "HIP")) {
     sprintf(deviceConfig, "mode: 'HIP', device_id: %d",deviceId);
-  }
-  else if(strstr(threadModel.c_str(),  "OPENCL")){
+  }else if(strstr(threadModel.c_str(),  "OPENCL")) {
     sprintf(deviceConfig, "mode: 'OpenCL', device_id: %d, platform_id: %d", deviceId, platformId);
-  }
-  else if(strstr(threadModel.c_str(),  "OPENMP")){
+  }else if(strstr(threadModel.c_str(),  "OPENMP")) {
     sprintf(deviceConfig, "mode: 'OpenMP' ");
-  }
-  else{
+  }else {
     sprintf(deviceConfig, "mode: 'Serial' ");
     omp_set_num_threads(1);
   }
@@ -88,9 +84,9 @@ int main(int argc, char **argv){
   device.setup(deviceConfigString);
   occa::env::OCCA_MEM_BYTE_ALIGN = USE_OCCA_MEM_BYTE_ALIGN;
 
-  if(rank==0) {
-   std::cout << "word size: " << sizeof(dfloat) << " bytes\n";
-   std::cout << "active occa mode: " << device.mode() << "\n";
+  if(rank == 0) {
+    std::cout << "word size: " << sizeof(dfloat) << " bytes\n";
+    std::cout << "active occa mode: " << device.mode() << "\n";
   }
 
   // load kernel
@@ -99,67 +95,67 @@ int main(int argc, char **argv){
   kernel = loadKernel(device, threadModel, arch, kernelName, N, cubN, Nelements);
 
   // populate device arrays
-  dfloat *vgeo           = drandAlloc(Np*Nelements*p_Nvgeo);
-  dfloat *cubvgeo        = drandAlloc(cubNp*Nelements*p_Nvgeo);
-  dfloat *cubDiffInterpT = drandAlloc(3*cubNp*Nelements);
-  dfloat *cubInterpT     = drandAlloc(Np*cubNp);
-  dfloat *u              = drandAlloc(3*Np*Nelements);
-  dfloat *adv            = drandAlloc(3*Np*Nelements);
+  dfloat* vgeo           = drandAlloc(Np * Nelements * p_Nvgeo);
+  dfloat* cubvgeo        = drandAlloc(cubNp * Nelements * p_Nvgeo);
+  dfloat* cubDiffInterpT = drandAlloc(3 * cubNp * Nelements);
+  dfloat* cubInterpT     = drandAlloc(Np * cubNp);
+  dfloat* u              = drandAlloc(3 * Np * Nelements);
+  dfloat* adv            = drandAlloc(3 * Np * Nelements);
 
-  occa::memory o_vgeo           = device.malloc(Np*Nelements*p_Nvgeo*sizeof(dfloat), vgeo);
-  occa::memory o_cubvgeo        = device.malloc(cubNp*Nelements*p_Nvgeo*sizeof(dfloat), cubvgeo);
-  occa::memory o_cubDiffInterpT = device.malloc(3*cubNp*Nelements*sizeof(dfloat), cubDiffInterpT);
-  occa::memory o_cubInterpT     = device.malloc(Np*cubNp*sizeof(dfloat), cubInterpT);
-  occa::memory o_u              = device.malloc(3*Np*Nelements*sizeof(dfloat), u);
-  occa::memory o_adv             = device.malloc(3*Np*Nelements*sizeof(dfloat), adv);
+  occa::memory o_vgeo           = device.malloc(Np * Nelements * p_Nvgeo * sizeof(dfloat), vgeo);
+  occa::memory o_cubvgeo        = device.malloc(cubNp * Nelements * p_Nvgeo * sizeof(dfloat),
+                                                cubvgeo);
+  occa::memory o_cubDiffInterpT = device.malloc(3 * cubNp * Nelements * sizeof(dfloat),
+                                                cubDiffInterpT);
+  occa::memory o_cubInterpT     = device.malloc(Np * cubNp * sizeof(dfloat), cubInterpT);
+  occa::memory o_u              = device.malloc(3 * Np * Nelements * sizeof(dfloat), u);
+  occa::memory o_adv             = device.malloc(3 * Np * Nelements * sizeof(dfloat), adv);
 
   // run kernel
   kernel(
-       Nelements,
-       o_vgeo,
-       o_cubvgeo,
-       o_cubDiffInterpT,
-       o_cubInterpT,
-       offset,
-       o_u,
-       o_adv);
+    Nelements,
+    o_vgeo,
+    o_cubvgeo,
+    o_cubDiffInterpT,
+    o_cubInterpT,
+    offset,
+    o_u,
+    o_adv);
   device.finish();
   MPI_Barrier(MPI_COMM_WORLD);
   const double start = MPI_Wtime();
-  for(int test=0;test<Ntests;++test) {
+  for(int test = 0; test < Ntests; ++test)
     kernel(
-         Nelements,
-         o_vgeo,
-         o_cubvgeo,
-         o_cubDiffInterpT,
-         o_cubInterpT,
-         offset,
-         o_u,
-         o_adv);
-  }
+      Nelements,
+      o_vgeo,
+      o_cubvgeo,
+      o_cubDiffInterpT,
+      o_cubInterpT,
+      offset,
+      o_u,
+      o_adv);
   device.finish();
   MPI_Barrier(MPI_COMM_WORLD);
-  const double elapsed = (MPI_Wtime() - start)/Ntests;
+  const double elapsed = (MPI_Wtime() - start) / Ntests;
 
   // print statistics
-  const dfloat GDOFPerSecond = (size*(N*N*N)*Nelements/elapsed)/1.e9;
-  //  const long long bytesMoved = ?; 
+  const dfloat GDOFPerSecond = (size * (N * N * N) * Nelements / elapsed) / 1.e9;
+  //  const long long bytesMoved = ?;
   //  const double bw = (size*bytesMoved*Nelements/elapsed)/1.e9;
   //  double flopCount = ?;
   //  double gflops = (size*flopCount*Nelements/elapsed)/1.e9;
-  if(rank==0) {
+  if(rank == 0)
     std::cout << "MPItasks=" << size
               << " OMPthreads=" << Nthreads
               << " NRepetitions=" << Ntests
               << " N=" << N
               << " cubN=" << cubN
-              << " Nelements=" << size*Nelements
+              << " Nelements=" << size * Nelements
               << " elapsed time=" << elapsed
               << " GDOF/s=" << GDOFPerSecond
-              //<< " GB/s=" << bw
-              //<< " GFLOPS/s=" << gflops
+      //<< " GB/s=" << bw
+      //<< " GFLOPS/s=" << gflops
               << "\n";
-  } 
 
   MPI_Finalize();
   exit(0);

@@ -48,7 +48,8 @@ OBJS    = \
 ./src/ogsScatterVec.o \
 ./src/ogsScatterMany.o \
 ./src/ogsSetup.o \
-./src/ogsKernels.o 
+./src/ogsKernels.o \
+./src/oogs.o 
 
 COBJS = \
 ./src/ogsHostGatherScatter.o \

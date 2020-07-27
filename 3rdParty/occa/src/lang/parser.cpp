@@ -17,8 +17,9 @@ namespace occa {
       smntContext(root),
       smntPeeker(tokenContext,
                  smntContext,
-                 keywords,
+                 *this,
                  attributeMap),
+      loadingStatementType(0),
       checkSemicolon(true),
       defaultRootToken(originSource::builtin),
       success(true),
@@ -51,6 +52,7 @@ namespace occa {
       statementLoaders[statementType::break_]      = &parser_t::loadBreakStatement;
       statementLoaders[statementType::return_]     = &parser_t::loadReturnStatement;
       statementLoaders[statementType::classAccess] = &parser_t::loadClassAccessStatement;
+      statementLoaders[statementType::directive]   = &parser_t::loadDirectiveStatement;
       statementLoaders[statementType::pragma]      = &parser_t::loadPragmaStatement;
       statementLoaders[statementType::goto_]       = &parser_t::loadGotoStatement;
       statementLoaders[statementType::gotoLabel]   = &parser_t::loadGotoLabelStatement;
@@ -60,7 +62,7 @@ namespace occa {
       addAttribute<attributes::dim>();
       addAttribute<attributes::dimOrder>();
       addAttribute<attributes::tile>();
-      addAttribute<attributes::restrict>();
+      addAttribute<attributes::occaRestrict>();
       addAttribute<attributes::implicitArg>();
       addAttribute<attributes::globalPtr>();
     }
@@ -164,8 +166,10 @@ namespace occa {
       preprocessor.clear();
       addSettingDefines();
 
+      loadingStatementType = 0;
       checkSemicolon = true;
 
+      comments.clear();
       clearAttributes();
 
       onClear();
@@ -221,6 +225,7 @@ namespace occa {
     void parser_t::setSource(const std::string &source,
                              const bool isFile) {
       clear();
+      stream.clearCache();
 
       if (isFile) {
         tokenizer.set(new file_t(source));
@@ -256,10 +261,11 @@ namespace occa {
     }
 
     void parser_t::loadTokens() {
+      tokenVector tokens;
       token_t *token;
       while (!stream.isEmpty()) {
         stream >> token;
-        tokenContext.tokens.push_back(token);
+        tokens.push_back(token);
       }
 
       if (tokenizer.errors ||
@@ -268,7 +274,7 @@ namespace occa {
         return;
       }
 
-      tokenContext.setup();
+      tokenContext.setup(tokens);
       success &= !tokenContext.hasError;
     }
 
@@ -305,8 +311,7 @@ namespace occa {
     }
 
     exprNode* parser_t::getExpression() {
-      exprNode *expr = tokenContext.getExpression(smntContext,
-                                                  keywords);
+      exprNode *expr = tokenContext.getExpression(smntContext, *this);
       success &= !!expr;
       return expr;
     }
@@ -314,16 +319,59 @@ namespace occa {
     exprNode* parser_t::getExpression(const int start,
                                       const int end) {
       exprNode *expr = tokenContext.getExpression(smntContext,
-                                                  keywords,
+                                                  *this,
                                                   start, end);
       success &= !!expr;
       return expr;
     }
 
+    void parser_t::loadComments() {
+      const int start = tokenContext.position();
+      loadComments(start, start);
+    }
+
+    void parser_t::loadComments(const int start,
+                                const int end) {
+      tokenVector skippedTokens;
+      tokenContext.getSkippedTokens(skippedTokens, start, end);
+
+      const int skippedTokenCount = (int) skippedTokens.size();
+      if (!skippedTokenCount) {
+        return;
+      }
+
+      for (int i = 0; i < skippedTokenCount; ++i) {
+        token_t *token = skippedTokens[i];
+        if (!(token->type() & tokenType::comment)) {
+          continue;
+        }
+
+        comments.push_back(
+          new commentStatement(smntContext.up,
+                               *((commentToken*) token))
+        );
+      }
+
+      // Push comments if we're in the root statement
+      if (smntContext.up == &root) {
+        pushComments();
+      }
+    }
+
+    void parser_t::pushComments() {
+      const int commentsCount = (int) comments.size();
+      for (int i = 0; i < commentsCount; ++i) {
+        statement_t *smnt = comments[i];
+        smnt->up = smntContext.up;
+        smntContext.up->children.push_back(smnt);
+      }
+      comments.clear();
+    }
+
     void parser_t::loadAttributes(attributeTokenMap &attrs) {
       success &= lang::loadAttributes(tokenContext,
                                       smntContext,
-                                      keywords,
+                                      *this,
                                       attributeMap,
                                       attrs);
     }
@@ -364,14 +412,14 @@ namespace occa {
     void parser_t::loadBaseType(vartype_t &vartype) {
       success &= lang::loadBaseType(tokenContext,
                                     smntContext,
-                                    keywords,
+                                    *this,
                                     vartype);
     }
 
     void parser_t::loadType(vartype_t &vartype) {
       success &= lang::loadType(tokenContext,
                                 smntContext,
-                                keywords,
+                                *this,
                                 vartype);
     }
 
@@ -379,51 +427,36 @@ namespace occa {
       vartype_t vartype;
       success &= lang::loadType(tokenContext,
                                 smntContext,
-                                keywords,
+                                *this,
                                 vartype);
       return vartype;
-    }
-
-    bool parser_t::isLoadingStruct() {
-      return lang::isLoadingStruct(tokenContext,
-                                   smntContext,
-                                   keywords);
-    }
-
-    struct_t* parser_t::loadStruct() {
-      struct_t *type;
-      success &= lang::loadStruct(tokenContext,
-                                  smntContext,
-                                  *this,
-                                  type);
-      return type;
     }
 
     bool parser_t::isLoadingVariable() {
       return lang::isLoadingVariable(tokenContext,
                                      smntContext,
-                                     keywords,
+                                     *this,
                                      attributeMap);
     }
 
     bool parser_t::isLoadingFunction() {
       return lang::isLoadingFunction(tokenContext,
                                      smntContext,
-                                     keywords,
+                                     *this,
                                      attributeMap);
     }
 
     bool parser_t::isLoadingFunctionPointer() {
       return lang::isLoadingFunctionPointer(tokenContext,
                                             smntContext,
-                                            keywords,
+                                            *this,
                                             attributeMap);
     }
 
     void parser_t::loadVariable(variable_t &var) {
       success &= lang::loadVariable(tokenContext,
                                     smntContext,
-                                    keywords,
+                                    *this,
                                     attributeMap,
                                     var);
     }
@@ -438,7 +471,7 @@ namespace occa {
                                 variable_t &var) {
       success &= lang::loadVariable(tokenContext,
                                     smntContext,
-                                    keywords,
+                                    *this,
                                     attributeMap,
                                     vartype,
                                     var);
@@ -447,15 +480,26 @@ namespace occa {
     void parser_t::loadFunction(function_t &func) {
       success &= lang::loadFunction(tokenContext,
                                     smntContext,
-                                    keywords,
+                                    *this,
                                     attributeMap,
                                     func);
     }
 
     int parser_t::peek() {
+      const int tokenContextStart = tokenContext.position();
+
+      // Peek skips tokens when loading attributes
       int sType;
       success &= smntPeeker.peek(attributes,
                                  sType);
+
+      const int tokenContextEnd = tokenContext.position();
+
+      // Load comments between skipped tokens
+      if (tokenContextStart != tokenContextEnd) {
+        loadComments(tokenContextStart, tokenContextEnd);
+      }
+
       return sType;
     }
     //==================================
@@ -481,6 +525,7 @@ namespace occa {
       if (!decl.value) {
         loadDeclarationBraceInitializer(decl);
       }
+
       return decl;
     }
 
@@ -607,17 +652,27 @@ namespace occa {
         statements.push_back(smnt);
         smnt = getNextStatement();
       }
+
+      // Load comments at the end of the block
+      loadComments();
+      pushComments();
     }
 
-    statement_t* parser_t::getNextStatement() {
+    statement_t* parser_t::loadNextStatement() {
       if (isEmpty()) {
         checkSemicolon = true;
         return NULL;
       }
 
+      loadComments();
+
       const int sType = peek();
       if (!success) {
         return NULL;
+      }
+
+      if (sType & statementType::blockStatements) {
+        pushComments();
       }
 
       statementLoaderMap::iterator it = statementLoaders.find(sType);
@@ -626,6 +681,8 @@ namespace occa {
         //   nested statements
         attributeTokenMap smntAttributes = attributes;
         attributes.clear();
+
+        loadingStatementType = sType;
 
         statementLoader_t loader = it->second;
         statement_t *smnt = (this->*loader)(smntAttributes);
@@ -651,6 +708,38 @@ namespace occa {
       OCCA_FORCE_ERROR("[Waldo] Oops, forgot to implement a statement loader"
                        " for [" << stringifySetBits(sType) << "]");
       return NULL;
+    }
+
+    statement_t* parser_t::getNextStatement() {
+      statement_t *smnt = loadNextStatement();
+
+      // It's the end or we don't have comments
+      if (!smnt || !comments.size()) {
+        return smnt;
+      }
+
+      // We're about to load a block statement type, add the comments to it
+      if (!(loadingStatementType & statementType::blockStatements)) {
+        pushComments();
+        return smnt;
+      }
+
+      // We need to create a block statement to hold these statements
+      blockStatement *blockSmnt = new blockStatement(smnt->up,
+                                                     smnt->source);
+      statementPtrVector &childStatements = blockSmnt->children;
+
+      // Set the new block statement to load up comments
+      childStatements.swap(comments);
+      childStatements.push_back(smnt);
+
+      const int childStatementCount = (int) childStatements.size();
+      for (int i = 0; i < childStatementCount; ++i) {
+        // Update new parent statement
+        childStatements[i]->up = blockSmnt;
+      }
+
+      return blockSmnt;
     }
 
     statement_t* parser_t::loadBlockStatement(attributeTokenMap &smntAttributes) {
@@ -710,9 +799,6 @@ namespace occa {
       if (isLoadingFunction()) {
         return loadFunctionStatement(smntAttributes);
       }
-      if (success && isLoadingStruct()) {
-        return loadStructStatement(smntAttributes);
-      }
       if (!success) {
         return NULL;
       }
@@ -754,27 +840,6 @@ namespace occa {
         return NULL;
       }
       return &smnt;
-    }
-
-    statement_t* parser_t::loadStructStatement(attributeTokenMap &smntAttributes) {
-      struct_t *type = loadStruct();
-      if (!success || !type) {
-        return NULL;
-      }
-
-      structStatement *smnt = new structStatement(smntContext.up,
-                                                  *type);
-      success &= smnt->addStructToParentScope();
-      if (!success) {
-        delete &smnt;
-        // Struct wasn't added to scope, free it manually
-        delete type;
-        return NULL;
-      }
-
-      addAttributesTo(smntAttributes, smnt);
-
-      return smnt;
     }
 
     statement_t* parser_t::loadNamespaceStatement(attributeTokenMap &smntAttributes) {
@@ -940,10 +1005,15 @@ namespace occa {
           error = true;
           break;
         }
-        if (success &&
-            (sType & statementType::none)) {
+        if (sType & statementType::none) {
           error = false;
           break;
+        }
+
+        if (sType & statementType::comment) {
+          // Ignore the comment
+          ++tokenContext;
+          continue;
         }
 
         if (count &&
@@ -1521,6 +1591,16 @@ namespace occa {
                                                             accessToken,
                                                             access);
       addAttributesTo(smntAttributes, smnt);
+      return smnt;
+    }
+
+    statement_t* parser_t::loadDirectiveStatement(attributeTokenMap &smntAttributes) {
+      directiveStatement *smnt = new directiveStatement(smntContext.up,
+                                                        *((directiveToken*) tokenContext[0]));
+      addAttributesTo(smntAttributes, smnt);
+
+      ++tokenContext;
+
       return smnt;
     }
 

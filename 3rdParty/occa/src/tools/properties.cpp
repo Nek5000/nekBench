@@ -8,7 +8,7 @@ namespace occa {
     initialized = false;
   }
 
-  properties::properties(const properties &other) {
+  properties::properties(const properties &other) : json() {
     type = object_;
     value_ = other.value_;
 
@@ -33,6 +33,12 @@ namespace occa {
   }
 
   properties::~properties() {}
+
+  properties& properties::operator = (const properties &other) {
+    initialized = other.initialized;
+    json::operator = (other);
+    return *this;
+  }
 
   bool properties::isInitialized() const {
     if (!initialized) {

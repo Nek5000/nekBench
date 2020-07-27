@@ -13,8 +13,10 @@ void testIfElse();
 void testIfElseDefines();
 void testIfWithUndefines();
 void testErrorDefines();
+void testOccaMacros();
 void testSpecialMacros();
 void testInclude();
+void testIncludeStandardHeader();
 void testPragma();
 void testOccaPragma();
 void testOccaDirective();
@@ -80,8 +82,10 @@ int main(const int argc, const char **argv) {
   testIfElseDefines();
   testIfWithUndefines();
   testErrorDefines();
+  testOccaMacros();
   testSpecialMacros();
   testInclude();
+  testIncludeStandardHeader();
   testPragma();
   testOccaPragma();
   testOccaDirective();
@@ -510,6 +514,55 @@ void testErrorDefines() {
   }
 }
 
+void testOccaMacros() {
+  occa::hash_t hash = occa::hash_t::fromString("df15688e1bde01ebb5b3750031d017b2312d028acd9753b27dd4ba0aef0a4d41");
+
+  occa::properties preprocessorSettings;
+  preprocessorSettings["hash"] = hash.getFullString();
+
+  preprocessor.setSettings(preprocessorSettings);
+
+  setStream(
+    "OCCA_MAJOR_VERSION\n"
+    "OCCA_MINOR_VERSION\n"
+    "OCCA_PATCH_VERSION\n"
+    "OCCA_VERSION\n"
+    "OKL_VERSION\n"
+    "__OKL__\n"
+    "__OCCA__\n"
+    "OKL_KERNEL_HASH\n"
+  );
+
+  ASSERT_EQ(OCCA_MAJOR_VERSION,
+            (int) nextTokenPrimitiveValue());
+  ASSERT_EQ(OCCA_MINOR_VERSION,
+            (int) nextTokenPrimitiveValue());
+  ASSERT_EQ(OCCA_PATCH_VERSION,
+            (int) nextTokenPrimitiveValue());
+  ASSERT_EQ(OCCA_VERSION,
+            (int) nextTokenPrimitiveValue());
+  ASSERT_EQ(OKL_VERSION,
+            (int) nextTokenPrimitiveValue());
+  // __OKL__
+  ASSERT_EQ(1,
+            (int) nextTokenPrimitiveValue());
+  // __OCCA__
+  ASSERT_EQ(1,
+            (int) nextTokenPrimitiveValue());
+  // OKL_KERNEL_HASH
+  ASSERT_EQ(hash.getString(),
+            nextTokenStringValue());
+
+  // Test default OKL_KERNEL_HASH
+  preprocessor.setSettings("");
+
+  setStream("OKL_KERNEL_HASH");
+
+  // OKL_KERNEL_HASH
+  ASSERT_EQ("unknown",
+            nextTokenStringValue());
+}
+
 void testSpecialMacros() {
   setStream(
     "__COUNTER__\n"
@@ -598,6 +651,35 @@ void testInclude() {
   preprocessor_t &pp = *((preprocessor_t*) tokenStream.getInput("preprocessor_t"));
   ASSERT_EQ(1,
             (int) pp.dependencies.size());
+}
+
+void testIncludeStandardHeader() {
+#define checkInclude(header)                    \
+  getToken();                                   \
+  ASSERT_EQ_BINARY(tokenType::directive,        \
+                   token->type());              \
+  ASSERT_EQ("include <" header ">",             \
+            token->to<directiveToken>().value)
+
+  setStream(
+     "#include \"math.h\"\n"
+      "#include <math.h>\n"
+      "#include \"cmath\"\n"
+      "#include <cmath>\n"
+      "#include \"iostream\"\n"
+      "#include <iostream>\n"
+  );
+
+  preprocessor_t *pp = (preprocessor_t*) tokenStream.getInput("preprocessor_t");
+
+  checkInclude("math.h");
+  checkInclude("math.h");
+  checkInclude("cmath");
+  checkInclude("cmath");
+  checkInclude("iostream");
+  checkInclude("iostream");
+
+  ASSERT_EQ(6, pp->warnings);
 }
 
 void testPragma() {

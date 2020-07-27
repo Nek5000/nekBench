@@ -12,15 +12,15 @@ namespace occa {
 
       const int directive    = (1 << 2);
       const int pragma       = (1 << 3);
+      const int comment      = (1 << 4);
 
-      const int block        = (1 << 4);
-      const int namespace_   = (1 << 5);
+      const int block        = (1 << 5);
+      const int namespace_   = (1 << 6);
 
-      const int function     = (1 << 6);
-      const int functionDecl = (1 << 7);
+      const int function     = (1 << 7);
+      const int functionDecl = (1 << 8);
 
-      const int class_       = (1 << 8);
-      const int struct_      = (1 << 9);
+      const int class_       = (1 << 9);
       const int classAccess  = (1 << 10);
 
       const int enum_        = (1 << 11);

@@ -30,9 +30,9 @@ paths := $(filter-out -L$(OCCA_DIR)/lib,$(paths))
 linkerFlags := $(filter-out -locca,$(linkerFlags))
 
 ifeq (${PREFIX},)
-	OCCA_BUILD_DIR := $(OCCA_DIR)
+  OCCA_BUILD_DIR := $(OCCA_DIR)
 else
-	OCCA_BUILD_DIR := ${PREFIX}
+  OCCA_BUILD_DIR := ${PREFIX}
 endif
 #=================================================
 
@@ -52,22 +52,31 @@ srcToObject     = $(subst $(PROJ_DIR)/src,$(PROJ_DIR)/obj,$(1:.cpp=.o))
 
 dontCompile = $(OCCA_DIR)/src/core/kernelOperators.cpp $(OCCA_DIR)/src/tools/runFunction.cpp
 
-sources     = $(realpath $(shell find $(PROJ_DIR)/src -type f -name '*.cpp'))
-sources    := $(filter-out $(dontCompile),$(sources))
-headers     = $(realpath $(shell find $(PROJ_DIR)/include -type f -name '*.hpp' -o -name "*.h"))
-testSources = $(realpath $(shell find $(PROJ_DIR)/tests/src -type f -name '*.cpp'))
-tests       = $(subst $(testPath)/src,$(testPath)/bin,$(testSources:.cpp=))
+sources      = $(realpath $(shell find $(PROJ_DIR)/src -type f -name '*.cpp'))
+sources     := $(filter-out $(dontCompile),$(sources))
+headers      = $(realpath $(shell find $(PROJ_DIR)/include -type f -name '*.hpp' -o -name "*.h"))
+testSources  = $(realpath $(shell find $(PROJ_DIR)/tests/src -type f -name '*.cpp'))
+testSources := $(filter-out $(testPath)/src/fortran/%.cpp,$(testSources))
+tests        = $(subst $(testPath)/src,$(testPath)/bin,$(testSources:.cpp=))
 
 objects = $(call srcToObject,$(sources))
 
 # Only compile Objective-C++ if Metal is enabled
 ifeq ($(metalEnabled),1)
   objcSrcToObject = $(subst $(PROJ_DIR)/src,$(PROJ_DIR)/obj,$(1:.mm=.o))
-	objcSources = $(realpath $(shell find $(PROJ_DIR)/src -type f -name '*.mm'))
-	objects += $(call objcSrcToObject,$(objcSources))
+  objcSources = $(realpath $(shell find $(PROJ_DIR)/src -type f -name '*.mm'))
+  objects += $(call objcSrcToObject,$(objcSources))
 endif
 
 outputs = $(libPath)/libocca.$(soExt) $(binPath)/occa
+
+# Add Fortran lib and tests
+ifeq ($(fortranEnabled),1)
+  fPaths += $(fModuleDirFlag)$(modPath)
+  fPaths := $(filter-out -I$(modPath),$(fPaths))
+  outputs += $(libPath)/libocca_fortran.$(soExt)
+  tests += $(fTests)
+endif
 
 ifdef SANITIZER_ENABLED
   testFlags = $(compilerFlags) -fsanitize=address -fno-omit-frame-pointer
@@ -93,7 +102,7 @@ MAKE_COMPILED_DEFINES := $(shell cat "$(OCCA_DIR)/scripts/compiledDefinesTemplat
                                       s,@@OCCA_OPENCL_ENABLED@@,$(OCCA_OPENCL_ENABLED),g;\
                                       s,@@OCCA_METAL_ENABLED@@,$(OCCA_METAL_ENABLED),g;\
                                       s,@@OCCA_BUILD_DIR@@,$(OCCA_BUILD_DIR),g;"\
-																	> "$(NEW_COMPILED_DEFINES)")
+                                      > "$(NEW_COMPILED_DEFINES)")
 
 MAKE_COMPILED_DEFINES := $(shell \
  [ ! -f "$(COMPILED_DEFINES)" -o -n "$(shell diff -q $(COMPILED_DEFINES) $(NEW_COMPILED_DEFINES))" ] \
@@ -114,7 +123,11 @@ $(COMPILED_DEFINES_CHANGED):
 #  ---[ libocca ]-------------
 $(libPath)/libocca.$(soExt):$(objects) $(headers) $(COMPILED_DEFINES)
 	mkdir -p $(libPath)
-	$(compiler) $(compilerFlags) $(sharedFlag) $(pthreadFlag) $(soNameFlag) -o $(libPath)/libocca.$(soExt) $(flags) $(objects) $(paths) $(filter-out -locca, $(linkerFlags))
+	$(compiler) $(compilerFlags) $(sharedFlag) $(pthreadFlag) $(soNameFlag) -o $(libPath)/libocca.$(soExt) $(flags) $(objects) $(paths) $(linkerFlags)
+
+$(libPath)/libocca_fortran.$(soExt): $(fObjects) $(libPath)/libocca.$(soExt)
+	@mkdir -p $(libPath)
+	$(fCompiler) $(fCompilerFlags) $(sharedFlag) $(pthreadFlag) $(fSoNameFlag) -o $@ $^ $(flags) $(fPaths) $(filter-out -locca_fortran, $(fLinkerFlags))
 
 $(binPath)/occa:$(OCCA_DIR)/bin/occa.cpp $(libPath)/libocca.$(soExt) $(COMPILED_DEFINES_CHANGED)
 	@mkdir -p $(binPath)
@@ -145,6 +158,13 @@ $(OCCA_DIR)/obj/%.o:$(OCCA_DIR)/src/%.mm $(OCCA_DIR)/include/occa/%.hpp $(COMPIL
 $(OCCA_DIR)/obj/%.o:$(OCCA_DIR)/src/%.cpp $(COMPILED_DEFINES_CHANGED)
 	@mkdir -p $(abspath $(dir $@))
 	$(compiler) $(compilerFlags) -o $@ $(flags) -c $(paths) $<
+
+# Fortran sources
+include $(OCCA_DIR)/scripts/Make.fortran_rules
+$(OCCA_DIR)/obj/%.o:$(OCCA_DIR)/src/%.f90
+	@mkdir -p $(modPath)
+	@mkdir -p $(abspath $(dir $@))
+	$(fCompiler) $(fCompilerFlags) -o $@ $(flags) -c $(fPaths) $<
 #=================================================
 
 
@@ -160,7 +180,7 @@ unit-tests: $(tests)
 	fi
 
 e2e-tests: unit-tests
-	@$(testPath)/run_examples
+	@FORTRAN_EXAMPLES=$(fortranEnabled) $(testPath)/run_examples
 	@if [ $$? -ne 0 ]; then \
 	  @exit 1;              \
 	fi
@@ -174,16 +194,31 @@ bin-tests: e2e-tests
 $(testPath)/bin/%:$(testPath)/src/%.cpp $(outputs)
 	@mkdir -p $(abspath $(dir $@))
 	$(compiler) $(testFlags) $(pthreadFlag) -o $@ -Wl,-rpath,$(libPath) $(flags) $< $(paths) $(linkerFlags) -L$(OCCA_DIR)/lib -locca
+
+# Fortran tests
+fTests: $(fTests)
+
+$(objPath)/%.o: $(testPath)/src/fortran/typedefs_helper.cpp
+	@mkdir -p $(abspath $(dir $@))
+	$(compiler) $(compilerFlags) -o $@ $(flags) -c $(paths) $<
+
+$(testPath)/bin/fortran/typedefs: $(objPath)/tests/fortran/typedefs_helper.o
+
+$(testPath)/bin/%: $(testPath)/src/%.f90 $(libPath)/libocca_fortran.$(soExt)
+	@mkdir -p $(abspath $(dir $@))
+	$(fCompiler) $(fCompilerFlags) -o $@ $^ -Wl,-rpath,$(libPath) $(flags) $(fPaths) $(fLinkerFlags)
 #=================================================
 
 
 #---[ Clean ]-------------------------------------
 clean:
 	rm -rf $(objPath)/*
+	rm -rf $(modPath)/*
 	rm -rf $(binPath)/occa
 	rm -rf $(testPath)/bin
 	rm -rf $(testPath)/src/io/locks
 	rm  -f $(libPath)/libocca.$(soExt)
+	rm  -f $(libPath)/libocca_fortran.$(soExt)
 #=================================================
 
 
@@ -192,12 +227,22 @@ info:
 	$(info --------------------------------)
 	$(info CXX            = $(or $(CXX),(empty)))
 	$(info CXXFLAGS       = $(or $(CXXFLAGS),(empty)))
+	$(info CC             = $(or $(CC),(empty)))
+	$(info CFLAGS         = $(or $(CFLAGS),(empty)))
+	$(info FC             = $(or $(FC),(empty)))
+	$(info FFLAGS         = $(or $(FFLAGS),(empty)))
 	$(info LDFLAGS        = $(or $(LDFLAGS),(empty)))
 	$(info --------------------------------)
 	$(info compiler       = $(value compiler))
+	$(info vendor         = $(vendor))
 	$(info compilerFlags  = $(compilerFlags))
+	$(info cCompiler      = $(value cCompiler))
+	$(info cCompilerFlags = $(cCompilerFlags))
+	$(info fCompiler      = $(value fCompiler))
+	$(info fCompilerFlags = $(fCompilerFlags))
 	$(info flags          = $(flags))
 	$(info paths          = $(paths))
+	$(info fPaths         = $(fPaths))
 	$(info sharedFlag     = $(sharedFlag))
 	$(info pthreadFlag    = $(pthreadFlag))
 	$(info linkerFlags    = $(linkerFlags))
@@ -208,6 +253,7 @@ info:
 	$(info releaseFlags   = $(releaseFlags))
 	$(info picFlag        = $(picFlag))
 	$(info --------------------------------)
+	$(info fortranEnabled = $(fortranEnabled))
 	$(info mpiEnabled     = $(mpiEnabled))
 	$(info openmpEnabled  = $(openmpEnabled))
 	$(info openclEnabled  = $(openclEnabled))
