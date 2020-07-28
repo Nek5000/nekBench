@@ -104,7 +104,8 @@ static void _ogsHostGatherScatterMany(occa::memory o_u, int nVec,
   else if (!strcmp(type, "long long int"))
     unit_size  = sizeof(long long int);
 
-  unit_size *= nVec;
+  unit_size = unit_size*nVec;
+  const unsigned uStride = Nhalo;
 
   { // prepost recv
     comm_req *req = pwd->req; 
@@ -112,16 +113,16 @@ static void _ogsHostGatherScatterMany(occa::memory o_u, int nVec,
     const uint *p, *pe, *size=c->size;
     uint bufOffset = 0;
     for(p=c->p,pe=p+c->n;p!=pe;++p) {
-      size_t len = *(size++)*unit_size;
+      size_t len = *(size++);
       unsigned char *recvbuf = (unsigned char *)gs->bufRecv + bufOffset;
       if(gs->mode == OOGS_DEVICEMPI) recvbuf = (unsigned char*)gs->o_bufRecv.ptr() + bufOffset;
-      MPI_Irecv((void*)recvbuf,len,MPI_UNSIGNED_CHAR,*p,*p,comm->c,req++);
-      bufOffset += len;
+      MPI_Irecv((void*)recvbuf,len*unit_size,MPI_UNSIGNED_CHAR,*p,*p,comm->c,req++);
+      bufOffset += len*unit_size;
     }
   }
 
   { // scatter
-    occaScatterMany(Nhalo, nVec, Nhalo, 1, gs->o_scatterOffsets, gs->o_scatterIds, type, op, o_u, gs->o_bufSend);
+    occaScatterMany(Nhalo, nVec, uStride, 1, gs->o_scatterOffsets, gs->o_scatterIds, type, op, o_u, gs->o_bufSend);
     if(gs->mode == OOGS_HOSTMPI) {
       gs->o_bufSend.copyTo(gs->bufSend, pwd->comm[send].total*unit_size, 0, "async: true");
     }
@@ -136,11 +137,11 @@ static void _ogsHostGatherScatterMany(occa::memory o_u, int nVec,
     const uint *p, *pe, *size=c->size;
     uint bufOffset = 0;
     for(p=c->p,pe=p+c->n;p!=pe;++p) {
-      size_t len = *(size++)*unit_size;
+      size_t len = *(size++);
       unsigned char *sendbuf = (unsigned char*)gs->bufSend + bufOffset;
       if(gs->mode == OOGS_DEVICEMPI) sendbuf = (unsigned char*)gs->o_bufSend.ptr() + bufOffset;
-      MPI_Isend((void*)sendbuf,len,MPI_UNSIGNED_CHAR,*p,comm->id,comm->c,req++);
-      bufOffset += len;
+      MPI_Isend((void*)sendbuf,len*unit_size,MPI_UNSIGNED_CHAR,*p,comm->id,comm->c,req++);
+      bufOffset += len*unit_size;
     }
     MPI_Waitall(pwd->comm[send].n + pwd->comm[recv].n,pwd->req,MPI_STATUSES_IGNORE);
   }
@@ -151,7 +152,7 @@ static void _ogsHostGatherScatterMany(occa::memory o_u, int nVec,
     }
 
     // op hardwired for now!!!
-    occaGatherMany(Nhalo, nVec, 1, Nhalo, gs->o_gatherOffsets, gs->o_gatherIds, type, "add+self", gs->o_bufRecv, o_u);
+    occaGatherMany(Nhalo, nVec, 1, uStride, gs->o_gatherOffsets, gs->o_gatherIds, type, "add+self", gs->o_bufRecv, o_u);
   }
 
 }
@@ -263,11 +264,7 @@ void oogs::start(occa::memory o_v, const int k, const dlong stride, const char *
   if (ogs->NhaloGather) {
     if (ogs::o_haloBuf.size() < ogs->NhaloGather*Nbytes*k) {
       if (ogs::o_haloBuf.size()) ogs::o_haloBuf.free();
-
-      occa::properties props;
-      props["mapped"] = true;
-      ogs::o_haloBuf = ogs->device.malloc(ogs->NhaloGather*Nbytes*k, props);
-      ogs::haloBuf = ogs::o_haloBuf.ptr();
+      ogs::haloBuf = ogsHostMallocPinned(ogs->device, ogs->NhaloGather*Nbytes*k, NULL, ogs::o_haloBuf, ogs::h_haloBuf);
     }
   }
 
@@ -310,7 +307,7 @@ void oogs::finish(occa::memory o_v, const int k, const dlong stride, const char 
 #endif
     if(gs->mode == OOGS_DEFAULT) {
       ogs->device.finish(); // waiting for gs::haloBuf copy to finish 
-      void* H[3];
+      void* H[10];
       for (int i=0;i<k;i++) H[i] = (char*)ogs::haloBuf + i*ogs->NhaloGather*Nbytes;
       ogsHostGatherScatterMany(H, k, type, op, ogs->haloGshSym);
     } else {

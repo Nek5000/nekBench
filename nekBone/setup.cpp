@@ -91,7 +91,6 @@ BP_t* setup(mesh_t* mesh, occa::properties &kernelInfo, setupAide &options)
         dlong iid = id + fld * BP->fieldOffset;
         BP->r[iid] = (3. * M_PI * M_PI * mode * mode + BP->lambda1) * JW *
                        cos(mode * M_PI * xn) * cos(mode * M_PI * yn) * cos(mode * M_PI * zn);
-        //BP->x[fldid] = 0;
       }
   }
   BP->o_r = mesh->device.malloc(Nall * sizeof(dfloat), BP->r);
@@ -396,24 +395,25 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
   BP->ogs = ogsSetup(Ntotal, mesh->maskedGlobalIds, mesh->comm, 1, mesh->device);
   BP->o_invDegree = ((ogs_t*)BP->ogs)->o_invDegree;
 */
-  auto callback = [&]() {
-                    if(!BP->overlap) return;
+  auto callback = [&]() 
+    {
+      if(!BP->overlap) return;
 
-                    mesh_t* mesh = BP->mesh;
-                    const dlong fieldOffset = BP->fieldOffset;
-                    occa::kernel &kernel = BP->BPKernel[0];
-                    occa::memory &o_lambda = BP->o_solveWorkspace[1];
-                    occa::memory &o_q  = BP->o_solveWorkspace[2];
-                    occa::memory &o_Aq = BP->o_solveWorkspace[3];
-                    kernel(mesh->NlocalGatherElements,
-                           fieldOffset,
-                           mesh->o_localGatherElementList,
-                           mesh->o_ggeo,
-                           mesh->o_D,
-                           o_lambda,
-                           o_q,
-                           o_Aq);
-                  };
+      mesh_t* mesh = BP->mesh;
+      const dlong fieldOffset = BP->fieldOffset;
+      occa::kernel &kernel = BP->BPKernel[0];
+      occa::memory &o_lambda = BP->o_solveWorkspace[1];
+      occa::memory &o_q  = BP->o_solveWorkspace[2];
+      occa::memory &o_Aq = BP->o_solveWorkspace[3];
+      kernel(mesh->NlocalGatherElements,
+             fieldOffset,
+             mesh->o_localGatherElementList,
+             mesh->o_ggeo,
+             mesh->o_D,
+             o_lambda,
+             o_q,
+             o_Aq);
+    };
 
   BP->ogs = (void*) oogs::setup(Ntotal,
                                 mesh->maskedGlobalIds,
