@@ -151,13 +151,14 @@ namespace ogs {
   extern occa::kernel gatherVecKernel_longMax;
 
 
-
   extern occa::kernel gatherManyKernel_floatAdd;
+  extern occa::kernel gatherManyKernel_floatAddSelf;
   extern occa::kernel gatherManyKernel_floatMul;
   extern occa::kernel gatherManyKernel_floatMin;
   extern occa::kernel gatherManyKernel_floatMax;
 
   extern occa::kernel gatherManyKernel_doubleAdd;
+  extern occa::kernel gatherManyKernel_doubleAddSelf;
   extern occa::kernel gatherManyKernel_doubleMul;
   extern occa::kernel gatherManyKernel_doubleMin;
   extern occa::kernel gatherManyKernel_doubleMax;

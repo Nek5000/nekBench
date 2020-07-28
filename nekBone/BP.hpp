@@ -71,9 +71,6 @@ typedef struct
   dlong Nblock;
   dlong Nblock2; // second reduction
 
-  occa::stream streamDefault;
-  occa::stream stream1;
-
   dfloat tau;
 
   int* BCType;
@@ -103,6 +100,7 @@ typedef struct
   occa::memory h_sendBuffer, h_recvBuffer;
 
   occa::stream defaultStream;
+  occa::stream stream1;
   occa::stream dataStream;
 
   occa::memory o_mapB;
@@ -159,9 +157,6 @@ typedef struct
   occa::kernel vecScaleKernel;
   occa::kernel vecCopyKernel;
 
-  occa::kernel vecAtomicGatherKernel;
-  occa::kernel vecAtomicMultipleGatherKernel;
-  occa::kernel vecAtomicInnerProductKernel;
   occa::kernel vecScatterKernel;
   occa::kernel vecMultipleScatterKernel;
 
@@ -174,11 +169,6 @@ typedef struct
 
   occa::kernel updatePCGKernel, updateOverlapPCGKernel;
   occa::kernel updateMultiplePCGKernel, updateOverlapMultiplePCGKernel;
-
-  occa::memory o_zeroAtomic;
-  occa::memory o_tmpAtomic;
-
-  dfloat* tmpAtomic;
 
   occa::memory* o_pcgWork;
 
@@ -232,7 +222,5 @@ void BPZeroMean(BP_t* BP, occa::memory &o_q);
 
 dfloat BPNorm2(BP_t* BP, dlong Ntotal, dlong offset, occa::memory &o_a);
 dfloat BPInnerProduct(BP_t* BP, dlong Ntotal, dlong offset, occa::memory &o_a, occa::memory &o_b);
-
-dfloat BPAtomicInnerProduct(BP_t* BP, dlong N, occa::memory &o_a, occa::memory &o_b);
 
 #endif

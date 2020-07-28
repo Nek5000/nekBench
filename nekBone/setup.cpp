@@ -37,14 +37,15 @@ BP_t* setup(mesh_t* mesh, occa::properties &kernelInfo, setupAide &options)
 {
   BP_t* BP = new BP_t();
 
-  BP->BPid = 0;
   BP->Nfields = 1;
+  if(options.getArgs("NFIELDS", BP->Nfields))
+
+  BP->BPid = 0;
   if(options.compareArgs("BPMODE", "TRUE")) {
     if(mesh->rank == 0) printf("BP mode enabled\n");
     options.setArgs("PRECONDITIONER", "COPY");
     BP->BPid = 5;
-    //options.getArgs("NUMBER OF FIELDS", BP->Nfields);
-    //if(BP->Nfields == 3) BP->BPid = 6;
+    if(BP->Nfields == 3) BP->BPid = 6;
   }
 
   BP->lambda1 = 1.1;
@@ -73,11 +74,8 @@ BP_t* setup(mesh_t* mesh, occa::properties &kernelInfo, setupAide &options)
   BP->fieldOffset = Ndof;
   const dlong Nall = BP->Nfields * Ndof;
 
-  BP->r   = (dfloat*) calloc(Nall,   sizeof(dfloat));
-  BP->x   = (dfloat*) calloc(Nall,   sizeof(dfloat));
-  BP->q   = (dfloat*) calloc(Nall,   sizeof(dfloat));
-
   // setup RHS
+  BP->r = (dfloat*) calloc(Nall,sizeof(dfloat));
   for(dlong e = 0; e < mesh->Nelements; ++e)
     for(int n = 0; n < mesh->Np; ++n) {
       dfloat JW = mesh->ggeo[mesh->Np * (e * mesh->Nggeo + GWJID) + n];
@@ -90,19 +88,19 @@ BP_t* setup(mesh_t* mesh, occa::properties &kernelInfo, setupAide &options)
       dfloat mode = 1;
 
       for(int fld = 0; fld < BP->Nfields; ++fld) {
-        dlong fldid = id + fld * Ndof;
-
-        // mass projection rhs
-        BP->r[fldid] =
-          (3. * M_PI * M_PI * mode * mode + BP->lambda1) * JW * cos(mode * M_PI * xn) * cos(
-            mode * M_PI * yn) * cos(mode * M_PI * zn);
-
-        BP->x[fldid] = 0;
+        dlong iid = id + fld * BP->fieldOffset;
+        BP->r[iid] = (3. * M_PI * M_PI * mode * mode + BP->lambda1) * JW *
+                       cos(mode * M_PI * xn) * cos(mode * M_PI * yn) * cos(mode * M_PI * zn);
+        //BP->x[fldid] = 0;
       }
-    }
-
+  }
   BP->o_r = mesh->device.malloc(Nall * sizeof(dfloat), BP->r);
+  if(options.compareArgs("DISCRETIZATION","CONTINUOUS"))
+    ogsGatherScatterMany(BP->o_r, BP->Nfields, BP->fieldOffset, ogsDfloat, ogsAdd, mesh->ogs);
+  BP->o_r.copyTo(BP->r);
+
   BP->o_x = mesh->device.malloc(Nall * sizeof(dfloat), BP->x);
+  BP->x = (dfloat*) calloc(Nall,sizeof(dfloat));
 
   BP->lambda = (dfloat*) calloc(2 * Nall, sizeof(dfloat));
   for(int i = 0; i < BP->fieldOffset; i++) {
@@ -112,12 +110,6 @@ BP_t* setup(mesh_t* mesh, occa::properties &kernelInfo, setupAide &options)
   BP->o_lambda = mesh->device.malloc(2 * Nall * sizeof(dfloat), BP->lambda);
 
   char* suffix = strdup("Hex3D");
-
-  if(options.compareArgs("DISCRETIZATION","CONTINUOUS"))
-    ogsGatherScatterMany(BP->o_r, BP->Nfields, Ndof, ogsDfloat, ogsAdd, mesh->ogs);
-
-  if (mesh->rank == 0)
-    reportMemoryUsage(mesh->device, "setup done");
 
   if (options.compareArgs("VERBOSE", "TRUE")) {
     fflush(stdout);
@@ -133,6 +125,9 @@ BP_t* setup(mesh_t* mesh, occa::properties &kernelInfo, setupAide &options)
   int sync = 0;
   if(options.compareArgs("TIMER SYNC", "TRUE")) sync = 1;
   if(BP->profiling) timer::init(MPI_COMM_WORLD, mesh->device, sync);
+
+  if (mesh->rank == 0)
+    reportMemoryUsage(mesh->device, "setup done");
 
   return BP;
 }
@@ -162,22 +157,16 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
 
   BP->NsolveWorkspace = 4;
   BP->offsetSolveWorkspace = Nall;
-
-/*
-   const int PAGESIZE = 512; // in bytes
-   const int pageW = PAGESIZE/sizeof(dfloat);
-   if (BP->offsetSolveWorkspace%pageW) BP->offsetSolveWorkspace = (BP->offsetSolveWorkspace + 1)*pageW;
-   dfloat *scratch = (dfloat*) calloc(BP->offsetSolveWorkspace*BP->NsolveWorkspace, sizeof(dfloat));
-   occa::memory o_scratch = mesh->device.malloc(BP->offsetSolveWorkspace*BP->NsolveWorkspace*sizeof(dfloat), scratch);
- */
-
   BP->o_solveWorkspace = new occa::memory[BP->NsolveWorkspace];
   for(int wk = 0; wk < BP->NsolveWorkspace; ++wk) {
     BP->o_solveWorkspace[wk] = mesh->device.malloc(Nall * sizeof(dfloat), BP->solveWorkspace);
-    //BP->o_solveWorkspace[wk] = o_scratch.slice(wk*BP->offsetSolveWorkspace*sizeof(dfloat));
   }
 
   if(options.compareArgs("PRECONDITIONER", "JACOBI")) {
+    if(BP->Nfields > 1) {
+      if(mesh->rank == 0) printf("ERROR: JACOBI preconditioner not supported for Nfields>1!\n");
+      exit(1);
+    }
     BP->o_invDiagA = mesh->device.malloc(Nall * sizeof(dfloat));
     int* mapB = (int*) calloc(Nall, sizeof(int));
     BP->o_mapB = mesh->device.malloc(Nall * sizeof(int), mapB);
@@ -194,12 +183,9 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
   BP->tmpNormr = (dfloat*) calloc(BP->NblocksUpdatePCG,sizeof(dfloat));
   BP->o_tmpNormr = mesh->device.malloc(BP->NblocksUpdatePCG * sizeof(dfloat), BP->tmpNormr);
 
-  BP->tmpAtomic = (dfloat*) calloc(1,sizeof(dfloat));
-  BP->o_tmpAtomic = mesh->device.malloc(1 * sizeof(dfloat), BP->tmpAtomic);
-  BP->o_zeroAtomic = mesh->device.malloc(1 * sizeof(dfloat), BP->tmpAtomic);
-
   //setup async halo stream
   BP->defaultStream = mesh->defaultStream;
+  BP->stream1 = mesh->device.createStream();
   BP->dataStream = mesh->dataStream;
 
   dlong Nbytes = BP->Nfields * mesh->totalHaloPairs * mesh->Np * sizeof(dfloat);
@@ -224,9 +210,7 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
   // count total number of elements
   hlong NelementsLocal = mesh->Nelements;
   hlong NelementsGlobal = 0;
-
   MPI_Allreduce(&NelementsLocal, &NelementsGlobal, 1, MPI_HLONG, MPI_SUM, mesh->comm);
-
   BP->NelementsGlobal = NelementsGlobal;
 
   //check all the bounaries for a Dirichlet
@@ -283,6 +267,9 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
       BP->innerProductKernel =
         mesh->device.buildKernel(DBP "/kernel/utils.okl", "innerProduct", kernelInfo);
 
+      BP->multipleInnerProduct2Kernel =
+        mesh->device.buildKernel(DBP "/kernel/utils.okl", "multipleInnerProduct2", kernelInfo);
+ 
       BP->weightedNorm2Kernel =
         mesh->device.buildKernel(DBP "/kernel/utils.okl", "weightedNorm2", kernelInfo);
 
@@ -306,17 +293,6 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
 
       BP->updateJacobiKernel =
         mesh->device.buildKernel(DBP "/kernel/updateJacobi.okl", "updateJacobi", kernelInfo);
-
-/*
-      BP->vecAtomicGatherKernel =
-          mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecAtomicGather", kernelInfo);
-
-      BP->vecAtomicMultipleGatherKernel =
-          mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecAtomicMultipleGather", kernelInfo);
-
-      BP->vecAtomicInnerProductKernel =
-   mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecAtomicInnerProduct", kernelInfo);
- */
 
       // add custom defines
       kernelInfo["defines/" "p_NpTet"] = mesh->Np;
@@ -349,9 +325,6 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
       kernelInfo["defines/" "p_NwarpsUpdatePCG"] = (int) (NthreadsUpdatePCG / 32); // WARNING: CUDA SPECIFIC
 
       BP->BPKernel = (occa::kernel*) new occa::kernel[1];
-
-      int combineDot = 0;
-      combineDot = 0; //options.compareArgs("COMBINE DOT PRODUCT", "TRUE");
 
       occa::properties props = kernelInfo;
       if(strstr(threadModel.c_str(), "NATIVE")) props["okl/enabled"] = false;
@@ -419,7 +392,10 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
   BP->nullProjectWeightGlobal = 1. / nullProjectWeightGlobal;
 
   //use the masked ids to make another gs handle
-  //BP->ogs = ogsSetup(Ntotal, mesh->maskedGlobalIds, mesh->comm, 1, mesh->device);
+/*
+  BP->ogs = ogsSetup(Ntotal, mesh->maskedGlobalIds, mesh->comm, 1, mesh->device);
+  BP->o_invDegree = ((ogs_t*)BP->ogs)->o_invDegree;
+*/
   auto callback = [&]() {
                     if(!BP->overlap) return;
 
@@ -438,14 +414,18 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
                            o_q,
                            o_Aq);
                   };
+
   BP->ogs = (void*) oogs::setup(Ntotal,
                                 mesh->maskedGlobalIds,
+                                BP->Nfields,
+                                BP->fieldOffset,
                                 ogsDfloat,
                                 mesh->comm,
                                 1,
                                 mesh->device,
                                 callback,
                                 OOGS_AUTO);
+
   BP->o_invDegree = ((oogs_t*)BP->ogs)->ogs->o_invDegree;
 
 /*
@@ -453,7 +433,4 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
     ((oogs_t*)BP->ogs)->ogs->NhaloGather = 0;
   }
 */
-
-  BP->streamDefault = mesh->device.getStream();
-  BP->stream1 = mesh->device.createStream();
 }

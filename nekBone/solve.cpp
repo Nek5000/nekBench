@@ -71,9 +71,8 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
   // compute A*x
   dfloat pAp = AxOperator(BP, o_lambda, o_x, o_Ax, dfloatString);
 
-  // subtract r = b - A*x
+   // subtract r = b - A*x
   BPScaledAdd(BP, -1.f, o_Ax, 1.f, o_r);
-
   rdotr0 = BPWeightedNorm2(BP, BP->o_invDegree, o_r);
 
   const dfloat TOL =  mymax(tol * tol * rdotr0,tol * tol);
@@ -89,7 +88,9 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
     rdotz2 = rdotz1;
 
     // r.z
+    if(BP->profiling) timer::tic("dot1");
     rdotz1 = BPWeightedInnerProduct(BP, BP->o_invDegree, o_r, o_z);
+    if(BP->profiling) timer::toc("dot1");
 
     if(flexible) {
       dfloat zdotAp = BPWeightedInnerProduct(BP, BP->o_invDegree, o_z, o_Ap);
@@ -110,11 +111,13 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
     //  x <= x + alpha*p
     //  r <= r - alpha*A*p
     //  dot(r,r)
+    if(BP->profiling) timer::tic("updatePCG"); 
 #if 0      
     dfloat rdotr = BPUpdateOverlapPCG(BP, o_p, o_Ap, alpha, o_x, o_r);
 #else
     dfloat rdotr = BPUpdatePCG(BP, o_p, o_Ap, alpha, o_x, o_r);
 #endif
+    if(BP->profiling) timer::toc("updatePCG");
 
     if (verbose && (mesh->rank == 0)) {
       if(rdotr < 0)
@@ -141,7 +144,10 @@ void BPZeroMean(BP_t* BP, occa::memory &o_q)
   occa::memory &o_tmp = BP->o_tmp;
 
   // this is a C0 thing [ assume GS previously applied to o_q ]
-  BP->innerProductKernel(mesh->Nelements * mesh->Np, BP->o_invDegree, o_q, o_tmp);
+  if(BP->Nfields > 1)
+    BP->multipleInnerProduct2Kernel(mesh->Nelements * mesh->Np, BP->fieldOffset, BP->o_invDegree, o_q, o_tmp);
+  else   
+    BP->innerProductKernel(mesh->Nelements * mesh->Np, BP->o_invDegree, o_q, o_tmp);
 
   o_tmp.copyTo(tmp);
 
@@ -157,19 +163,17 @@ void BPZeroMean(BP_t* BP, occa::memory &o_q)
 #if USE_WEIGHTED == 1
   qmeanGlobal *= BP->nullProjectWeightGlobal;
 #else
-  qmeanGlobal /= ((dfloat) BP->NelementsGlobal * (dfloat)mesh->Np);
+  qmeanGlobal /= ((dfloat) BP->NelementsGlobal * (dfloat)BP->Nfields * (dfloat)mesh->Np);
 #endif
 
   // q[n] = q[n] - qmeanGlobal
-  mesh->addScalarKernel(mesh->Nelements * mesh->Np, -qmeanGlobal, o_q);
+  mesh->addScalarKernel(mesh->Nelements * mesh->Np * BP->Nfields, -qmeanGlobal, o_q);
 }
 
 dfloat BPUpdatePCG(BP_t* BP,
                    occa::memory &o_p, occa::memory &o_Ap, const dfloat alpha,
                    occa::memory &o_x, occa::memory &o_r)
 {
-  if(BP->profiling) timer::tic("updatePCG");
-
   setupAide &options = BP->options;
 
   int fixedIterationCountFlag = 0;
@@ -206,7 +210,6 @@ dfloat BPUpdatePCG(BP_t* BP,
   MPI_Allreduce(&rdotr1, &globalrdotr1, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
   rdotr1 = globalrdotr1;
 
-  if(BP->profiling) timer::toc("updatePCG");
   return rdotr1;
 }
 
@@ -214,8 +217,6 @@ dfloat BPUpdateOverlapPCG(BP_t* BP,
                           occa::memory &o_p, occa::memory &o_Ap, const dfloat alpha,
                           occa::memory &o_x, occa::memory &o_r)
 {
-  if(BP->profiling) timer::tic("updatePCG");
-
   setupAide &options = BP->options;
 
   int fixedIterationCountFlag = 0;
@@ -254,10 +255,9 @@ dfloat BPUpdateOverlapPCG(BP_t* BP,
   MPI_Allreduce(&rdotr1, &globalrdotr1, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
   rdotr1 = globalrdotr1;
 
-  mesh->device.setStream(BP->streamDefault);
+  mesh->device.setStream(BP->defaultStream);
   mesh->device.finish();
 
-  if(BP->profiling) timer::toc("updatePCG");
   return rdotr1;
 }
 
@@ -269,6 +269,7 @@ void updateJacobi(BP_t* BP, occa::memory &o_lambda, occa::memory &o_invDiagA)
   mesh_t* mesh = BP->mesh;
   const dlong Nlocal = mesh->Np * mesh->Nelements;
 
+  // todo: support BP->Nfields > 1
   BP->updateJacobiKernel(mesh->Nelements,
                          BP->fieldOffset,
                          BP->o_mapB,
@@ -279,8 +280,8 @@ void updateJacobi(BP_t* BP, occa::memory &o_lambda, occa::memory &o_invDiagA)
 
   const dfloat one = 1.0;
   //ogsGatherScatter(o_invDiagA, ogsDfloat, ogsAdd, BP->ogs);
-  oogs::start(o_invDiagA, ogsDfloat, ogsAdd, (oogs_t*)BP->ogs);
-  oogs::finish(o_invDiagA, ogsDfloat, ogsAdd,(oogs_t*)BP->ogs);
+  oogs::start(o_invDiagA, BP->Nfields, BP->fieldOffset, ogsDfloat, ogsAdd, (oogs_t*)BP->ogs);
+  oogs::finish(o_invDiagA, BP->Nfields, BP->fieldOffset, ogsDfloat, ogsAdd,(oogs_t*)BP->ogs);
   BP->vecInvKernel(Nlocal, o_invDiagA);
 }
 
@@ -291,11 +292,9 @@ void BPPreconditioner(BP_t* BP, occa::memory &o_lambda, occa::memory &o_r, occa:
 
   if(BP->profiling) timer::tic("preco");
   if(options.compareArgs("PRECONDITIONER", "JACOBI")) {
-    const dlong Nlocal = mesh->Np * mesh->Nelements;
-    BP->dotMultiplyKernel(Nlocal, o_r, BP->o_invDiagA, o_z);
+    BP->dotMultiplyKernel(BP->Nfields*BP->fieldOffset, o_r, BP->o_invDiagA, o_z);
   } else {
-    dlong Ndof = mesh->Nelements * mesh->Np * BP->Nfields;
-    BP->vecCopyKernel(Ndof, o_r, o_z);
+    BP->vecCopyKernel(BP->Nfields*BP->fieldOffset, o_r, o_z);
   }
   if(BP->profiling) timer::toc("preco");
 }
@@ -305,12 +304,9 @@ dfloat AxOperator(BP_t* BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
 {
   mesh_t* mesh = BP->mesh;
   setupAide &options = BP->options;
-  //ogs_t *ogs = BP->ogs;
   oogs_t* ogs = (oogs_t*) BP->ogs;
-
   occa::kernel &kernel = BP->BPKernel[0];
-
-  const dlong fieldOffset = mesh->Np * (mesh->Nelements + mesh->totalHaloPairs);
+  const dlong fieldOffset = BP->fieldOffset;
 
   if(BP->overlap) {
     if(BP->profiling) timer::tic("Ax1");
@@ -326,8 +322,7 @@ dfloat AxOperator(BP_t* BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
     if(BP->profiling) timer::toc("Ax1");
 
     if(BP->profiling) timer::tic("AxGs");
-    //ogsGatherScatterStart(o_Aq, ogsDfloat, ogsAdd, ogs);
-    oogs::start(o_Aq, ogsDfloat, ogsAdd, ogs);
+    oogs::start(o_Aq, BP->Nfields, BP->fieldOffset, ogsDfloat, ogsAdd, ogs);
     if(BP->profiling) timer::tic("Ax2");
     kernel(mesh->NlocalGatherElements,
            fieldOffset,
@@ -338,8 +333,7 @@ dfloat AxOperator(BP_t* BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
            o_q,
            o_Aq);
     if(BP->profiling) timer::toc("Ax2");
-    //ogsGatherScatterFinish(o_Aq, ogsDfloat, ogsAdd, ogs);
-    oogs::finish(o_Aq, ogsDfloat, ogsAdd, ogs);
+    oogs::finish(o_Aq, BP->Nfields, BP->fieldOffset, ogsDfloat, ogsAdd, ogs);
     if(BP->profiling) timer::toc("AxGs");
   } else {
     if(BP->profiling) timer::tic("Ax");
@@ -347,13 +341,17 @@ dfloat AxOperator(BP_t* BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
     if(BP->profiling) timer::toc("Ax");
 
     if(BP->profiling) timer::tic("gs");
-    //ogsGatherScatter(o_Aq, ogsDfloat, ogsAdd, ogs);
-    oogs::start(o_Aq, ogsDfloat, ogsAdd, ogs);
-    oogs::finish(o_Aq, ogsDfloat, ogsAdd, ogs);
+
+    //ogs_t *ogs = (ogs_t*) BP->ogs;
+    //ogsGatherScatterMany(o_Aq, BP->Nfields, BP->fieldOffset, ogsDfloat, ogsAdd, ogs);
+    oogs::start(o_Aq, BP->Nfields, BP->fieldOffset, ogsDfloat, ogsAdd, ogs);
+    oogs::finish(o_Aq, BP->Nfields, BP->fieldOffset, ogsDfloat, ogsAdd, ogs);
     if(BP->profiling) timer::toc("gs");
   }
 
+  if(BP->profiling) timer::tic("dot2");
   dfloat pAp = BPWeightedInnerProduct(BP, BP->o_invDegree, o_q, o_Aq);
+  if(BP->profiling) timer::toc("dot2");
 
   return pAp;
 }
@@ -401,8 +399,6 @@ dfloat BPWeightedNorm2(BP_t* BP, occa::memory &o_w, occa::memory &o_a)
 dfloat BPWeightedInnerProduct(BP_t* BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b)
 {
   mesh_t* mesh = BP->mesh;
-  //mesh->device.finish();
-  if(BP->profiling) timer::tic("dot");
   setupAide &options = BP->options;
 
   dlong Nblock = BP->Nblock;
@@ -444,7 +440,6 @@ dfloat BPWeightedInnerProduct(BP_t* BP, occa::memory &o_w, occa::memory &o_a, oc
   dfloat globalwab = 0;
   MPI_Allreduce(&wab, &globalwab, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
-  if(BP->profiling) timer::toc("dot");
   return globalwab;
 }
 
@@ -453,6 +448,6 @@ void BPScaledAdd(BP_t* BP, dfloat alpha, occa::memory &o_a, dfloat beta, occa::m
 {
   mesh_t* mesh = BP->mesh;
 
-  dlong Ntotal = mesh->Nelements * mesh->Np * BP->Nfields;
+  dlong Ntotal = BP->Nfields*BP->fieldOffset;
   BP->scaledAddKernel(Ntotal, alpha, o_a, beta, o_b);
 }

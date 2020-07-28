@@ -43,9 +43,11 @@ summary
   MPItasks     : 1
   polyN        : 7
   Nelements    : 8000
+  Nfields      : 1
   iterations   : 5000
   Nrepetitions : 1
-  elapsed time : 6.89535 s
-  throughput   : 1.98975 GDOF/s/iter
-  bandwidth    : 570.263 GB/s
-  GFLOPS/s     : 415.817
+  elapsed time : 6.8114 s
+  throughput   : 2.01427 GDOF/s/iter
+  bandwidth    : 577.291 GB/s
+  GFLOPS/s     : 378.847
+```
