@@ -1,5 +1,4 @@
 #include "omp.h"
-#include <cfenv>
 #include "BP.hpp"
 
 int solve(BP_t* BP,
@@ -38,8 +37,6 @@ int main(int argc, char** argv)
 {
   // start up MPI
   MPI_Init(&argc, &argv);
-
-  feraiseexcept(FE_ALL_EXCEPT);
 
   if(argc != 2) {
     printf("usage: ./nekBone setupfile\n");

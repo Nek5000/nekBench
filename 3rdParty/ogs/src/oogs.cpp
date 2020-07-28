@@ -94,17 +94,18 @@ static void _ogsHostGatherScatterMany(occa::memory o_u, int nVec,
   const unsigned transpose = 0;
   const unsigned recv = 0^transpose, send = 1^transpose;
 
-  size_t unit_size;
+  size_t nBytes;
   if (!strcmp(type, "float"))
-    unit_size = sizeof(float);
+    nBytes = sizeof(float);
   else if (!strcmp(type, "double"))
-    unit_size  = sizeof(double);
+    nBytes  = sizeof(double);
   else if (!strcmp(type, "int"))
-    unit_size  = sizeof(int);
+    nBytes  = sizeof(int);
   else if (!strcmp(type, "long long int"))
-    unit_size  = sizeof(long long int);
+    nBytes  = sizeof(long long int);
 
-  unit_size = unit_size*nVec;
+  const size_t nnVec = nVec;
+  const size_t unit_size = nBytes*nnVec;
   const unsigned uStride = Nhalo;
 
   { // prepost recv
@@ -113,7 +114,7 @@ static void _ogsHostGatherScatterMany(occa::memory o_u, int nVec,
     const uint *p, *pe, *size=c->size;
     uint bufOffset = 0;
     for(p=c->p,pe=p+c->n;p!=pe;++p) {
-      size_t len = *(size++);
+      const size_t len = *(size++);
       unsigned char *recvbuf = (unsigned char *)gs->bufRecv + bufOffset;
       if(gs->mode == OOGS_DEVICEMPI) recvbuf = (unsigned char*)gs->o_bufRecv.ptr() + bufOffset;
       MPI_Irecv((void*)recvbuf,len*unit_size,MPI_UNSIGNED_CHAR,*p,*p,comm->c,req++);
@@ -121,11 +122,10 @@ static void _ogsHostGatherScatterMany(occa::memory o_u, int nVec,
     }
   }
 
-  { // scatter
-    occaScatterMany(Nhalo, nVec, uStride, 1, gs->o_scatterOffsets, gs->o_scatterIds, type, op, o_u, gs->o_bufSend);
-    if(gs->mode == OOGS_HOSTMPI) {
-      gs->o_bufSend.copyTo(gs->bufSend, pwd->comm[send].total*unit_size, 0, "async: true");
-    }
+  // scatter
+  occaScatterMany(Nhalo, nnVec, uStride, 1, gs->o_scatterOffsets, gs->o_scatterIds, type, op, o_u, gs->o_bufSend);
+  if(gs->mode == OOGS_HOSTMPI) {
+    gs->o_bufSend.copyTo(gs->bufSend, pwd->comm[send].total*unit_size, 0, "async: true");
   }
 
   { // pw exchange
@@ -137,7 +137,7 @@ static void _ogsHostGatherScatterMany(occa::memory o_u, int nVec,
     const uint *p, *pe, *size=c->size;
     uint bufOffset = 0;
     for(p=c->p,pe=p+c->n;p!=pe;++p) {
-      size_t len = *(size++);
+      const size_t len = *(size++);
       unsigned char *sendbuf = (unsigned char*)gs->bufSend + bufOffset;
       if(gs->mode == OOGS_DEVICEMPI) sendbuf = (unsigned char*)gs->o_bufSend.ptr() + bufOffset;
       MPI_Isend((void*)sendbuf,len*unit_size,MPI_UNSIGNED_CHAR,*p,comm->id,comm->c,req++);
@@ -146,15 +146,11 @@ static void _ogsHostGatherScatterMany(occa::memory o_u, int nVec,
     MPI_Waitall(pwd->comm[send].n + pwd->comm[recv].n,pwd->req,MPI_STATUSES_IGNORE);
   }
 
-  { // gather
-    if(gs->mode == OOGS_HOSTMPI){
-      gs->o_bufRecv.copyFrom(gs->bufRecv,pwd->comm[recv].total*unit_size, 0, "async: true");
-    }
-
-    // op hardwired for now!!!
-    occaGatherMany(Nhalo, nVec, 1, uStride, gs->o_gatherOffsets, gs->o_gatherIds, type, "add+self", gs->o_bufRecv, o_u);
+  // gather
+  if(gs->mode == OOGS_HOSTMPI) {
+    gs->o_bufRecv.copyFrom(gs->bufRecv,pwd->comm[recv].total*unit_size, 0, "async: true");
   }
-
+  occaGatherMany(Nhalo, nnVec, 1, uStride, gs->o_gatherOffsets, gs->o_gatherIds, type, "add+self", gs->o_bufRecv, o_u);
 }
 
 oogs_t* oogs::setup(dlong N, hlong *ids, int nVec, dlong stride, const char *type, MPI_Comm &comm,
@@ -302,11 +298,12 @@ void oogs::finish(occa::memory o_v, const int k, const dlong stride, const char 
   if (ogs->NhaloGather) {
     ogs->device.setStream(ogs::dataStream);
 
+    if(gs->mode == OOGS_DEFAULT) ogs->device.finish(); // waiting for gs::haloBuf copy to finish  
+
 #ifdef OGS_ENABLE_TIMER
-  timer::tic("gsMPI",1);
+    timer::tic("gsMPI",1);
 #endif
     if(gs->mode == OOGS_DEFAULT) {
-      ogs->device.finish(); // waiting for gs::haloBuf copy to finish 
       void* H[10];
       for (int i=0;i<k;i++) H[i] = (char*)ogs::haloBuf + i*ogs->NhaloGather*Nbytes;
       ogsHostGatherScatterMany(H, k, type, op, ogs->haloGshSym);
@@ -314,7 +311,7 @@ void oogs::finish(occa::memory o_v, const int k, const dlong stride, const char 
       _ogsHostGatherScatterMany(ogs::o_haloBuf, k, type, op, gs);
     }   
 #ifdef OGS_ENABLE_TIMER
-  timer::toc("gsMPI");
+    timer::toc("gsMPI");
 #endif
  
     if(gs->mode == OOGS_DEFAULT) { 

@@ -87,7 +87,7 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
 
     rdotz2 = rdotz1;
 
-    // r.z
+    // dot(r,z)
     if(BP->profiling) timer::tic("dot1");
     rdotz1 = BPWeightedInnerProduct(BP, BP->o_invDegree, o_r, o_z);
     if(BP->profiling) timer::toc("dot1");
@@ -163,11 +163,11 @@ void BPZeroMean(BP_t* BP, occa::memory &o_q)
 #if USE_WEIGHTED == 1
   qmeanGlobal *= BP->nullProjectWeightGlobal;
 #else
-  qmeanGlobal /= ((dfloat) BP->NelementsGlobal * (dfloat)BP->Nfields * (dfloat)mesh->Np);
+  qmeanGlobal /= ((dfloat) BP->NelementsGlobal * (dfloat)BP->Nfields * (dfloat)BP->fieldOffset);
 #endif
 
   // q[n] = q[n] - qmeanGlobal
-  mesh->addScalarKernel(mesh->Nelements * mesh->Np * BP->Nfields, -qmeanGlobal, o_q);
+  mesh->addScalarKernel(BP->Nfields*BP->fieldOffset, -qmeanGlobal, o_q);
 }
 
 dfloat BPUpdatePCG(BP_t* BP,
@@ -238,7 +238,7 @@ dfloat BPUpdateOverlapPCG(BP_t* BP,
                                       BP->o_invDegree, o_p, o_Ap, alpha, o_r, BP->o_tmpNormr);
 
   // x <= x + alpha*p
-  BP->scaledAddKernel(Nlocal, alpha, o_p, 1.0, o_x);
+  BPScaledAdd(BP, alpha, o_p, 1.f, o_x);  
 
   mesh->device.setStream(BP->stream1);
   BP->o_tmpNormr.copyTo(BP->tmp, BP->NblocksUpdatePCG*sizeof(dfloat), 0, "async: true");
@@ -446,8 +446,6 @@ dfloat BPWeightedInnerProduct(BP_t* BP, occa::memory &o_w, occa::memory &o_a, oc
 // b[n] = alpha*a[n] + beta*b[n] n\in [0,Ntotal)
 void BPScaledAdd(BP_t* BP, dfloat alpha, occa::memory &o_a, dfloat beta, occa::memory &o_b)
 {
-  mesh_t* mesh = BP->mesh;
-
   dlong Ntotal = BP->Nfields*BP->fieldOffset;
   BP->scaledAddKernel(Ntotal, alpha, o_a, beta, o_b);
 }
