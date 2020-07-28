@@ -167,8 +167,8 @@ typedef struct
   dfloat* tmpNormr;
   occa::memory o_tmpNormr;
 
-  occa::kernel updatePCGKernel, updateOverlapPCGKernel;
-  occa::kernel updateMultiplePCGKernel, updateOverlapMultiplePCGKernel;
+  occa::kernel weightedInnerProductUpdateKernel;
+  occa::kernel updatePCGKernel;
 
   occa::memory* o_pcgWork;
 

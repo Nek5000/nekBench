@@ -147,13 +147,6 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
   dlong Nblock  = mymax(1,(Ntotal + blockSize - 1) / blockSize);
   dlong Nblock2 = mymax(1,(Nblock + blockSize - 1) / blockSize);
 
-  dlong NthreadsUpdatePCG = blockSize;
-  //dlong NblocksUpdatePCG = mymin((Ntotal+NthreadsUpdatePCG-1)/NthreadsUpdatePCG, 32);
-  dlong NblocksUpdatePCG = (Ntotal + NthreadsUpdatePCG - 1) / NthreadsUpdatePCG;
-
-  BP->NthreadsUpdatePCG = NthreadsUpdatePCG;
-  BP->NblocksUpdatePCG = NblocksUpdatePCG;
-
   BP->NsolveWorkspace = 4;
   BP->offsetSolveWorkspace = Nall;
   BP->o_solveWorkspace = new occa::memory[BP->NsolveWorkspace];
@@ -174,9 +167,10 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
 
   occa::properties props = kernelInfo;
   props["mapped"] = true;
-  p_tmp = mesh->device.malloc(Nblock * sizeof(dfloat), props);
+  p_tmp = mesh->device.malloc(2*Nblock * sizeof(dfloat), props);
   BP->tmp  = (dfloat*)p_tmp.ptr(props);
-  BP->o_tmp = mesh->device.malloc(Nblock * sizeof(dfloat), BP->tmp);
+  BP->o_tmp = mesh->device.malloc(2*Nblock * sizeof(dfloat), BP->tmp);
+
   BP->o_tmp2 = mesh->device.malloc(Nblock2 * sizeof(dfloat), BP->tmp);
 
   BP->tmpNormr = (dfloat*) calloc(BP->NblocksUpdatePCG,sizeof(dfloat));
@@ -238,9 +232,9 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
   mesh->maskedGlobalIds = (hlong*) calloc(Ntotal,sizeof(hlong));
   memcpy(mesh->maskedGlobalIds, mesh->globalIds, Ntotal * sizeof(hlong));
 
-  kernelInfo["defines/p_Nalign"] = USE_OCCA_MEM_BYTE_ALIGN;
-  kernelInfo["defines/" "p_blockSize"] = blockSize;
-  kernelInfo["defines/" "p_Nfields"] = BP->Nfields;
+  kernelInfo["defines/p_Nalign"] = (int) USE_OCCA_MEM_BYTE_ALIGN;
+  kernelInfo["defines/" "p_blockSize"] = (int) blockSize;
+  kernelInfo["defines/" "p_Nfields"] = (int) BP->Nfields;
 
   string threadModel;
   options.getArgs("THREAD MODEL", threadModel);
@@ -290,12 +284,13 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
       BP->vecScaleKernel =
         mesh->device.buildKernel(DBP "/kernel/utils.okl", "vecScale", kernelInfo);
 
+      BP->updatePCGKernel =
+        mesh->device.buildKernel(DBP "/kernel/utils.okl", "BPUpdatePCG", kernelInfo);
+
       BP->updateJacobiKernel =
         mesh->device.buildKernel(DBP "/kernel/updateJacobi.okl", "updateJacobi", kernelInfo);
 
       // add custom defines
-      kernelInfo["defines/" "p_NpTet"] = mesh->Np;
-
       kernelInfo["defines/" "p_NpP"] = (mesh->Np + mesh->Nfp * mesh->Nfaces);
       kernelInfo["defines/" "p_Nverts"] = mesh->Nverts;
 
@@ -305,9 +300,6 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
       int NnodesV = 1; //hard coded for now
       int NblockS = mymax(1,maxNthreads / maxNodes);
       int NblockP = mymax(1,maxNthreads / (4 * mesh->Np));
-      int NblockG;
-      if(mesh->Np <= 32) NblockG = ( 32 / mesh->Np );
-      else NblockG = maxNthreads / mesh->Np;
 
       kernelInfo["defines/" "p_Nmax"] = Nmax;
       kernelInfo["defines/" "p_maxNodes"] = maxNodes;
@@ -315,47 +307,26 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
       kernelInfo["defines/" "p_NnodesV"] = NnodesV;
       kernelInfo["defines/" "p_NblockS"] = NblockS;
       kernelInfo["defines/" "p_NblockP"] = NblockP;
-      kernelInfo["defines/" "p_NblockG"] = NblockG;
-
-      kernelInfo["defines/" "p_halfC"] = (int)((mesh->cubNq + 1) / 2);
-      kernelInfo["defines/" "p_halfN"] = (int)((mesh->Nq + 1) / 2);
-
-      kernelInfo["defines/" "p_NthreadsUpdatePCG"] = (int) NthreadsUpdatePCG; // WARNING SHOULD BE MULTIPLE OF 32
-      kernelInfo["defines/" "p_NwarpsUpdatePCG"] = (int) (NthreadsUpdatePCG / 32); // WARNING: CUDA SPECIFIC
 
       BP->BPKernel = (occa::kernel*) new occa::kernel[1];
 
       occa::properties props = kernelInfo;
       if(strstr(threadModel.c_str(), "NATIVE")) props["okl/enabled"] = false;
 
-      string fileName = DBP "/kernel/" + arch + "/updatePCG.okl";
-      if(strstr(threadModel.c_str(),
-                "NATIVE+SERIAL") || strstr(threadModel.c_str(), "NATIVE+OPENMP"))
-        fileName = "kernel/" + arch + "/updatePCG.c";
-
-      BP->updatePCGKernel =
-        mesh->device.buildKernel(fileName.c_str(), "BPUpdatePCG", props);
-      BP->updateMultiplePCGKernel =
-        mesh->device.buildKernel(fileName.c_str(), "BPMultipleUpdatePCG", props);
-
-      fileName = DBP "/kernel/" + arch + "/updateOverlapPCG.okl"; 
-      BP->updateOverlapPCGKernel =
-        mesh->device.buildKernel(fileName.c_str(), "BPUpdateOverlapPCG", props);
-      BP->updateOverlapMultiplePCGKernel =
-        mesh->device.buildKernel(fileName.c_str(), "BPMultipleUpdateOverlapPCG", props);
-
-      fileName = DBP "/kernel/utils.okl";
+      string fileName = DBP "/kernel/utils.okl";
       if(strstr(threadModel.c_str(),
                 "NATIVE+SERIAL") || strstr(threadModel.c_str(), "NATIVE+OPENMP"))
         fileName = "kernel/" + arch + "/weightedInnerProduct.c";
+
       BP->weightedInnerProduct2Kernel =
         mesh->device.buildKernel(fileName.c_str(), "weightedInnerProduct2", props);
       BP->weightedMultipleInnerProduct2Kernel =
         mesh->device.buildKernel(fileName.c_str(), "weightedMultipleInnerProduct2", props);
+      BP->weightedInnerProductUpdateKernel = 
+        mesh->device.buildKernel(fileName.c_str(), "weightedInnerProductUpdate", props);
 
-      occa::kernel nothingKernel = mesh->device.buildKernel(DBP "/kernel/utils.okl",
-                                                            "nothingKernel",
-                                                            kernelInfo);
+      occa::kernel nothingKernel = mesh->device.buildKernel(DBP "/kernel/utils.okl", "nothingKernel", kernelInfo);
+
       nothingKernel();
     }
     MPI_Barrier(mesh->comm);
@@ -415,6 +386,9 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
              o_Aq);
     };
 
+  oogs_mode oogsMode = OOGS_AUTO;
+  if(options.compareArgs("THREAD MODEL", "SERIAL")) oogsMode = OOGS_DEFAULT; 
+  if(options.compareArgs("THREAD MODEL", "OPENMP")) oogsMode = OOGS_DEFAULT;
   BP->ogs = (void*) oogs::setup(Ntotal,
                                 mesh->maskedGlobalIds,
                                 BP->Nfields,
@@ -424,7 +398,7 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
                                 1,
                                 mesh->device,
                                 callback,
-                                OOGS_AUTO);
+                                oogsMode);
 
   BP->o_invDegree = ((oogs_t*)BP->ogs)->ogs->o_invDegree;
 

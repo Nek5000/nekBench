@@ -678,19 +678,31 @@
       }
 }
 
-@kernel void multiWeightedInnerProductUpdate(const int N,
-                                             @restrict const  dfloat *  w,
-                                             @restrict const  dfloat *  x,
-                                             @restrict const  dfloat *  y,
-                                             @restrict dfloat *  wxy){
+@kernel void weightedInnerProductUpdate(const dlong N,
+                                        const dlong offset,
+                                        const dlong Nblock,
+                                        @restrict const  dfloat *  w,
+                                        @restrict const  dfloat *  x,
+                                        @restrict const  dfloat *  y,
+                                        @restrict dfloat *  wxy){
   
-  for(dlong b = 0; b < (N + p_blockSize - 1) / p_blockSize; ++b; @outer(0)) {
+  for(int b=0;b<Nblock;++b;@outer(0)){
     @shared volatile dfloat s_wxy[2*p_blockSize];
 
     for(int t=0;t<p_blockSize;++t;@inner(0)){
       const int id = t + p_blockSize*b;
-      s_wxy[t+0*p_blockSize] = (id<N) ? w[id]*x[id]*y[id] : 0.f;  
-      s_wxy[t+1*p_blockSize] = (id<N) ? w[id]*x[id]*x[id] : 0.f;  
+
+      dfloat xx = 0;
+      dfloat xy = 0;
+      if(id<N) {
+        for(int fld = 0; fld < p_Nfields; ++fld) {
+          const dlong iid = id + fld * offset;
+          xy += w[id]*x[iid]*y[iid];
+          xx += w[id]*x[iid]*x[iid];
+        }
+      }
+      s_wxy[t+0*p_blockSize] = xy;  
+      s_wxy[t+1*p_blockSize] = xx;  
     }
 
     @barrier("local");
@@ -766,9 +778,23 @@
     }
     for(int t=0;t<p_blockSize;++t;@inner(0)) {
       if(t<1) {
-        wxy[b+0*p_blockSize] = s_wxy[0*p_blockSize] + s_wxy[1+0*p_blockSize];
-        wxy[b+1*p_blockSize] = s_wxy[1*p_blockSize] + s_wxy[1+1*p_blockSize];
+        wxy[b+0*Nblock] = s_wxy[0+0*p_blockSize] + s_wxy[1+0*p_blockSize];
+        wxy[b+1*Nblock] = s_wxy[0+1*p_blockSize] + s_wxy[1+1*p_blockSize];
       }
     }
   }
+}
+
+@kernel void BPUpdatePCG(const dlong N,
+                       const dfloat alpha,
+                       @restrict const dfloat* p,
+                       @restrict const dfloat* Ap,
+                       @restrict dfloat* x,
+                       @restrict dfloat* r)
+{
+  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+    if(n < N) {
+      x[n] = x[n] + alpha * p[n];
+      r[n] = r[n] - alpha * Ap[n];
+    }
 }
