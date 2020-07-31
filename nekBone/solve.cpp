@@ -329,14 +329,15 @@ dfloat AxOperator(BP_t* BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
     //ogsGatherScatterStart(o_Aq, ogsDfloat, ogsAdd, ogs);
     oogs::start(o_Aq, ogsDfloat, ogsAdd, ogs);
     if(BP->profiling) timer::tic("Ax2");
-    kernel(mesh->NlocalGatherElements,
-           fieldOffset,
-           mesh->o_localGatherElementList,
-           mesh->o_ggeo,
-           mesh->o_D,
-           o_lambda,
-           o_q,
-           o_Aq);
+    if(mesh->NlocalGatherElements)
+      kernel(mesh->NlocalGatherElements,
+            fieldOffset,
+            mesh->o_localGatherElementList,
+            mesh->o_ggeo,
+            mesh->o_D,
+            o_lambda,
+            o_q,
+            o_Aq);
     if(BP->profiling) timer::toc("Ax2");
     //ogsGatherScatterFinish(o_Aq, ogsDfloat, ogsAdd, ogs);
     oogs::finish(o_Aq, ogsDfloat, ogsAdd, ogs);

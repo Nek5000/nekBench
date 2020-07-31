@@ -421,7 +421,7 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
   //use the masked ids to make another gs handle
   //BP->ogs = ogsSetup(Ntotal, mesh->maskedGlobalIds, mesh->comm, 1, mesh->device);
   auto callback = [&]() {
-                    if(!BP->overlap) return;
+                    if(!BP->overlap || !mesh->NlocalGatherElements) return;
 
                     mesh_t* mesh = BP->mesh;
                     const dlong fieldOffset = BP->fieldOffset;
