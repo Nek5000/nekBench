@@ -98,12 +98,12 @@ BP_t* setup(mesh_t* mesh, occa::properties &kernelInfo, setupAide &options)
     ogsGatherScatterMany(BP->o_r, BP->Nfields, BP->fieldOffset, ogsDfloat, ogsAdd, mesh->ogs);
   BP->o_r.copyTo(BP->r);
 
-  BP->o_x = mesh->device.malloc(Nall * sizeof(dfloat), BP->x);
   BP->x = (dfloat*) calloc(Nall,sizeof(dfloat));
+  BP->o_x = mesh->device.malloc(Nall * sizeof(dfloat), BP->x);
 
   BP->lambda = (dfloat*) calloc(2 * Nall, sizeof(dfloat));
   for(int i = 0; i < BP->fieldOffset; i++) {
-    BP->lambda[i]        = 1.0; // don't change
+    BP->lambda[i] = 1.0; // don't change
     BP->lambda[i + BP->fieldOffset] = BP->lambda1;
   }
   BP->o_lambda = mesh->device.malloc(2 * Nall * sizeof(dfloat), BP->lambda);
@@ -387,8 +387,8 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
     };
 
   oogs_mode oogsMode = OOGS_AUTO;
-  if(options.compareArgs("THREAD MODEL", "SERIAL")) oogsMode = OOGS_DEFAULT; 
-  if(options.compareArgs("THREAD MODEL", "OPENMP")) oogsMode = OOGS_DEFAULT;
+  //if(options.compareArgs("THREAD MODEL", "SERIAL")) oogsMode = OOGS_DEFAULT; 
+  //if(options.compareArgs("THREAD MODEL", "OPENMP")) oogsMode = OOGS_DEFAULT;
   BP->ogs = (void*) oogs::setup(Ntotal,
                                 mesh->maskedGlobalIds,
                                 BP->Nfields,

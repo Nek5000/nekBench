@@ -210,6 +210,7 @@
 //partially sum the entries of a vector using a block-wise reductions
 
 @kernel void sum(const dlong N,
+                 const dlong offset,
                  @restrict const dfloat*  x,
                  @restrict dfloat*  sx)
 {
@@ -218,7 +219,14 @@
 
     for(int t = 0; t < p_blockSize; ++t; @inner(0)) {
       const dlong id = t + b * p_blockSize;
-      s_sx[t] = (id < N) ? x[id] : 0.f;
+      dfloat res = 0;
+      if(id < N) {
+        for(int fld = 0; fld < p_Nfields; ++fld) {
+          const dlong iid = id + fld * offset;
+          res += x[iid];
+        }
+      }
+      s_sx[t] = res;
     }
 
     @barrier("local");
@@ -417,7 +425,6 @@
       dfloat res = 0;
       if(id < N) {
         dfloat wid = w[id];
-
         for(int fld = 0; fld < p_Nfields; ++fld)
           res +=  wid * x[id + offset * fld] * y[id + offset * fld];
       }
@@ -619,10 +626,9 @@
                       const dfloat fac,
                       @restrict dfloat* v) /* Array of vector data */
 {
-  for (dlong n = 0; n < N; n += p_blockSize; @outer(0))
-    for (dlong i = n; i < (n + p_blockSize); i++; @inner(0))
-      if (i < N)
-        v[i] *= fac;
+  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+      if (n < N)
+        v[n] *= fac;
 }
 
 // in place scale by scalar
@@ -695,10 +701,11 @@
       dfloat xx = 0;
       dfloat xy = 0;
       if(id<N) {
+        const dfloat wid = w[id];
         for(int fld = 0; fld < p_Nfields; ++fld) {
           const dlong iid = id + fld * offset;
-          xy += w[id]*x[iid]*y[iid];
-          xx += w[id]*x[iid]*x[iid];
+          xy += wid*x[iid]*y[iid];
+          xx += wid*x[iid]*x[iid];
         }
       }
       s_wxy[t+0*p_blockSize] = xy;  

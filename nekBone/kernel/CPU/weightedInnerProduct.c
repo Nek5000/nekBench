@@ -52,7 +52,7 @@ void weightedMultipleInnerProduct2(const dlong & N,
 #pragma omp parallel for reduction(+: wab)
     for(dlong id = 0; id < N; ++id) {
       const dlong iid = id + fld * offset;
-      wab += cpu_a[iid] * cpu_b[iid] * cpu_w[iid];
+      wab += cpu_a[iid] * cpu_b[iid] * cpu_w[id];
     }
   }
 

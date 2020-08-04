@@ -27,12 +27,13 @@
 #include "BP.hpp"
 void updateJacobi(BP_t* BP, occa::memory &o_lambda, occa::memory &o_invDiagA);
 
-static void   BPPreconditioner(BP_t* BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z);
-static dfloat BPWeightedNorm2(BP_t* BP, occa::memory &o_w, occa::memory &o_a);
+static void BPPreconditioner(BP_t* BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z);
 static dfloat BPWeightedInnerProduct(BP_t* BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b);
 static void BPUpdatePCG(BP_t* BP, occa::memory &o_p, occa::memory &o_Ap, dfloat alpha,
-                          occa::memory &o_x, occa::memory &o_r);
-static void BPWeightedInnerProduct2(BP_t* BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b, dfloat *rdotz, dfloat *rdotr);
+                        occa::memory &o_x, occa::memory &o_r);
+static void BPWeightedInnerProduct2(BP_t* BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b, 
+                                    dfloat *rdotz, dfloat *rdotr);
+
 
 int BPPCG(BP_t* BP, occa::memory &o_lambda,
           occa::memory &o_r, occa::memory &o_x,
@@ -51,41 +52,27 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
 
   int iter;
 
-  // register scalars
   dfloat rdotz1 = 1;
   dfloat rdotz2 = 0;
   dfloat rdotr;
 
-  // now initialized
   dfloat alpha = 0, beta = 0;
+  dfloat TOL;
 
-  /*aux variables */
   occa::memory &o_p   = BP->o_solveWorkspace[0];
   occa::memory &o_z   = BP->o_solveWorkspace[1];
   occa::memory &o_Ap  = BP->o_solveWorkspace[2];
   occa::memory &o_Ax  = BP->o_solveWorkspace[3];
 
-  // compute A*x
   dfloat pAp = AxOperator(BP, o_lambda, o_x, o_Ax, dfloatString);
-
-   // subtract r = b - A*x
-  //BPScaledAdd(BP, -1.f, o_Ax, 1.f, o_r);
-  dfloat rdotr0 = BPWeightedNorm2(BP, BP->o_invDegree, o_r);
-
-  if (verbose && (mesh->rank == 0)) {
-      printf("CG: it 0 r norm %12.12le\n", sqrt(rdotr0));
-  }
-
-  const dfloat TOL =  mymax(tol * tol * rdotr0,tol * tol);
+  BPScaledAdd(BP, -1.f, o_Ax, 1.f, o_r);
 
   if(BP->profiling) timer::tic("preco");
   if(options.compareArgs("PRECONDITIONER", "JACOBI")) updateJacobi(BP, o_lambda, BP->o_invDiagA);
   if(BP->profiling) timer::toc("preco");
 
   for(iter = 1; iter <= MAXIT; ++iter) {
-    // z = Precon^{-1} r
     BPPreconditioner(BP, o_lambda, o_r, o_z);
-
     rdotz2 = rdotz1;
 
     // dot(r,z) + dot(r,r)
@@ -98,6 +85,7 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
       if(rdotr < 0) printf("WARNING CG: rdotr = %17.15lf\n", rdotr);
       printf("CG: it %d r norm %12.12le alpha = %le \n", iter, sqrt(rdotr), alpha);
     }
+    if(iter == 1) TOL = mymax(tol * tol * rdotr,tol * tol);
     if(rdotr <= TOL && !fixedIterationCountFlag) break;
 
     if(flexible) {
@@ -108,17 +96,13 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
       beta = (iter == 1) ? 0:rdotz1 / rdotz2;
     }
 
-    // p = z + beta*p
     BPScaledAdd(BP, 1.f, o_z, beta, o_p);
 
-    // Ap and p.Ap
     pAp = AxOperator(BP, o_lambda, o_p, o_Ap, dfloatString);
 
-    // alpha = r.z/p.Ap
     alpha = rdotz1 / pAp;
 
-    //  x <= x + alpha*p
-    //  r <= r - alpha*A*p
+    //  x <= x + alpha*p and r <= r - alpha*A*p
     if(BP->profiling) timer::tic("updatePCG"); 
     BPUpdatePCG(BP, o_p, o_Ap, alpha, o_x, o_r);
     if(BP->profiling) timer::toc("updatePCG");
@@ -129,7 +113,6 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
 
 void BPZeroMean(BP_t* BP, occa::memory &o_q)
 {
-  dfloat qmeanLocal;
   dfloat qmeanGlobal;
 
   dlong Nblock = BP->Nblock;
@@ -138,30 +121,14 @@ void BPZeroMean(BP_t* BP, occa::memory &o_q)
 
   occa::memory &o_tmp = BP->o_tmp;
 
-  // this is a C0 thing [ assume GS previously applied to o_q ]
-  if(BP->Nfields > 1)
-    BP->multipleInnerProduct2Kernel(mesh->Nelements * mesh->Np, BP->fieldOffset, BP->o_invDegree, o_q, o_tmp);
-  else   
-    BP->innerProductKernel(mesh->Nelements * mesh->Np, BP->o_invDegree, o_q, o_tmp);
-
+  dfloat qmeanLocal = 0;
+  mesh->sumKernel(mesh->Nelements*mesh->Np, BP->fieldOffset, o_q, o_tmp);
   o_tmp.copyTo(tmp, Nblock*sizeof(dfloat));
-
-  // finish reduction
-  qmeanLocal = 0;
   for(dlong n = 0; n < Nblock; ++n)
     qmeanLocal += tmp[n];
 
-  // globalize reduction
   MPI_Allreduce(&qmeanLocal, &qmeanGlobal, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
-
-  // normalize
-#if USE_WEIGHTED == 1
-  qmeanGlobal *= BP->nullProjectWeightGlobal;
-#else
-  qmeanGlobal /= ((dfloat) BP->NelementsGlobal * (dfloat)BP->Nfields * (dfloat)mesh->Np);
-#endif
-
-  // q[n] = q[n] - qmeanGlobal
+  qmeanGlobal /= ((dfloat) BP->NelementsGlobal * BP->Nfields*mesh->Np);
   mesh->addScalarKernel(BP->Nfields*BP->fieldOffset, -qmeanGlobal, o_q);
 }
 
@@ -267,62 +234,18 @@ dfloat AxOperator(BP_t* BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
   return pAp;
 }
 
-dfloat BPWeightedNorm2(BP_t* BP, occa::memory &o_w, occa::memory &o_a)
-{
-  setupAide &options = BP->options;
-
-  mesh_t* mesh = BP->mesh;
-  dfloat* tmp = BP->tmp;
-  dlong Nblock = BP->Nblock;
-  dlong Nblock2 = BP->Nblock2;
-  dlong Ntotal = mesh->Nelements * mesh->Np;
-
-  occa::memory &o_tmp = BP->o_tmp;
-  occa::memory &o_tmp2 = BP->o_tmp2;
-
-  if(BP->Nfields == 1)
-    BP->weightedNorm2Kernel(Ntotal, o_w, o_a, o_tmp);
-  else
-    BP->weightedMultipleNorm2Kernel(Ntotal, Ntotal, o_w, o_a, o_tmp);
-
-  /* add a second sweep if Nblock>Ncutoff */
-  dlong Ncutoff = 1000;
-  dlong Nfinal;
-  if(Nblock > Ncutoff) {
-    mesh->sumKernel(Nblock, o_tmp, o_tmp2);
-    o_tmp2.copyTo(tmp, Nblock2*sizeof(dfloat));
-    Nfinal = Nblock2;
-  }else {
-    o_tmp.copyTo(tmp, Nblock*sizeof(dfloat));
-    Nfinal = Nblock;
-  }
-
-  dfloat wa2 = 0;
-  for(dlong n = 0; n < Nfinal; ++n)
-    wa2 += tmp[n];
-
-  dfloat globalwa2 = 0;
-  MPI_Allreduce(&wa2, &globalwa2, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
-
-  return globalwa2;
-}
-
 dfloat BPWeightedInnerProduct(BP_t* BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b)
 {
   mesh_t* mesh = BP->mesh;
   setupAide &options = BP->options;
 
   dlong Nblock = BP->Nblock;
-  dlong Nblock2 = BP->Nblock2;
   dlong Ntotal = mesh->Nelements * mesh->Np;
 
   occa::memory &o_tmp = BP->o_tmp;
   occa::memory &o_tmp2 = BP->o_tmp2;
 
-  if(BP->Nfields == 1)
-    BP->weightedInnerProduct2Kernel(Ntotal, o_w, o_a, o_b, o_tmp);
-  else
-    BP->weightedMultipleInnerProduct2Kernel(Ntotal, BP->fieldOffset, o_w, o_a, o_b, o_tmp);
+  BP->weightedMultipleInnerProduct2Kernel(Ntotal, BP->fieldOffset, o_w, o_a, o_b, o_tmp);
 
   int serial = options.compareArgs("THREAD MODEL", "SERIAL");
   int omp = options.compareArgs("THREAD MODEL", "OPENMP");
@@ -332,19 +255,8 @@ dfloat BPWeightedInnerProduct(BP_t* BP, occa::memory &o_w, occa::memory &o_a, oc
     o_tmp.copyTo(BP->tmp, sizeof(dfloat));
     wab = BP->tmp[0];
   } else {
-    /* add a second sweep if Nblock>Ncutoff */
-    dlong Ncutoff = 8000;
-    dlong Nfinal;
-    if(Nblock > Ncutoff) {
-      mesh->sumKernel(Nblock, o_tmp, o_tmp2);
-      o_tmp2.copyTo(BP->tmp, Nblock2*sizeof(dfloat));
-      Nfinal = Nblock2;
-    }else {
-      o_tmp.copyTo(BP->tmp, Nblock*sizeof(dfloat));
-      Nfinal = Nblock;
-    }
-
-    for(dlong n = 0; n < Nfinal; ++n)
+    o_tmp.copyTo(BP->tmp, Nblock*sizeof(dfloat));
+    for(dlong n = 0; n < Nblock; ++n)
       wab += BP->tmp[n];
   }
 
@@ -376,20 +288,18 @@ void BPWeightedInnerProduct2(BP_t* BP, occa::memory &o_w, occa::memory &o_r, occ
     wab[1] = BP->tmp[1];
   } else {
     o_tmp.copyTo(BP->tmp, 2*Nblock*sizeof(dfloat));
-
     for(dlong n = 0; n < Nblock; ++n) {
       wab[0] += BP->tmp[n];
       wab[1] += BP->tmp[n + Nblock];
     }
   }
 
-  dfloat globalwab[] = {0, 0};
+  dfloat globalwab[] = {0,0};
   MPI_Allreduce(wab, globalwab, 2, MPI_DFLOAT, MPI_SUM, mesh->comm);
   *rdotz = globalwab[0];
   *rdotr = globalwab[1];
 }
 
-// b[n] = alpha*a[n] + beta*b[n] n\in [0,Ntotal)
 void BPScaledAdd(BP_t* BP, dfloat alpha, occa::memory &o_a, dfloat beta, occa::memory &o_b)
 {
   dlong Ntotal = BP->Nfields*BP->fieldOffset;

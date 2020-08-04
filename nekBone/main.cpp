@@ -38,6 +38,9 @@ int main(int argc, char** argv)
   // start up MPI
   MPI_Init(&argc, &argv);
 
+  int rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
   if(argc != 2) {
     printf("usage: ./nekBone setupfile\n");
 
@@ -179,7 +182,7 @@ int main(int argc, char** argv)
     if(BP->profiling) {
       etime[0] = timer::query("Ax", "DEVICE:MAX");
       etime[1] = timer::query("gs", "DEVICE:MAX");
-      etime[2] = timer::query("updatePCG", "HOST:MAX");
+      etime[2] = timer::query("updatePCG", "DEVICE:MAX");
       etime[3] = timer::query("dot1", "DEVICE:MAX");
       etime[3] += timer::query("dot2", "DEVICE:MAX");
       etime[4] = timer::query("preco", "DEVICE:MAX");

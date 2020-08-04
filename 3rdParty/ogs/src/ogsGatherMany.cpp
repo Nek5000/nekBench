@@ -378,8 +378,6 @@ void occaGatherMany(const  dlong Ngather,
   
   if      ((!strcmp(type, "float"))&&(!strcmp(op, "add"))) 
     ogs::gatherManyKernel_floatAdd(Ngather, Nentries, stride, gstride, o_gatherStarts, o_gatherIds, o_v, o_gv);
-  else if ((!strcmp(type, "float"))&&(!strcmp(op, "add+self"))) 
-    ogs::gatherManyKernel_floatAddSelf(Ngather, Nentries, stride, gstride, o_gatherStarts, o_gatherIds, o_v, o_gv);
   else if ((!strcmp(type, "float"))&&(!strcmp(op, "mul"))) 
     ogs::gatherManyKernel_floatMul(Ngather, Nentries, stride, gstride, o_gatherStarts, o_gatherIds, o_v, o_gv);
   else if ((!strcmp(type, "float"))&&(!strcmp(op, "min"))) 
@@ -388,8 +386,6 @@ void occaGatherMany(const  dlong Ngather,
     ogs::gatherManyKernel_floatMax(Ngather, Nentries, stride, gstride, o_gatherStarts, o_gatherIds, o_v, o_gv);
   else if ((!strcmp(type, "double"))&&(!strcmp(op, "add"))) 
     ogs::gatherManyKernel_doubleAdd(Ngather, Nentries, stride, gstride, o_gatherStarts, o_gatherIds, o_v, o_gv);
-  else if ((!strcmp(type, "double"))&&(!strcmp(op, "add+self"))) 
-    ogs::gatherManyKernel_doubleAddSelf(Ngather, Nentries, stride, gstride, o_gatherStarts, o_gatherIds, o_v, o_gv);
   else if ((!strcmp(type, "double"))&&(!strcmp(op, "mul"))) 
     ogs::gatherManyKernel_doubleMul(Ngather, Nentries, stride, gstride, o_gatherStarts, o_gatherIds, o_v, o_gv);
   else if ((!strcmp(type, "double"))&&(!strcmp(op, "min"))) 
