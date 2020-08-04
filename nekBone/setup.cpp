@@ -387,8 +387,8 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
     };
 
   oogs_mode oogsMode = OOGS_AUTO;
-  //if(options.compareArgs("THREAD MODEL", "SERIAL")) oogsMode = OOGS_DEFAULT; 
-  //if(options.compareArgs("THREAD MODEL", "OPENMP")) oogsMode = OOGS_DEFAULT;
+  if(options.compareArgs("THREAD MODEL", "SERIAL")) oogsMode = OOGS_DEFAULT; 
+  if(options.compareArgs("THREAD MODEL", "OPENMP")) oogsMode = OOGS_DEFAULT;
   BP->ogs = (void*) oogs::setup(Ntotal,
                                 mesh->maskedGlobalIds,
                                 BP->Nfields,
