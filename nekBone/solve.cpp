@@ -76,13 +76,11 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
     if(BP->profiling) timer::tic("dot1");
     BPWeightedInnerProduct2(BP, BP->o_invDegree, o_r, o_z, &rdotz1, &rdotr);
     if(BP->profiling) timer::toc("dot1");
+    if(iter == 1) TOL = mymax(tol * tol * rdotr,tol * tol);
 
     // converged?
-    if (verbose && (mesh->rank == 0)) {
-      if(rdotr < 0) printf("WARNING CG: rdotr = %17.15lf\n", rdotr);
+    if (verbose && mesh->rank == 0)
       printf("CG: it %d r norm %12.12le alpha = %le \n", iter, sqrt(rdotr), alpha);
-    }
-    if(iter == 1) TOL = mymax(tol * tol * rdotr,tol * tol);
     if(rdotr <= TOL && !fixedIterationCountFlag) break;
 
     if(flexible) {
