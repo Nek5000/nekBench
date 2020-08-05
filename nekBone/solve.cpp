@@ -43,19 +43,14 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
   mesh_t* mesh = BP->mesh;
   setupAide options = BP->options;
 
+  const int flexible = options.compareArgs("KRYLOV SOLVER", "FLEXIBLE");
+  const int verbose = options.compareArgs("VERBOSE", "TRUE");
   int fixedIterationCountFlag = 0;
-  int flexible = options.compareArgs("KRYLOV SOLVER", "FLEXIBLE");
-  int verbose = options.compareArgs("VERBOSE", "TRUE");
-
   if(options.compareArgs("FIXED ITERATION COUNT", "TRUE"))
     fixedIterationCountFlag = 1;
 
-  int iter;
-
   dfloat rdotz1 = 1;
   dfloat rdotz2 = 0;
-  dfloat rdotr;
-
   dfloat alpha = 0, beta = 0;
   dfloat TOL;
 
@@ -71,11 +66,13 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
   if(options.compareArgs("PRECONDITIONER", "JACOBI")) updateJacobi(BP, o_lambda, BP->o_invDiagA);
   if(BP->profiling) timer::toc("preco");
 
+  int iter;
   for(iter = 1; iter <= MAXIT; ++iter) {
     BPPreconditioner(BP, o_lambda, o_r, o_z);
     rdotz2 = rdotz1;
 
     // dot(r,z) + dot(r,r)
+    dfloat rdotr;  
     if(BP->profiling) timer::tic("dot1");
     BPWeightedInnerProduct2(BP, BP->o_invDegree, o_r, o_z, &rdotz1, &rdotr);
     if(BP->profiling) timer::toc("dot1");
@@ -184,13 +181,12 @@ dfloat AxOperator(BP_t* BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
   setupAide &options = BP->options;
   oogs_t* ogs = (oogs_t*) BP->ogs;
   occa::kernel &kernel = BP->BPKernel[0];
-  const dlong fieldOffset = BP->fieldOffset;
 
   if(BP->overlap) {
     if(BP->profiling) timer::tic("Ax1");
     if(mesh->NglobalGatherElements)
       kernel(mesh->NglobalGatherElements,
-             fieldOffset,
+             BP->fieldOffset,
              mesh->o_globalGatherElementList,
              mesh->o_ggeo,
              mesh->o_D,
@@ -203,7 +199,7 @@ dfloat AxOperator(BP_t* BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
     oogs::start(o_Aq, BP->Nfields, BP->fieldOffset, ogsDfloat, ogsAdd, ogs);
     if(BP->profiling) timer::tic("Ax2");
     kernel(mesh->NlocalGatherElements,
-           fieldOffset,
+           BP->fieldOffset,
            mesh->o_localGatherElementList,
            mesh->o_ggeo,
            mesh->o_D,
@@ -215,7 +211,7 @@ dfloat AxOperator(BP_t* BP, occa::memory &o_lambda, occa::memory &o_q, occa::mem
     if(BP->profiling) timer::toc("AxGs");
   } else {
     if(BP->profiling) timer::tic("Ax");
-    kernel(mesh->Nelements, fieldOffset, mesh->o_ggeo, mesh->o_D, o_lambda, o_q, o_Aq);
+    kernel(mesh->Nelements, BP->fieldOffset, mesh->o_ggeo, mesh->o_D, o_lambda, o_q, o_Aq);
     if(BP->profiling) timer::toc("Ax");
 
     if(BP->profiling) timer::tic("gs");
@@ -238,70 +234,56 @@ dfloat BPWeightedInnerProduct(BP_t* BP, occa::memory &o_w, occa::memory &o_a, oc
 {
   mesh_t* mesh = BP->mesh;
   setupAide &options = BP->options;
+  const int serial = options.compareArgs("THREAD MODEL", "SERIAL");
+  const int omp = options.compareArgs("THREAD MODEL", "OPENMP");
+  const dlong Ntotal = mesh->Nelements * mesh->Np;
 
-  dlong Nblock = BP->Nblock;
-  dlong Ntotal = mesh->Nelements * mesh->Np;
-
-  occa::memory &o_tmp = BP->o_tmp;
-  occa::memory &o_tmp2 = BP->o_tmp2;
-
-  BP->weightedMultipleInnerProduct2Kernel(Ntotal, BP->fieldOffset, o_w, o_a, o_b, o_tmp);
-
-  int serial = options.compareArgs("THREAD MODEL", "SERIAL");
-  int omp = options.compareArgs("THREAD MODEL", "OPENMP");
+  BP->weightedMultipleInnerProduct2Kernel(Ntotal, BP->fieldOffset, o_w, o_a, o_b, BP->o_tmp);
 
   dfloat wab = 0;
   if(serial || omp) {
-    o_tmp.copyTo(BP->tmp, sizeof(dfloat));
+    BP->o_tmp.copyTo(BP->tmp, sizeof(dfloat));
     wab = BP->tmp[0];
   } else {
-    o_tmp.copyTo(BP->tmp, Nblock*sizeof(dfloat));
-    for(dlong n = 0; n < Nblock; ++n)
+    BP->o_tmp.copyTo(BP->tmp, BP->Nblock*sizeof(dfloat));
+    for(dlong n = 0; n < BP->Nblock; ++n)
       wab += BP->tmp[n];
   }
 
-  dfloat globalwab = 0;
-  MPI_Allreduce(&wab, &globalwab, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
-
-  return globalwab;
+  MPI_Allreduce(MPI_IN_PLACE, &wab, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
+  return wab;
 }
 
 void BPWeightedInnerProduct2(BP_t* BP, occa::memory &o_w, occa::memory &o_r, occa::memory &o_z, dfloat *rdotz, dfloat *rdotr)
 {
   mesh_t* mesh = BP->mesh;
   setupAide &options = BP->options;
+  const int serial = options.compareArgs("THREAD MODEL", "SERIAL");
+  const int omp = options.compareArgs("THREAD MODEL", "OPENMP");
+  const dlong Ntotal = mesh->Nelements * mesh->Np;
 
-  dlong Nblock = BP->Nblock;
-  dlong Ntotal = mesh->Nelements * mesh->Np;
-
-  occa::memory &o_tmp = BP->o_tmp;
-
-  BP->weightedInnerProductUpdateKernel(Ntotal, BP->fieldOffset, Nblock, o_w, o_r, o_z, o_tmp);
-
-  int serial = options.compareArgs("THREAD MODEL", "SERIAL");
-  int omp = options.compareArgs("THREAD MODEL", "OPENMP");
+  BP->weightedInnerProductUpdateKernel(Ntotal, BP->fieldOffset, BP->Nblock, o_w, o_r, o_z, BP->o_tmp);
 
   dfloat wab[] = {0,0};
   if(serial || omp) {
-    o_tmp.copyTo(BP->tmp, 2*sizeof(dfloat));
+    BP->o_tmp.copyTo(BP->tmp, 2*sizeof(dfloat));
     wab[0] = BP->tmp[0];
     wab[1] = BP->tmp[1];
   } else {
-    o_tmp.copyTo(BP->tmp, 2*Nblock*sizeof(dfloat));
-    for(dlong n = 0; n < Nblock; ++n) {
+    BP->o_tmp.copyTo(BP->tmp, 2*BP->Nblock*sizeof(dfloat));
+    for(dlong n = 0; n < BP->Nblock; ++n) {
       wab[0] += BP->tmp[n];
-      wab[1] += BP->tmp[n + Nblock];
+      wab[1] += BP->tmp[n + BP->Nblock];
     }
   }
 
-  dfloat globalwab[] = {0,0};
-  MPI_Allreduce(wab, globalwab, 2, MPI_DFLOAT, MPI_SUM, mesh->comm);
-  *rdotz = globalwab[0];
-  *rdotr = globalwab[1];
+  MPI_Allreduce(MPI_IN_PLACE, wab, 2, MPI_DFLOAT, MPI_SUM, mesh->comm);
+  *rdotz = wab[0];
+  *rdotr = wab[1];
 }
 
 void BPScaledAdd(BP_t* BP, dfloat alpha, occa::memory &o_a, dfloat beta, occa::memory &o_b)
 {
-  dlong Ntotal = BP->Nfields*BP->fieldOffset;
+  const dlong Ntotal = BP->Nfields*BP->fieldOffset;
   BP->scaledAddKernel(Ntotal, alpha, o_a, beta, o_b);
 }

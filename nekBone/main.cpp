@@ -164,7 +164,7 @@ int main(int argc, char** argv)
     if(BP->BPid) gbytesAx += 2 * BP->Nfields*Nlocal;
     const double gbytesDot = (2 * BP->Nfields + 1) * Nlocal;
     const double gbytesPupdate = 4 * BP->Nfields*Nlocal;
-    const double NGbytes = (gbytesPrecon + gbytesScaledAdd + gbytesAx + 2 * gbytesDot +  gbytesPupdate) * (sizeof(dfloat) / 1.e9);
+    const double NGbytes = (gbytesPrecon + gbytesScaledAdd + gbytesAx + 3 * gbytesDot +  gbytesPupdate) * (sizeof(dfloat) / 1.e9);
     double bw = (it * NGbytes)/elapsed;
     MPI_Allreduce(MPI_IN_PLACE, &bw, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 
@@ -173,8 +173,8 @@ int main(int argc, char** argv)
     double flopsAx = BP->Nfields*Nlocal * 12 * mesh->Nq + 15 * BP->Nfields*Nlocal;
     if(!BP->BPid) flopsAx += 5 * BP->Nfields*Nlocal;
     const double flopsDot = 3 * BP->Nfields*Nlocal;
-    const double flopsPupdate = 7 * BP->Nfields*Nlocal;
-    const double flops = flopsPrecon + flopsScaledAdd + flopsAx + 2 * flopsDot + flopsPupdate;
+    const double flopsPupdate = 4 * BP->Nfields*Nlocal;
+    const double flops = flopsPrecon + flopsScaledAdd + flopsAx + 3*flopsDot + flopsPupdate;
     double gFlops = (it * flops)/elapsed/1e9;
     MPI_Allreduce(MPI_IN_PLACE, &gFlops, 1, MPI_DFLOAT, MPI_SUM, mesh->comm);
 

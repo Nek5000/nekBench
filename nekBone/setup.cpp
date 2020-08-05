@@ -173,9 +173,6 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
 
   BP->o_tmp2 = mesh->device.malloc(Nblock2 * sizeof(dfloat), BP->tmp);
 
-  BP->tmpNormr = (dfloat*) calloc(BP->NblocksUpdatePCG,sizeof(dfloat));
-  BP->o_tmpNormr = mesh->device.malloc(BP->NblocksUpdatePCG * sizeof(dfloat), BP->tmpNormr);
-
   //setup async halo stream
   BP->defaultStream = mesh->defaultStream;
   BP->stream1 = mesh->device.createStream();
@@ -207,15 +204,9 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
   BP->NelementsGlobal = NelementsGlobal;
 
   //check all the bounaries for a Dirichlet
-  bool allNeumann = (BP->lambda1 == 0) ? true :false;
-  BP->allNeumannPenalty = 1.;
-  hlong localElements = (hlong) mesh->Nelements;
-  hlong totalElements = 0;
-  MPI_Allreduce(&localElements, &totalElements, 1, MPI_HLONG, MPI_SUM, mesh->comm);
-  BP->allNeumannScale = 1. / sqrt((dfloat)mesh->Np * totalElements);
-
   BP->EToB = (int*) calloc(mesh->Nelements * mesh->Nfaces,sizeof(int));
 
+  bool allNeumann = (BP->lambda1 == 0) ? true :false;
   int lallNeumann, gallNeumann;
   lallNeumann = allNeumann ? 0:1;
   MPI_Allreduce(&lallNeumann, &gallNeumann, 1, MPI_INT, MPI_SUM, mesh->comm);
@@ -294,20 +285,6 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
       kernelInfo["defines/" "p_NpP"] = (mesh->Np + mesh->Nfp * mesh->Nfaces);
       kernelInfo["defines/" "p_Nverts"] = mesh->Nverts;
 
-      int Nmax = mymax(mesh->Np, mesh->Nfaces * mesh->Nfp);
-      int maxNodes = mymax(mesh->Np, (mesh->Nfp * mesh->Nfaces));
-      int NblockV = mymax(1,maxNthreads / mesh->Np);
-      int NnodesV = 1; //hard coded for now
-      int NblockS = mymax(1,maxNthreads / maxNodes);
-      int NblockP = mymax(1,maxNthreads / (4 * mesh->Np));
-
-      kernelInfo["defines/" "p_Nmax"] = Nmax;
-      kernelInfo["defines/" "p_maxNodes"] = maxNodes;
-      kernelInfo["defines/" "p_NblockV"] = NblockV;
-      kernelInfo["defines/" "p_NnodesV"] = NnodesV;
-      kernelInfo["defines/" "p_NblockS"] = NblockS;
-      kernelInfo["defines/" "p_NblockP"] = NblockP;
-
       BP->BPKernel = (occa::kernel*) new occa::kernel[1];
 
       occa::properties props = kernelInfo;
@@ -337,9 +314,9 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
     kernelName += "Partial";
   if(BP->BPid)
     kernelName += "_bk";
-  if(BP->Nfields > 1) kernelName += "_n" + std::to_string(BP->Nfields);
+  if(BP->Nfields > 1) 
+    kernelName += "_n" + std::to_string(BP->Nfields);
   kernelName += "_v" + std::to_string(knlId);
-
   BP->BPKernel[0] = loadAxKernel(mesh->device,
                                  threadModel,
                                  arch,
@@ -347,21 +324,6 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
                                  mesh->N,
                                  mesh->Nelements);
 
-  dfloat nullProjectWeightLocal = 0;
-  dfloat nullProjectWeightGlobal = 0;
-  for(dlong n = 0; n < BP->Nblock; ++n)
-    nullProjectWeightLocal += BP->tmp[n];
-
-  MPI_Allreduce(&nullProjectWeightLocal,
-                &nullProjectWeightGlobal,
-                1,
-                MPI_DFLOAT,
-                MPI_SUM,
-                mesh->comm);
-
-  BP->nullProjectWeightGlobal = 1. / nullProjectWeightGlobal;
-
-  //use the masked ids to make another gs handle
 /*
   BP->ogs = ogsSetup(Ntotal, mesh->maskedGlobalIds, mesh->comm, 1, mesh->device);
   BP->o_invDegree = ((ogs_t*)BP->ogs)->o_invDegree;
@@ -401,10 +363,4 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
                                 oogsMode);
 
   BP->o_invDegree = ((oogs_t*)BP->ogs)->ogs->o_invDegree;
-
-/*
-  if(options.compareArgs("DISABLE HALOGS", "TRUE")) {
-    ((oogs_t*)BP->ogs)->ogs->NhaloGather = 0;
-  }
-*/
 }
