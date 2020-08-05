@@ -157,7 +157,7 @@ int main(int argc, char** argv)
     MPI_Allreduce(MPI_IN_PLACE, &globalNdofs, 1, MPI_HLONG, MPI_SUM, mesh->comm);
     const double gDOFs = BP->Nfields * (it * (globalNdofs / elapsed)) / 1.e9;
 
-    const int Nlocal = mesh->Np * mesh->Nelements;
+    const double Nlocal = mesh->Np * mesh->Nelements;
     const double gbytesPrecon = BP->Nfields*Nlocal;
     const double gbytesScaledAdd = 2. * BP->Nfields*Nlocal;
     double gbytesAx = (7 + 2 * BP->Nfields) * Nlocal;
@@ -170,7 +170,7 @@ int main(int argc, char** argv)
 
     const double flopsPrecon = 0;
     const double flopsScaledAdd = 2 * BP->Nfields*Nlocal;
-    double flopsAx = BP->Nfields*Nlocal * 12 * mesh->Nq + 15 * BP->Nfields*Nlocal;
+    double flopsAx = BP->Nfields*Nlocal*(12*mesh->Nq + 15);
     if(!BP->BPid) flopsAx += 5 * BP->Nfields*Nlocal;
     const double flopsDot = 3 * BP->Nfields*Nlocal;
     const double flopsPupdate = 4 * BP->Nfields*Nlocal;
