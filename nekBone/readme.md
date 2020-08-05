@@ -25,29 +25,30 @@ Note, set env-var `OGS_MPI_SUPPORT=1` to enable GPU aware MPI support.
 ```
 >mpirun -np 1 -bind-to core ./nekBone nekBone.ini
 
+active occa mode: CUDA
 BP mode enabled
 overlap disabled
 Compiling GatherScatter Kernels...done.
 gs_setup: 0 unique labels shared
-   handle bytes (avg, min, max): 2.70722e+07 27072220 27072220
+   handle bytes (avg, min, max): 2.77219e+07 27721948 27721948
    buffer bytes (avg, min, max): 0 0 0
 gs_setup: 0 unique labels shared
-   handle bytes (avg, min, max): 2.70722e+07 27072220 27072220
+   handle bytes (avg, min, max): 2.77219e+07 27721948 27721948
    buffer bytes (avg, min, max): 0 0 0
-setup done: bytes allocated = 1614529640
-correctness check: maxError = 2.99848e-08 in 48 iterations
+setup done: bytes allocated = 1653409376
+correctness check: maxError = 1.02763e-07 in 78 iterations
 
 running solver ... done
 
 summary
   MPItasks     : 1
   polyN        : 7
-  Nelements    : 8000
+  Nelements    : 8192
   Nfields      : 1
   iterations   : 5000
   Nrepetitions : 1
-  elapsed time : 6.8114 s
-  throughput   : 2.01427 GDOF/s/iter
-  bandwidth    : 577.291 GB/s
-  GFLOPS/s     : 378.847
+  elapsed time : 6.71864 s
+  throughput   : 2.09109 GDOF/s/iter
+  bandwidth    : 599.308 GB/s
+  GFLOPS/s     : 393.296
 ```
