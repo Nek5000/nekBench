@@ -30,7 +30,7 @@
                        const dfloat alpha,
                        @restrict dfloat*  y)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       y[n] += alpha;
 }
@@ -39,7 +39,7 @@
                        const dfloat alpha,
                        @restrict dfloat*  y)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       y[n]  = alpha;
 }
@@ -49,7 +49,7 @@
                        @restrict const dfloat*  w,
                        @restrict dfloat*  viw)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       viw [n] = v[n] / w[n];
 }
@@ -59,7 +59,7 @@
                             @restrict const dfloat*  v,
                             @restrict dfloat*  z)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       z[n] += w[n] * v[n];
 }
@@ -69,7 +69,7 @@
                          @restrict const dfloat*  v,
                          @restrict dfloat*  wv)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       wv [n] = w[n] * v[n];
 }
@@ -128,7 +128,7 @@
                   @restrict const dlong*  maskIds,
                   @restrict dfloat*  q)
 {
-  for(dlong n = 0; n < Nmasked; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < Nmasked; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < Nmasked)
       q[maskIds[n]] = 0.;
 }
@@ -189,7 +189,7 @@
                        const dfloat beta,
                        @restrict dfloat*  y)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       y[n] = alpha * x[n] + beta * y[n];
 }
@@ -202,7 +202,7 @@
                               const dlong destOffset,
                               @restrict dfloat*  y)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       y[n + destOffset] = alpha * x[n + sourceOffset] + beta * y[n + destOffset];
 }
@@ -210,6 +210,7 @@
 //partially sum the entries of a vector using a block-wise reductions
 
 @kernel void sum(const dlong N,
+                 const dlong offset,
                  @restrict const dfloat*  x,
                  @restrict dfloat*  sx)
 {
@@ -218,7 +219,14 @@
 
     for(int t = 0; t < p_blockSize; ++t; @inner(0)) {
       const dlong id = t + b * p_blockSize;
-      s_sx[t] = (id < N) ? x[id] : 0.f;
+      dfloat res = 0;
+      if(id < N) {
+        for(int fld = 0; fld < p_Nfields; ++fld) {
+          const dlong iid = id + fld * offset;
+          res += x[iid];
+        }
+      }
+      s_sx[t] = res;
     }
 
     @barrier("local");
@@ -372,7 +380,7 @@
       dfloat res = 0;
       if(id < N)
         for(int fld = 0; fld < p_Nfields; ++fld)
-          res +=  x[id + offset * fld] * y[id + offset * fld];
+          res +=  x[id + offset * 0] * y[id + offset * fld];
       s_wxy[t] = res;
     }
 
@@ -417,7 +425,6 @@
       dfloat res = 0;
       if(id < N) {
         dfloat wid = w[id];
-
         for(int fld = 0; fld < p_Nfields; ++fld)
           res +=  wid * x[id + offset * fld] * y[id + offset * fld];
       }
@@ -619,10 +626,9 @@
                       const dfloat fac,
                       @restrict dfloat* v) /* Array of vector data */
 {
-  for (dlong n = 0; n < N; n += p_blockSize; @outer(0))
-    for (dlong i = n; i < (n + p_blockSize); i++; @inner(0))
-      if (i < N)
-        v[i] *= fac;
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
+      if (n < N)
+        v[n] *= fac;
 }
 
 // in place scale by scalar
@@ -676,4 +682,126 @@
         for(int fld = 0; fld < p_Nfields; ++fld)
           sv[i + N * fld] = v[id + offset * fld];
       }
+}
+
+@kernel void weightedInnerProductUpdate(const dlong N,
+                                        const dlong offset,
+                                        const dlong Nblock,
+                                        @restrict const  dfloat *  w,
+                                        @restrict const  dfloat *  x,
+                                        @restrict const  dfloat *  y,
+                                        @restrict dfloat *  wxy){
+  
+  for(int b=0;b<Nblock;++b;@outer(0)){
+    @shared volatile dfloat s_wxy[2*p_blockSize];
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)){
+      const int id = t + p_blockSize*b;
+
+      dfloat xx = 0;
+      dfloat xy = 0;
+      if(id<N) {
+        const dfloat wid = w[id];
+        for(int fld = 0; fld < p_Nfields; ++fld) {
+          const dlong iid = id + fld * offset;
+          xy += wid*x[iid]*y[iid];
+          xx += wid*x[iid]*x[iid];
+        }
+      }
+      s_wxy[t+0*p_blockSize] = xy;  
+      s_wxy[t+1*p_blockSize] = xx;  
+    }
+
+    @barrier("local");
+
+#if p_blockSize>512
+    
+    for(int t=0;t<p_blockSize;++t;@inner(0)) {
+      if(t<512) {
+        s_wxy[t+0*p_blockSize] += s_wxy[t+0*p_blockSize+512];
+        s_wxy[t+1*p_blockSize] += s_wxy[t+1*p_blockSize+512];
+      }
+    }
+    @barrier("local");
+
+#endif
+#if p_blockSize>256
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) {
+      if(t<256) {
+        s_wxy[t+0*p_blockSize] += s_wxy[t+0*p_blockSize+256];
+        s_wxy[t+1*p_blockSize] += s_wxy[t+1*p_blockSize+256];
+      }
+    }
+    @barrier("local");
+
+#endif
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) {
+      if(t<128) {
+        s_wxy[t+0*p_blockSize] += s_wxy[t+0*p_blockSize+128];
+        s_wxy[t+1*p_blockSize] += s_wxy[t+1*p_blockSize+128];
+      }
+    }
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) {
+      if(t<64) {
+        s_wxy[t+0*p_blockSize] += s_wxy[t+0*p_blockSize+64];
+        s_wxy[t+1*p_blockSize] += s_wxy[t+1*p_blockSize+64];
+      }
+    }
+    @barrier("local");
+
+    for(int t=0;t<p_blockSize;++t;@inner(0)) {
+      if(t<32) {
+        s_wxy[t+0*p_blockSize] += s_wxy[t+0*p_blockSize+32];
+        s_wxy[t+1*p_blockSize] += s_wxy[t+1*p_blockSize+32];
+      }
+    }
+    for(int t=0;t<p_blockSize;++t;@inner(0)) {
+      if(t<16) {
+        s_wxy[t+0*p_blockSize] += s_wxy[t+0*p_blockSize+16];
+        s_wxy[t+1*p_blockSize] += s_wxy[t+1*p_blockSize+16];
+      }
+    }
+    for(int t=0;t<p_blockSize;++t;@inner(0)) {
+      if(t<8) {
+        s_wxy[t+0*p_blockSize] += s_wxy[t+0*p_blockSize+8];
+        s_wxy[t+1*p_blockSize] += s_wxy[t+1*p_blockSize+8];
+      }
+    }
+    for(int t=0;t<p_blockSize;++t;@inner(0)) {
+      if(t<4) {
+        s_wxy[t+0*p_blockSize] += s_wxy[t+0*p_blockSize+4];
+        s_wxy[t+1*p_blockSize] += s_wxy[t+1*p_blockSize+4];
+      }
+    }
+    for(int t=0;t<p_blockSize;++t;@inner(0)) {
+      if(t<2) {
+        s_wxy[t+0*p_blockSize] += s_wxy[t+0*p_blockSize+2];
+        s_wxy[t+1*p_blockSize] += s_wxy[t+1*p_blockSize+2];
+      }
+    }
+    for(int t=0;t<p_blockSize;++t;@inner(0)) {
+      if(t<1) {
+        wxy[b+0*Nblock] = s_wxy[0+0*p_blockSize] + s_wxy[1+0*p_blockSize];
+        wxy[b+1*Nblock] = s_wxy[0+1*p_blockSize] + s_wxy[1+1*p_blockSize];
+      }
+    }
+  }
+}
+
+@kernel void BPUpdatePCG(const dlong N,
+                       const dfloat alpha,
+                       @restrict const dfloat* p,
+                       @restrict const dfloat* Ap,
+                       @restrict dfloat* x,
+                       @restrict dfloat* r)
+{
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
+    if(n < N) {
+      x[n] = x[n] + alpha * p[n];
+      r[n] = r[n] - alpha * Ap[n];
+    }
 }

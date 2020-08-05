@@ -36,9 +36,6 @@
 #include "mesh.h"
 #include "timer.hpp"
 
-// block size for reduction (hard coded)
-#define blockSize 256
-
 typedef struct
 {
   hlong row;
@@ -71,16 +68,11 @@ typedef struct
   dlong Nblock;
   dlong Nblock2; // second reduction
 
-  occa::stream streamDefault;
-  occa::stream stream1;
-
   dfloat tau;
 
   int* BCType;
 
   bool allNeumann;
-  dfloat allNeumannPenalty;
-  dfloat allNeumannScale;
 
   // field
   dfloat* q;
@@ -103,32 +95,22 @@ typedef struct
   occa::memory h_sendBuffer, h_recvBuffer;
 
   occa::stream defaultStream;
+  occa::stream stream1;
   occa::stream dataStream;
 
   occa::memory o_mapB;
   occa::memory o_q, o_x, o_r, o_lambda;
   occa::memory o_invDiagA;
 
-  occa::memory o_gr; // gathered RHS
-
   // PCG storage
   int NsolveWorkspace;
   dlong offsetSolveWorkspace;
 
   occa::memory* o_solveWorkspace;
-  occa::memory o_res;
-  occa::memory o_Sres;
   occa::memory o_tmp; // temporary
   occa::memory o_tmp2; // temporary (second reduction)
-  occa::memory o_grad; // temporary gradient storage (part of A*)
-  occa::memory o_rtmp;
   occa::memory o_invDegree;
   occa::memory o_EToB;
-  occa::memory o_R;
-  occa::memory o_Ry;
-
-  occa::memory o_EXYZ; // element vertices for reconstructing geofacs (trilinear hexes only)
-  occa::memory o_gllzw; // GLL nodes and weights
 
   occa::kernel* BPKernel;
 
@@ -159,31 +141,15 @@ typedef struct
   occa::kernel vecScaleKernel;
   occa::kernel vecCopyKernel;
 
-  occa::kernel vecAtomicGatherKernel;
-  occa::kernel vecAtomicMultipleGatherKernel;
-  occa::kernel vecAtomicInnerProductKernel;
   occa::kernel vecScatterKernel;
   occa::kernel vecMultipleScatterKernel;
 
-  // combined PCG update step
-  int NthreadsUpdatePCG;
-  dlong NblocksUpdatePCG;
-
-  dfloat* tmpNormr;
-  occa::memory o_tmpNormr;
-
-  occa::kernel updatePCGKernel, updateOverlapPCGKernel;
-  occa::kernel updateMultiplePCGKernel, updateOverlapMultiplePCGKernel;
-
-  occa::memory o_zeroAtomic;
-  occa::memory o_tmpAtomic;
-
-  dfloat* tmpAtomic;
+  occa::kernel weightedInnerProductUpdateKernel;
+  occa::kernel updatePCGKernel;
 
   occa::memory* o_pcgWork;
 
   hlong NelementsGlobal;
-  dfloat nullProjectWeightGlobal;
 }BP_t;
 
 BP_t* setup(mesh_t* mesh, occa::properties &kernelInfo, setupAide &options);
@@ -211,28 +177,11 @@ int BPPCG   (BP_t* BP,
              const int MAXIT,
              double* opElapsed);
 
-void BPScaledAdd(BP_t* BP, dfloat alpha, occa::memory &o_a, dfloat beta, occa::memory &o_b);
-
-dfloat AxOperator(BP_t* BP,
-                  occa::memory &o_lambda,
-                  occa::memory &o_q,
-                  occa::memory &o_Aq,
-                  const char* precision);
-
 void BPBuildContinuous(BP_t* BP, dfloat lambda, nonZero_t** A,
                        dlong* nnz, ogs_t** ogs, hlong* globalStarts);
 
 void BPBuildJacobi(BP_t* BP, dfloat lambda, dfloat** invDiagA);
-
-#define maxNthreads 256
-
-occa::properties BPKernelInfo(mesh_t* mesh);
-
 void BPZeroMean(BP_t* BP, occa::memory &o_q);
-
-dfloat BPNorm2(BP_t* BP, dlong Ntotal, dlong offset, occa::memory &o_a);
-dfloat BPInnerProduct(BP_t* BP, dlong Ntotal, dlong offset, occa::memory &o_a, occa::memory &o_b);
-
-dfloat BPAtomicInnerProduct(BP_t* BP, dlong N, occa::memory &o_a, occa::memory &o_b);
+occa::properties BPKernelInfo(mesh_t* mesh);
 
 #endif

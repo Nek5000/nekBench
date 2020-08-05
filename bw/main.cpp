@@ -115,7 +115,7 @@ int main(int argc, char** argv)
 
   {
     const int N[] =
-    {1, 4000, 8000, 50000, 100000, 150000, 300000, 2000 * 512, 4000 * 512, 8000 * 512};
+    {1, 4000, 2000, 8000, 16000, 50000, 100000, 150000, 300000, 2000 * 512, 4000 * 512, 8000 * 512};
     const int Nsize = sizeof(N) / sizeof(int);
     const int nWords = N[sizeof(N) / sizeof(N[0]) - 1];
     props["mapped"] = true;

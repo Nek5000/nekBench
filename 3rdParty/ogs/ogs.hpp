@@ -247,18 +247,21 @@ typedef struct {
   occa::memory o_scatterOffsets, o_gatherOffsets;
   occa::memory o_scatterIds, o_gatherIds;
 
+  occa::kernel packBufDoubleKernel, unpackBufDoubleKernel;
+  occa::kernel packBufFloatKernel, unpackBufFloatKernel;
+
   oogs_mode mode;
 
 } oogs_t;
 
 namespace oogs{
 
-void gatherScatter(void *v, const char *type, const char *op, oogs_t *h);
-void gatherScatter(occa::memory o_v, const char *type, const char *op, oogs_t *h);
-void start(occa::memory o_v, const char *type, const char *op, oogs_t *h);
-void finish(occa::memory o_v, const char *type, const char *op, oogs_t *h);
-oogs_t *setup(dlong N, hlong *ids, const char *type, MPI_Comm &comm,
+void start(occa::memory o_v, const int k, const dlong stride, const char *type, const char *op, oogs_t *h);
+void finish(occa::memory o_v, const int k, const dlong stride, const char *type, const char *op, oogs_t *h);
+oogs_t *setup(ogs_t *ogs, int nVec, dlong stride, const char *type, std::function<void()> callback, oogs_mode gsMode);
+oogs_t *setup(dlong N, hlong *ids, const int k, const dlong stride, const char *type, MPI_Comm &comm,
               int verbose, occa::device device, std::function<void()> callback, oogs_mode mode);
+void destroy(oogs_t *h);
 
 }
 

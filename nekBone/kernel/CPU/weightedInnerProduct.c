@@ -42,17 +42,43 @@ void weightedInnerProduct2(const dlong & N,
 extern "C"
 void weightedMultipleInnerProduct2(const dlong & N,
                                    const dlong & offset,
-                                   dfloat* __restrict__ cpu_w,
-                                   dfloat* __restrict__ cpu_a,
-                                   dfloat* __restrict__ cpu_b,
+                                   const dfloat* __restrict__ cpu_w,
+                                   const dfloat* __restrict__ cpu_a,
+                                   const dfloat* __restrict__ cpu_b,
                                    dfloat* __restrict__ cpu_wab )
 {
   dfloat wab = 0;
   for(dlong fld = 0; fld < p_Nfields; ++fld) {
 #pragma omp parallel for reduction(+: wab)
-    for(dlong id = 0; id < N;
-        ++id) wab += cpu_a[id + fld * offset] * cpu_b[id + fld * offset] * cpu_w[id + fld * offset];
+    for(dlong id = 0; id < N; ++id) {
+      const dlong iid = id + fld * offset;
+      wab += cpu_a[iid] * cpu_b[iid] * cpu_w[id];
+    }
   }
 
   cpu_wab[0] = wab;
+}
+
+
+extern "C"
+void weightedInnerProductUpdate(const dlong & N,
+                                const dlong & offset,
+                                const dlong & Nblock,
+                                const dfloat* __restrict__  cpu_w,
+                                const dfloat* __restrict__  cpu_a,
+                                const dfloat* __restrict__  cpu_b,
+                                dfloat* __restrict__  cpu_wab)
+{
+  dfloat wab[] = {0, 0};
+  for(dlong fld = 0; fld < p_Nfields; ++fld) {
+#pragma omp parallel for reduction(+: wab)
+    for(dlong id = 0; id < N; ++id) { 
+      const dlong iid = id + fld * offset;
+      wab[0] += cpu_a[iid] * cpu_b[iid] * cpu_w[id];
+      wab[1] += cpu_a[iid] * cpu_a[iid] * cpu_w[id];
+    }
+  }
+
+  cpu_wab[0] = wab[0];
+  cpu_wab[1] = wab[1];
 }
