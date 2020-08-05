@@ -94,8 +94,7 @@ static void _ogsHostGatherScatterMany(occa::memory o_halo, int nVec,
   const unsigned transpose = 0;
   const unsigned recv = 0^transpose, send = 1^transpose;
 
-  occa::kernel pack;
-  occa::kernel unpack;
+  occa::kernel pack, unpack;
 
   size_t nBytes;
   if (!strcmp(type, "float")) {
@@ -110,7 +109,6 @@ static void _ogsHostGatherScatterMany(occa::memory o_halo, int nVec,
     printf("oogs: unsupported datatype %s!\n", type);
     exit(1);
   }
-
   if (strcmp(op, "add")) {
     printf("oogs: unsupported operation %s!\n", op);
     exit(1);
@@ -161,15 +159,11 @@ static void _ogsHostGatherScatterMany(occa::memory o_halo, int nVec,
   unpack(Nhalo, nVec, gs->o_gatherOffsets, gs->o_gatherIds, gs->o_bufRecv, o_halo);
 }
 
-oogs_t* oogs::setup(dlong N, hlong *ids, int nVec, dlong stride, const char *type, MPI_Comm &comm,
-                    int verbose, occa::device device, std::function<void()> callback, oogs_mode gsMode)
+oogs_t* oogs::setup(ogs_t *ogs, int nVec, dlong stride, const char *type, std::function<void()> callback, oogs_mode gsMode)
 {
-  int rank;
-  MPI_Comm_rank(comm, &rank);
-
   oogs_t *gs = new oogs_t[1];
-  gs->ogs = ogsSetup(N, ids, comm, verbose, device); 
-  ogs_t *ogs = gs->ogs;
+  gs->ogs = ogs;
+  occa::device device = gs->ogs->device;
 
   const unsigned transpose = 0;
   struct gs_data *hgs = (gs_data*) ogs->haloGshSym;
@@ -178,6 +172,8 @@ oogs_t* oogs::setup(dlong N, hlong *ids, int nVec, dlong stride, const char *typ
   const struct pw_data *pwd = (pw_data*) execdata;
   const unsigned Nhalo = ogs->NhaloGather;
   const unsigned unit_size = nVec*sizeof(double); // hardwire just need to be big enough
+  const struct comm *comm = &hgs->comm;
+  const int rank = comm->id;
 
   if(Nhalo == 0) return gs;
 
@@ -188,7 +184,7 @@ oogs_t* oogs::setup(dlong N, hlong *ids, int nVec, dlong stride, const char *typ
       gs->packBufFloatKernel = device.buildKernel(DOGS "/okl/oogs.okl", "packBuf_float", ogs::kernelInfo);
       gs->unpackBufFloatKernel = device.buildKernel(DOGS "/okl/oogs.okl", "unpackBuf_float", ogs::kernelInfo);
     }
-    MPI_Barrier(comm);
+    MPI_Barrier(comm->c);
   }
 
   occa::properties props;
@@ -230,8 +226,13 @@ oogs_t* oogs::setup(dlong N, hlong *ids, int nVec, dlong stride, const char *typ
     if(rank == 0) printf("timing gs modes: ");
     const int Ntests = 10;
     double elapsedLast = std::numeric_limits<double>::max();
-    oogs_mode fastestMode; 
-    occa::memory o_q = device.malloc(stride*unit_size);
+    oogs_mode fastestMode;
+    occa::memory o_q;
+    if(!stride)
+      o_q = device.malloc(ogs->N*unit_size);
+    else
+      o_q = device.malloc(stride*unit_size);
+
     for (auto const& mode : oogs_mode_list)
     {
       gs->mode = mode;
@@ -240,7 +241,7 @@ oogs_t* oogs::setup(dlong N, hlong *ids, int nVec, dlong stride, const char *typ
       if(callback) callback();
       oogs::finish(o_q, nVec, stride, type, ogsAdd, gs);
       device.finish();
-      MPI_Barrier(comm);
+      MPI_Barrier(comm->c);
       const double tStart = MPI_Wtime();
       for(int test=0;test<Ntests;++test) {
         oogs::start (o_q, nVec, stride, type, ogsAdd, gs);
@@ -248,13 +249,13 @@ oogs_t* oogs::setup(dlong N, hlong *ids, int nVec, dlong stride, const char *typ
         oogs::finish(o_q, nVec, stride, type, ogsAdd, gs);
       }
       device.finish();
-      MPI_Barrier(comm);
+      MPI_Barrier(comm->c);
       const double elapsed = (MPI_Wtime() - tStart)/Ntests;
       if(rank == 0) printf("%gs ", elapsed);
       if(elapsed < elapsedLast) fastestMode = gs->mode;
       elapsedLast = elapsed;
     }
-    MPI_Bcast(&fastestMode, 1, MPI_INT, 0, comm);
+    MPI_Bcast(&fastestMode, 1, MPI_INT, 0, comm->c);
     gs->mode = fastestMode;
     o_q.free();
   } else {
@@ -263,6 +264,13 @@ oogs_t* oogs::setup(dlong N, hlong *ids, int nVec, dlong stride, const char *typ
   if(rank == 0) printf("\nused mode: %d\n", gs->mode);
 
   return gs; 
+}
+
+oogs_t* oogs::setup(dlong N, hlong *ids, int nVec, dlong stride, const char *type, MPI_Comm &comm,
+                    int verbose, occa::device device, std::function<void()> callback, oogs_mode gsMode)
+{
+  ogs_t *ogs  = ogsSetup(N, ids, comm, verbose, device);
+  return setup(ogs, nVec, stride, type, callback, gsMode);
 }
 
 void oogs::start(occa::memory o_v, const int k, const dlong stride, const char *type, const char *op, oogs_t *gs) 
@@ -349,8 +357,7 @@ void oogs::finish(occa::memory o_v, const int k, const dlong stride, const char 
 
 void oogs::destroy(oogs_t *gs)
 {
-  ogs_t *ogs = gs->ogs;
-  ogsFree(ogs);
+  //ogsFree(gs->ogs);
 
   gs->h_buffSend.free();
   gs->h_buffRecv.free();
@@ -363,6 +370,11 @@ void oogs::destroy(oogs_t *gs)
 
   gs->o_bufRecv.free();
   gs->o_bufSend.free();
+
+  gs->packBufDoubleKernel.free(); 
+  gs->unpackBufDoubleKernel.free();
+  gs->packBufFloatKernel.free();
+  gs->unpackBufFloatKernel.free();
   
   free(gs);
 }
