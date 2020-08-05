@@ -144,6 +144,7 @@ void solveSetup(BP_t* BP, occa::properties &kernelInfo)
   dlong Nhalo  = mesh->Np * mesh->totalHaloPairs;
   dlong Nall   = (Ntotal + Nhalo) * BP->Nfields;
 
+  const int blockSize = 256;
   dlong Nblock  = mymax(1,(Ntotal + blockSize - 1) / blockSize);
   dlong Nblock2 = mymax(1,(Nblock + blockSize - 1) / blockSize);
 

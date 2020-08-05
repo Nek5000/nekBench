@@ -30,7 +30,7 @@
                        const dfloat alpha,
                        @restrict dfloat*  y)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       y[n] += alpha;
 }
@@ -39,7 +39,7 @@
                        const dfloat alpha,
                        @restrict dfloat*  y)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       y[n]  = alpha;
 }
@@ -49,7 +49,7 @@
                        @restrict const dfloat*  w,
                        @restrict dfloat*  viw)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       viw [n] = v[n] / w[n];
 }
@@ -59,7 +59,7 @@
                             @restrict const dfloat*  v,
                             @restrict dfloat*  z)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       z[n] += w[n] * v[n];
 }
@@ -69,7 +69,7 @@
                          @restrict const dfloat*  v,
                          @restrict dfloat*  wv)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       wv [n] = w[n] * v[n];
 }
@@ -128,7 +128,7 @@
                   @restrict const dlong*  maskIds,
                   @restrict dfloat*  q)
 {
-  for(dlong n = 0; n < Nmasked; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < Nmasked; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < Nmasked)
       q[maskIds[n]] = 0.;
 }
@@ -189,7 +189,7 @@
                        const dfloat beta,
                        @restrict dfloat*  y)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       y[n] = alpha * x[n] + beta * y[n];
 }
@@ -202,7 +202,7 @@
                               const dlong destOffset,
                               @restrict dfloat*  y)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N)
       y[n + destOffset] = alpha * x[n + sourceOffset] + beta * y[n + destOffset];
 }
@@ -626,7 +626,7 @@
                       const dfloat fac,
                       @restrict dfloat* v) /* Array of vector data */
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
       if (n < N)
         v[n] *= fac;
 }
@@ -799,7 +799,7 @@
                        @restrict dfloat* x,
                        @restrict dfloat* r)
 {
-  for(dlong n = 0; n < N; ++n; @tile(256,@outer,@inner))
+  for(dlong n = 0; n < N; ++n; @tile(p_blockSize,@outer,@inner))
     if(n < N) {
       x[n] = x[n] + alpha * p[n];
       r[n] = r[n] - alpha * Ap[n];

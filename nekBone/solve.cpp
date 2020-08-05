@@ -27,12 +27,18 @@
 #include "BP.hpp"
 void updateJacobi(BP_t* BP, occa::memory &o_lambda, occa::memory &o_invDiagA);
 
+static void BPScaledAdd(BP_t* BP, dfloat alpha, occa::memory &o_a, dfloat beta, occa::memory &o_b);
 static void BPPreconditioner(BP_t* BP, occa::memory &o_lambda, occa::memory &o_r, occa::memory &o_z);
 static dfloat BPWeightedInnerProduct(BP_t* BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b);
 static void BPUpdatePCG(BP_t* BP, occa::memory &o_p, occa::memory &o_Ap, dfloat alpha,
                         occa::memory &o_x, occa::memory &o_r);
 static void BPWeightedInnerProduct2(BP_t* BP, occa::memory &o_w, occa::memory &o_a, occa::memory &o_b, 
                                     dfloat *rdotz, dfloat *rdotr);
+static dfloat BPAxOperator(BP_t* BP,
+                  occa::memory &o_lambda,
+                  occa::memory &o_q,
+                  occa::memory &o_Aq,
+                  const char* precision);
 
 
 int BPPCG(BP_t* BP, occa::memory &o_lambda,
@@ -59,7 +65,7 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
   occa::memory &o_Ap  = BP->o_solveWorkspace[2];
   occa::memory &o_Ax  = BP->o_solveWorkspace[3];
 
-  dfloat pAp = AxOperator(BP, o_lambda, o_x, o_Ax, dfloatString);
+  dfloat pAp = BPAxOperator(BP, o_lambda, o_x, o_Ax, dfloatString);
   BPScaledAdd(BP, -1.f, o_Ax, 1.f, o_r);
 
   if(BP->profiling) timer::tic("preco");
@@ -93,7 +99,7 @@ int BPPCG(BP_t* BP, occa::memory &o_lambda,
 
     BPScaledAdd(BP, 1.f, o_z, beta, o_p);
 
-    pAp = AxOperator(BP, o_lambda, o_p, o_Ap, dfloatString);
+    pAp = BPAxOperator(BP, o_lambda, o_p, o_Ap, dfloatString);
 
     alpha = rdotz1 / pAp;
 
@@ -172,7 +178,7 @@ void BPPreconditioner(BP_t* BP, occa::memory &o_lambda, occa::memory &o_r, occa:
   if(BP->profiling) timer::toc("preco");
 }
 
-dfloat AxOperator(BP_t* BP, occa::memory &o_lambda, occa::memory &o_q, occa::memory &o_Aq,
+dfloat BPAxOperator(BP_t* BP, occa::memory &o_lambda, occa::memory &o_q, occa::memory &o_Aq,
                   const char* precision)
 {
   mesh_t* mesh = BP->mesh;
