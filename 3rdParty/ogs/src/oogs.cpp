@@ -237,14 +237,14 @@ oogs_t* oogs::setup(dlong N, hlong *ids, int nVec, dlong stride, const char *typ
       gs->mode = mode;
       // warum-up
       oogs::start (o_q, nVec, stride, type, ogsAdd, gs);
-      callback();
+      if(callback) callback();
       oogs::finish(o_q, nVec, stride, type, ogsAdd, gs);
       device.finish();
       MPI_Barrier(comm);
       const double tStart = MPI_Wtime();
       for(int test=0;test<Ntests;++test) {
         oogs::start (o_q, nVec, stride, type, ogsAdd, gs);
-        callback();
+        if(callback) callback();
         oogs::finish(o_q, nVec, stride, type, ogsAdd, gs);
       }
       device.finish();
