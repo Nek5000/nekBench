@@ -79,9 +79,7 @@ static void convertPwMap(const uint *restrict map,
   }
 }
 
-static void _ogsHostGatherScatterMany(occa::memory o_halo, int nVec,
-                                      const char *type, const char *op, 
-                                      oogs_t *gs)
+static void pairwiseExchange(occa::memory o_halo, int unit_size, oogs_t *gs)
 {
   ogs_t *ogs = gs->ogs;
   struct gs_data *hgs = (gs_data*) ogs->haloGshSym;
@@ -93,28 +91,6 @@ static void _ogsHostGatherScatterMany(occa::memory o_halo, int nVec,
   // hardwired for now
   const unsigned transpose = 0;
   const unsigned recv = 0^transpose, send = 1^transpose;
-
-  occa::kernel pack, unpack;
-
-  size_t nBytes;
-  if (!strcmp(type, "float")) {
-    nBytes = sizeof(float);
-    pack = gs->packBufFloatKernel;
-    unpack = gs->unpackBufFloatKernel;
-  } else if (!strcmp(type, "double")) {
-    nBytes  = sizeof(double);
-    pack = gs->packBufDoubleKernel;
-    unpack = gs->unpackBufDoubleKernel;
-  } else {
-    printf("oogs: unsupported datatype %s!\n", type);
-    exit(1);
-  }
-  if (strcmp(op, "add")) {
-    printf("oogs: unsupported operation %s!\n", op);
-    exit(1);
-  }
-
-  const size_t unit_size = nBytes*nVec;
 
   { // prepost recv
     comm_req *req = pwd->req; 
@@ -130,10 +106,8 @@ static void _ogsHostGatherScatterMany(occa::memory o_halo, int nVec,
     }
   }
 
-  pack(Nhalo, nVec, gs->o_scatterOffsets, gs->o_scatterIds, o_halo, gs->o_bufSend);
-  if(gs->mode == OOGS_HOSTMPI) {
+  if(gs->mode == OOGS_HOSTMPI)
     gs->o_bufSend.copyTo(gs->bufSend, pwd->comm[send].total*unit_size, 0, "async: true");
-  }
 
   { // pw exchange
     ogs->device.finish(); // waiting for buffers to be ready
@@ -153,10 +127,8 @@ static void _ogsHostGatherScatterMany(occa::memory o_halo, int nVec,
     MPI_Waitall(pwd->comm[send].n + pwd->comm[recv].n,pwd->req,MPI_STATUSES_IGNORE);
   }
 
-  if(gs->mode == OOGS_HOSTMPI) {
+  if(gs->mode == OOGS_HOSTMPI)
     gs->o_bufRecv.copyFrom(gs->bufRecv,pwd->comm[recv].total*unit_size, 0, "async: true");
-  }
-  unpack(Nhalo, nVec, gs->o_gatherOffsets, gs->o_gatherIds, gs->o_bufRecv, o_halo);
 }
 
 oogs_t* oogs::setup(ogs_t *ogs, int nVec, dlong stride, const char *type, std::function<void()> callback, oogs_mode gsMode)
@@ -276,14 +248,18 @@ oogs_t* oogs::setup(dlong N, hlong *ids, int nVec, dlong stride, const char *typ
 void oogs::start(occa::memory o_v, const int k, const dlong stride, const char *type, const char *op, oogs_t *gs) 
 {
   size_t Nbytes;
-  if (!strcmp(type, "float")) 
+  occa::kernel packBuf;
+  if (!strcmp(type, "float")) { 
     Nbytes = sizeof(float);
-  else if (!strcmp(type, "double")) 
+    packBuf = gs->packBufFloatKernel;
+  } else if (!strcmp(type, "double")) { 
     Nbytes = sizeof(double);
-  else if (!strcmp(type, "int")) 
+    packBuf = gs->packBufDoubleKernel;
+  } else if (!strcmp(type, "int")) { 
     Nbytes = sizeof(int);
-  else if (!strcmp(type, "long long int")) 
+  } else if (!strcmp(type, "long long int")) { 
     Nbytes = sizeof(long long int);
+  }
 
   ogs_t *ogs = gs->ogs; 
 
@@ -296,8 +272,8 @@ void oogs::start(occa::memory o_v, const int k, const dlong stride, const char *
 
   if (ogs->NhaloGather) {
     occaGatherMany(ogs->NhaloGather, k, stride, ogs->NhaloGather, ogs->o_haloGatherOffsets, ogs->o_haloGatherIds, type, op, o_v, ogs::o_haloBuf);
- 
-    ogs->device.finish(); // just in case dataStream is non-blocking 
+    if(gs->mode != OOGS_DEFAULT) packBuf(ogs->NhaloGather, k, gs->o_scatterOffsets, gs->o_scatterIds, ogs::o_haloBuf, gs->o_bufSend);
+    ogs->device.finish();
 
     if(gs->mode == OOGS_DEFAULT) {
       ogs->device.setStream(ogs::dataStream);
@@ -310,14 +286,22 @@ void oogs::start(occa::memory o_v, const int k, const dlong stride, const char *
 void oogs::finish(occa::memory o_v, const int k, const dlong stride, const char *type, const char *op, oogs_t *gs) 
 {
   size_t Nbytes;
-  if (!strcmp(type, "float")) 
+  occa::kernel unpackBuf;
+  if (!strcmp(type, "float")) { 
     Nbytes = sizeof(float);
-  else if (!strcmp(type, "double")) 
+    unpackBuf = gs->unpackBufFloatKernel;
+  } else if (!strcmp(type, "double")) { 
     Nbytes = sizeof(double);
-  else if (!strcmp(type, "int")) 
-    Nbytes = sizeof(int);
-  else if (!strcmp(type, "long long int")) 
-    Nbytes = sizeof(long long int);
+    unpackBuf = gs->unpackBufDoubleKernel;
+  } else { 
+    printf("oogs: unsupported datatype %s!\n", type);
+    exit(1);
+  }
+
+  if (strcmp(op, "add")) {
+    printf("oogs: unsupported operation %s!\n", op);
+    exit(1);
+  }
 
   ogs_t *ogs = gs->ogs; 
 
@@ -338,7 +322,7 @@ void oogs::finish(occa::memory o_v, const int k, const dlong stride, const char 
       for (int i=0;i<k;i++) H[i] = (char*)ogs::haloBuf + i*ogs->NhaloGather*Nbytes;
       ogsHostGatherScatterMany(H, k, type, op, ogs->haloGshSym);
     } else {
-      _ogsHostGatherScatterMany(ogs::o_haloBuf, k, type, op, gs);
+      pairwiseExchange(ogs::o_haloBuf, Nbytes*k, gs);
     }   
 #ifdef OGS_ENABLE_TIMER
     timer::toc("gsMPI");
@@ -346,6 +330,8 @@ void oogs::finish(occa::memory o_v, const int k, const dlong stride, const char 
  
     if(gs->mode == OOGS_DEFAULT) { 
       ogs::o_haloBuf.copyFrom(ogs::haloBuf, ogs->NhaloGather*Nbytes*k, 0, "async: true");
+    } else {
+      unpackBuf(ogs->NhaloGather, k, gs->o_gatherOffsets, gs->o_gatherIds, gs->o_bufRecv, ogs::o_haloBuf);
     }
 
     ogs->device.finish();
