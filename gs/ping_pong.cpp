@@ -301,8 +301,8 @@ static void single_latency(int nmessages, MPI_Comm comm) {
             t_start = MPI_Wtime();
 
           for(int iMessage = 0; iMessage < nmessages; ++iMessage) {
-            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_CHAR, 0, 1, comm, &rReq[iMessage]));
-            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_CHAR, 0, 1, comm, &sReq[iMessage]));
+            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_CHAR, 0, iMessage, comm, &rReq[iMessage]));
+            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_CHAR, 0, iMessage, comm, &sReq[iMessage]));
           }
 
           for(int iMessage = 0; iMessage < nmessages; ++iMessage) {
@@ -327,8 +327,8 @@ static void single_latency(int nmessages, MPI_Comm comm) {
             t_start = MPI_Wtime();
 
           for(int iMessage = 0; iMessage < nmessages; ++iMessage) {
-            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_CHAR, iRank, 1, comm, &rReq[iMessage]));
-            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_CHAR, iRank, 1, comm, &sReq[iMessage]));
+            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_CHAR, iRank, iMessage, comm, &rReq[iMessage]));
+            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_CHAR, iRank, iMessage, comm, &sReq[iMessage]));
           }
 
           for(int iMessage = 0; iMessage < nmessages; ++iMessage) {
