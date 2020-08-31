@@ -55,7 +55,7 @@ int main(int argc, char **argv)
   int Ntests = 100;
   if(argc>7) Ntests = std::stoi(argv[7]);
 
-  int pwNMessages = 100;
+  int pwNMessages = 20;
   if(argc>8) pwNMessages = std::stoi(argv[8]);
 
   int enabledTimer = 0;
