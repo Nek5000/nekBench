@@ -129,9 +129,9 @@ int pingPongSingle(int nmessages, int useDevice, occa::device device, MPI_Comm c
               printf("\n\nping pong single - ranks 1 to rank 0, useDevice: %d\n\n", useDevice);
       } else {
         if(size > 2)
-              printf("\n\nping pong pairwise exchange - ranks 1-%d to rank 0, useDevice: %d\n\n", size-1, useDevice);
+              printf("\n\nping pong pairwise exchange - ranks 1-%d to rank 0, %i messages, useDevice: %d\n\n", size-1, nmessages, useDevice);
           else
-              printf("\n\nping pong pairwise exchange - ranks 1 to rank 0, useDevice: %d\n\n", useDevice);
+              printf("\n\nping pong pairwise exchange - ranks 1 to rank 0, %i messages, useDevice: %d\n\n", nmessages, useDevice);
       }
       fflush(stdout);
     }
@@ -289,7 +289,7 @@ static void single_latency(int nmessages, MPI_Comm comm) {
 
       double latency = 0;
 
-      MPI_Request rReq[nmessages], sReq[nmessages];
+      MPI_Request allReq[2*nmessages];
 
       if(myRank == iRank) {
 
@@ -300,15 +300,12 @@ static void single_latency(int nmessages, MPI_Comm comm) {
           if(i == options.skip)
             t_start = MPI_Wtime();
 
-          for(int iMessage = 0; iMessage < nmessages; ++iMessage) {
-            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_CHAR, 0, iMessage, comm, &rReq[iMessage]));
-            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_CHAR, 0, iMessage, comm, &sReq[iMessage]));
-          }
-
-          for(int iMessage = 0; iMessage < nmessages; ++iMessage) {
-            MPI_CHECK(MPI_Wait(&rReq[iMessage], MPI_STATUS_IGNORE));
-            MPI_CHECK(MPI_Wait(&sReq[iMessage], MPI_STATUS_IGNORE));
-          }
+          for(int iMessage = 0; iMessage < nmessages; ++iMessage) 
+            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_CHAR, 0, iMessage, comm, &allReq[iMessage]));
+          for(int iMessage = 0; iMessage < nmessages; ++iMessage) 
+            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_CHAR, 0, iMessage, comm, &allReq[nmessages + iMessage]));
+          
+          MPI_CHECK(MPI_Waitall(2*nmessages, allReq, MPI_STATUSES_IGNORE));
 
         }
 
@@ -325,16 +322,13 @@ static void single_latency(int nmessages, MPI_Comm comm) {
 
           if(i == options.skip)
             t_start = MPI_Wtime();
-
-          for(int iMessage = 0; iMessage < nmessages; ++iMessage) {
-            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_CHAR, iRank, iMessage, comm, &rReq[iMessage]));
-            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_CHAR, iRank, iMessage, comm, &sReq[iMessage]));
-          }
-
-          for(int iMessage = 0; iMessage < nmessages; ++iMessage) {
-            MPI_CHECK(MPI_Wait(&rReq[iMessage], MPI_STATUS_IGNORE));
-            MPI_CHECK(MPI_Wait(&sReq[iMessage], MPI_STATUS_IGNORE));
-          }
+          
+          for(int iMessage = 0; iMessage < nmessages; ++iMessage) 
+            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_CHAR, iRank, iMessage, comm, &allReq[iMessage]));
+          for(int iMessage = 0; iMessage < nmessages; ++iMessage) 
+            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_CHAR, iRank, iMessage, comm, &allReq[nmessages + iMessage]));
+          
+          MPI_CHECK(MPI_Waitall(2*nmessages, allReq, MPI_STATUSES_IGNORE));
 
         }
 
