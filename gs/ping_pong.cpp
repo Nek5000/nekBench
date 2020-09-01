@@ -37,7 +37,7 @@ static void single_latency(int nmessages, MPI_Comm comm);
 
 // GLOBALS
 struct options_t options;
-char *s_buf, *r_buf;
+int *s_buf, *r_buf;
 
 extern "C" { // Begin C Linkage
 int pingPongMulti(int pairs, int useDevice, occa::device device, MPI_Comm comm)
@@ -62,18 +62,18 @@ int pingPongMulti(int pairs, int useDevice, occa::device device, MPI_Comm comm)
     occa::memory o_r_buf;
 
     if(useDevice) {
-      o_s_buf = device.malloc(options.max_message_size);
-      o_r_buf = device.malloc(options.max_message_size);
-      s_buf = (char*) o_s_buf.ptr();
-      r_buf = (char*) o_s_buf.ptr();
+      o_s_buf = device.malloc(options.max_message_size*sizeof(int));
+      o_r_buf = device.malloc(options.max_message_size*sizeof(int));
+      s_buf = (int*) o_s_buf.ptr();
+      r_buf = (int*) o_s_buf.ptr();
     } else {
       unsigned long align_size = sysconf(_SC_PAGESIZE);
-      posix_memalign((void**)&s_buf, align_size, options.max_message_size);
-      posix_memalign((void**)&r_buf, align_size, options.max_message_size);
+      posix_memalign((void**)&s_buf, align_size, options.max_message_size*sizeof(int));
+      posix_memalign((void**)&r_buf, align_size, options.max_message_size*sizeof(int));
     }
 
     if(rank == 0) {
-        printf("\nping pong multi - pairs: %d useDevice: %d\n", pairs, useDevice);
+        printf("\npairwise exchange multi - pairs: %d useDevice: %d\n", pairs, useDevice);
         fflush(stdout);
     }
 
@@ -111,27 +111,27 @@ int pingPongSingle(int nmessages, int useDevice, occa::device device, MPI_Comm c
     occa::memory o_r_buf;
 
     if(useDevice) {
-      o_s_buf = device.malloc(options.max_message_size*nmessages);
-      o_r_buf = device.malloc(options.max_message_size*nmessages);
-      s_buf = (char*) o_s_buf.ptr();
-      r_buf = (char*) o_s_buf.ptr();
+      o_s_buf = device.malloc(options.max_message_size*nmessages*sizeof(int));
+      o_r_buf = device.malloc(options.max_message_size*nmessages*sizeof(int));
+      s_buf = (int*) o_s_buf.ptr();
+      r_buf = (int*) o_s_buf.ptr();
     } else {
       unsigned long align_size = sysconf(_SC_PAGESIZE);
-      posix_memalign((void**)&s_buf, align_size, options.max_message_size*nmessages);
-      posix_memalign((void**)&r_buf, align_size, options.max_message_size*nmessages);
+      posix_memalign((void**)&s_buf, align_size, options.max_message_size*nmessages*sizeof(int));
+      posix_memalign((void**)&r_buf, align_size, options.max_message_size*nmessages*sizeof(int));
     }
 
     if(rank == 0) {
       if(nmessages == 1) {
           if(size > 2)
-              printf("\n\nping pong single - ranks 1-%d to rank 0, useDevice: %d\n\n", size-1, useDevice);
+              printf("\n\npairwise exchange single - ranks 1-%d to rank 0, useDevice: %d\n\n", size-1, useDevice);
           else
-              printf("\n\nping pong single - ranks 1 to rank 0, useDevice: %d\n\n", useDevice);
+              printf("\n\npairwise exchange single - rank 1 to rank 0, useDevice: %d\n\n", useDevice);
       } else {
         if(size > 2)
-              printf("\n\nping pong pairwise exchange - ranks 1-%d to rank 0, %i messages, useDevice: %d\n\n", size-1, nmessages, useDevice);
+              printf("\n\npairwise exchange - ranks 1-%d to rank 0, %i messages, useDevice: %d\n\n", size-1, nmessages, useDevice);
           else
-              printf("\n\nping pong pairwise exchange - ranks 1 to rank 0, %i messages, useDevice: %d\n\n", nmessages, useDevice);
+              printf("\n\npairwise exchange - ranks 1 to rank 0, %i messages, useDevice: %d\n\n", nmessages, useDevice);
       }
       fflush(stdout);
     }
@@ -190,8 +190,8 @@ static void multi_latency(MPI_Comm comm)
                     MPI_CHECK(MPI_Barrier(comm));
                 }
 
-                MPI_CHECK(MPI_Isend(s_buf, size, MPI_CHAR, partner, 1, comm, &sReq));
-                MPI_CHECK(MPI_Irecv(r_buf, size, MPI_CHAR, partner, 1, comm, &rReq));
+                MPI_CHECK(MPI_Isend(s_buf, size, MPI_INT, partner, 1, comm, &sReq));
+                MPI_CHECK(MPI_Irecv(r_buf, size, MPI_INT, partner, 1, comm, &rReq));
 
                 MPI_CHECK(MPI_Wait(&rReq, MPI_STATUS_IGNORE));
                 MPI_CHECK(MPI_Wait(&sReq, MPI_STATUS_IGNORE));
@@ -210,8 +210,8 @@ static void multi_latency(MPI_Comm comm)
                     MPI_CHECK(MPI_Barrier(comm));
                 }
 
-                MPI_CHECK(MPI_Irecv(r_buf, size, MPI_CHAR, partner, 1, comm, &rReq));
-                MPI_CHECK(MPI_Isend(s_buf, size, MPI_CHAR, partner, 1, comm, &sReq));
+                MPI_CHECK(MPI_Irecv(r_buf, size, MPI_INT, partner, 1, comm, &rReq));
+                MPI_CHECK(MPI_Isend(s_buf, size, MPI_INT, partner, 1, comm, &sReq));
 
                 MPI_CHECK(MPI_Wait(&rReq, MPI_STATUS_IGNORE));
                 MPI_CHECK(MPI_Wait(&sReq, MPI_STATUS_IGNORE));
@@ -229,7 +229,7 @@ static void multi_latency(MPI_Comm comm)
         avg_lat = total_lat/(double) (pairs * 2);
 
         if(0 == rank) {
-            fprintf(stdout, "%-*d%*.*f\n", 10, size, FIELD_WIDTH,
+            fprintf(stdout, "%-*d%*.*f\n", 10, size*4, FIELD_WIDTH,
                     FLOAT_PRECISION, avg_lat);
             fflush(stdout);
         }
@@ -264,7 +264,7 @@ static void single_latency(int nmessages, MPI_Comm comm) {
     char timebuffer[80];
     char buffer[80];
     strftime(timebuffer,80,"%Y_%m_%d_%R.txt", timeinfo);
-    sprintf(buffer, "pingpong_nmessages_%i_%s", nmessages, timebuffer);
+    sprintf(buffer, "pairwiseexchange_nmessages_%i_%s", nmessages, timebuffer);
     fp = fopen(buffer, "w");
     fprintf(fp, "%-10s %-10s %-10s %-10s %-10s %-15s %-15s\n", "sender", "total", "receiver", "loopcount", "n messages", "bytes", "timing");
 
@@ -300,11 +300,11 @@ static void single_latency(int nmessages, MPI_Comm comm) {
           if(i == options.skip)
             t_start = MPI_Wtime();
 
-          for(int iMessage = 0; iMessage < nmessages; ++iMessage) 
-            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_CHAR, 0, iMessage, comm, &allReq[iMessage]));
-          for(int iMessage = 0; iMessage < nmessages; ++iMessage) 
-            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_CHAR, 0, iMessage, comm, &allReq[nmessages + iMessage]));
-          
+          for(int iMessage = 0; iMessage < nmessages; ++iMessage)
+            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_INT, 0, iMessage, comm, &allReq[iMessage]));
+          for(int iMessage = 0; iMessage < nmessages; ++iMessage)
+            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_INT, 0, iMessage, comm, &allReq[nmessages + iMessage]));
+
           MPI_CHECK(MPI_Waitall(2*nmessages, allReq, MPI_STATUSES_IGNORE));
 
         }
@@ -322,12 +322,12 @@ static void single_latency(int nmessages, MPI_Comm comm) {
 
           if(i == options.skip)
             t_start = MPI_Wtime();
-          
-          for(int iMessage = 0; iMessage < nmessages; ++iMessage) 
-            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_CHAR, iRank, iMessage, comm, &allReq[iMessage]));
-          for(int iMessage = 0; iMessage < nmessages; ++iMessage) 
-            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_CHAR, iRank, iMessage, comm, &allReq[nmessages + iMessage]));
-          
+
+          for(int iMessage = 0; iMessage < nmessages; ++iMessage)
+            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_INT, iRank, iMessage, comm, &allReq[iMessage]));
+          for(int iMessage = 0; iMessage < nmessages; ++iMessage)
+            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_INT, iRank, iMessage, comm, &allReq[nmessages + iMessage]));
+
           MPI_CHECK(MPI_Waitall(2*nmessages, allReq, MPI_STATUSES_IGNORE));
 
         }
@@ -355,7 +355,7 @@ static void single_latency(int nmessages, MPI_Comm comm) {
           all_max[iSize] = avg_lat;
         all_avg[iSize] += avg_lat;
 
-        fprintf(fp, "%-10d %-10d %-10d %-10d %-10d %-15d %-15f\n", iRank, mpiSize, 0, options.iterations, nmessages, size, avg_lat);
+        fprintf(fp, "%-10d %-10d %-10d %-10d %-10d %-15d %-15f\n", iRank, mpiSize, 0, options.iterations, nmessages, size*4, avg_lat);
 
       }
 
@@ -371,7 +371,7 @@ static void single_latency(int nmessages, MPI_Comm comm) {
   if(myRank == 0) {
     printf("%-10s %-13s %-13s %-13s\n", "bytes", "average", "minimum", "maximum");
     for(int i = 0; i < loopCounter; ++i) {
-      printf("%-10d %-13f %-13f %-13f\n", all_sizes[i], all_avg[i]/((double)(mpiSize-1)), all_min[i], all_max[i]);
+      printf("%-10d %-13f %-13f %-13f\n", all_sizes[i]*4, all_avg[i]/((double)(mpiSize-1)), all_min[i], all_max[i]);
     }
     double avg_sum = 0;
     for(int i = 0; i < loopCounter; ++i)
