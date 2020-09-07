@@ -201,9 +201,11 @@ int main(int argc, char **argv)
   MPI_Barrier(mesh->comm);
   {
     const int nPairs = mesh->size/2;
+    pingPongSinglePair(0, mesh->device, mesh->comm);
     pairExchangeSingle(1, 0, mesh->device, mesh->comm);
     pairExchangeSingle(pwNMessages, 0, mesh->device, mesh->comm);
     if(enabledGPUMPI) {
+      pingPongSinglePair(1, mesh->device, mesh->comm);
       pairExchangeSingle(1, 1, mesh->device, mesh->comm);
       pairExchangeSingle(pwNMessages, 1, mesh->device, mesh->comm);
     }
