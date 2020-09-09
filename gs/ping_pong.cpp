@@ -40,7 +40,7 @@ struct options_t options;
 int *s_buf, *r_buf;
 
 extern "C" { // Begin C Linkage
-  
+
 int pingPongSinglePair(int useDevice, occa::device device, MPI_Comm comm) {
 
   int size, rank;
@@ -89,64 +89,54 @@ int pingPongSinglePair(int useDevice, occa::device device, MPI_Comm comm) {
   return EXIT_SUCCESS;
 
 }
-  
-int pairExchangeSingle(int nmessages, int useDevice, occa::device device, MPI_Comm comm)
-{
 
-    int size, rank;
-    MPI_Comm_size(comm,&size);
-    MPI_Comm_rank(comm,&rank);
+int multiPairExchange(int nmessages, int useDevice, occa::device device, MPI_Comm comm) {
 
-    options.min_message_size = 0;
-    options.max_message_size = 1 << 20;
+  int size, rank;
+  MPI_Comm_size(comm,&size);
+  MPI_Comm_rank(comm,&rank);
 
-    options.iterations = LAT_LOOP_SMALL;
-    options.skip = LAT_SKIP_SMALL;
-    options.iterations_large = LAT_LOOP_LARGE;
-    options.skip_large = LAT_SKIP_LARGE;
+  options.min_message_size = 0;
+  options.max_message_size = 1 << 20;
 
-    occa::memory o_s_buf;
-    occa::memory o_r_buf;
+  options.iterations = LAT_LOOP_SMALL;
+  options.skip = LAT_SKIP_SMALL;
+  options.iterations_large = LAT_LOOP_LARGE;
+  options.skip_large = LAT_SKIP_LARGE;
 
-    if(useDevice) {
-      o_s_buf = device.malloc(options.max_message_size*nmessages*sizeof(int));
-      o_r_buf = device.malloc(options.max_message_size*nmessages*sizeof(int));
-      s_buf = (int*) o_s_buf.ptr();
-      r_buf = (int*) o_s_buf.ptr();
-    } else {
-      unsigned long align_size = sysconf(_SC_PAGESIZE);
-      posix_memalign((void**)&s_buf, align_size, options.max_message_size*nmessages*sizeof(int));
-      posix_memalign((void**)&r_buf, align_size, options.max_message_size*nmessages*sizeof(int));
-    }
+  occa::memory o_s_buf;
+  occa::memory o_r_buf;
 
-    if(rank == 0) {
-      if(nmessages == 1) {
-          if(size > 2)
-              printf("\n\npairwise exchange single - ranks 1-%d to rank 0, useDevice: %d\n\n", size-1, useDevice);
-          else
-              printf("\n\npairwise exchange single - rank 1 to rank 0, useDevice: %d\n\n", useDevice);
-      } else {
-        if(size > 2)
-              printf("\n\npairwise exchange - ranks 1-%d to rank 0, %i messages, useDevice: %d\n\n", size-1, nmessages, useDevice);
-          else
-              printf("\n\npairwise exchange - ranks 1 to rank 0, %i messages, useDevice: %d\n\n", nmessages, useDevice);
-      }
+  if(useDevice) {
+    o_s_buf = device.malloc(nmessages*options.max_message_size*sizeof(int));
+    o_r_buf = device.malloc(nmessages*options.max_message_size*sizeof(int));
+    s_buf = (int*) o_s_buf.ptr();
+    r_buf = (int*) o_s_buf.ptr();
+  } else {
+    unsigned long align_size = sysconf(_SC_PAGESIZE);
+    posix_memalign((void**)&s_buf, align_size, nmessages*options.max_message_size*sizeof(int));
+    posix_memalign((void**)&r_buf, align_size, nmessages*options.max_message_size*sizeof(int));
+  }
+
+  if(rank == 0) {
+      printf("\npairwise exchange - n messages: %d,  useDevice: %d\n", nmessages, useDevice);
       fflush(stdout);
-    }
+  }
 
-    MPI_CHECK(MPI_Barrier(comm));
-    pairexchange(nmessages, comm);
-    MPI_CHECK(MPI_Barrier(comm));
+  MPI_CHECK(MPI_Barrier(comm));
+  pairexchange(nmessages, comm);
+  MPI_CHECK(MPI_Barrier(comm));
 
-    if(useDevice) {
-      o_s_buf.free();
-      o_r_buf.free();
-    } else {
-      free(s_buf);
-      free(r_buf);
-    }
+  if(useDevice) {
+    o_s_buf.free();
+    o_r_buf.free();
+  } else {
+    free(s_buf);
+    free(r_buf);
+  }
 
-    return EXIT_SUCCESS;
+  return EXIT_SUCCESS;
+
 }
 } // end C Linkage
 
@@ -300,6 +290,25 @@ static void pairexchange(int nmessages, MPI_Comm comm) {
   MPI_Comm_rank(comm, &myRank);
   MPI_Comm_size(comm, &mpiSize);
 
+  // create communicator for shared memory
+  MPI_Comm commdup;
+  MPI_Comm_dup(comm, &commdup);
+  MPI_Comm sharedcomm;
+  MPI_Comm_split_type(commdup, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &sharedcomm);
+  int sharedsize;
+  MPI_Comm_size(sharedcomm, &sharedsize);
+
+  int mypartner;
+  if((int(myRank/sharedsize))%2 == 0) {
+    mypartner = (myRank + sharedsize)%mpiSize;
+    if(mypartner == myRank && mpiSize > 1)
+      mypartner = (mypartner+1)%mpiSize;
+  } else {
+    mypartner = (mpiSize + myRank - sharedsize)%mpiSize;
+    if(mypartner == myRank && mpiSize > 1)
+      mypartner = (mypartner-1)%mpiSize;
+  }
+
   int loopCounter = 0;
   for(int size = options.min_message_size; size <= options.max_message_size; size=((int)(size*1.1) > size ? (int)(size*1.1) : size+1))
     loopCounter += 1;
@@ -324,105 +333,72 @@ static void pairexchange(int nmessages, MPI_Comm comm) {
     strftime(timebuffer,80,"%Y_%m_%d_%R.txt", timeinfo);
     sprintf(buffer, "pairwiseexchange_nmessages_%i_%s", nmessages, timebuffer);
     fp = fopen(buffer, "w");
-    fprintf(fp, "%-10s %-10s %-10s %-10s %-10s %-15s %-15s\n", "sender", "total", "receiver", "loopcount", "n messages", "bytes", "timing");
+    fprintf(fp, "%-10s %-10s %-10s %-15s %-15s\n", "total", "loopcount", "n messages", "bytes", "timing");
 
   }
 
-  int maxRank = std::min(512, mpiSize);
-  for(int iRank = 1; iRank < maxRank; iRank = (iRank<32||maxRank<128 ? iRank+1 : (maxRank-1-iRank < 5 ? maxRank-1 : iRank+5))) {
+  int iSize = 0;
 
-    int iSize = 0;
+  for(int size = options.min_message_size; size <= options.max_message_size; size=((int)(size*1.1) > size ? (int)(size*1.1) : size+1)) {
 
-    for(int size = options.min_message_size; size <= options.max_message_size; size=((int)(size*1.1) > size ? (int)(size*1.1) : size+1)) {
+    MPI_CHECK(MPI_Barrier(comm));
 
-      MPI_CHECK(MPI_Barrier(comm));
+    if(size > LARGE_MESSAGE_SIZE) {
+      options.iterations = options.iterations_large;
+      options.skip = options.skip_large;
+    } else {
+      options.iterations = options.iterations;
+      options.skip = options.skip;
+    }
 
-      if(size > LARGE_MESSAGE_SIZE) {
-        options.iterations = options.iterations_large;
-        options.skip = options.skip_large;
-      } else {
-        options.iterations = options.iterations;
-        options.skip = options.skip;
-      }
+    double t_start = 0;
 
-      double latency = 0;
+    MPI_Request allReqS[nmessages];
+    MPI_Request allReqR[nmessages];
 
-      MPI_Request allReq[2*nmessages];
+    for(int i = 0; i < options.iterations + options.skip; i++) {
 
-      if(myRank == iRank) {
+      if(i == options.skip)
+        t_start = MPI_Wtime();
 
-        double t_start = 0;
+      for(int iMessage = 0; iMessage < nmessages; ++iMessage)
+        MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_INT, mypartner, iMessage, MPI_COMM_WORLD, &allReqR[iMessage]));
+      for(int iMessage = 0; iMessage < nmessages; ++iMessage)
+        MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_INT, mypartner, iMessage, MPI_COMM_WORLD, &allReqS[iMessage]));
 
-        for(int i = 0; i < options.iterations + options.skip; i++) {
-
-          if(i == options.skip)
-            t_start = MPI_Wtime();
-
-          for(int iMessage = 0; iMessage < nmessages; ++iMessage)
-            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_INT, 0, iMessage, comm, &allReq[iMessage]));
-          for(int iMessage = 0; iMessage < nmessages; ++iMessage)
-            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_INT, 0, iMessage, comm, &allReq[nmessages + iMessage]));
-
-          MPI_CHECK(MPI_Waitall(2*nmessages, allReq, MPI_STATUSES_IGNORE));
-
-        }
-
-        double t_end = MPI_Wtime();
-
-        latency = (t_end - t_start) * 1.0e6 / (2.0 * options.iterations);
-        MPI_CHECK(MPI_Send(&latency, 1, MPI_DOUBLE, 0, 2, comm));
-
-      } else if(myRank == 0) {
-
-        double t_start = 0;
-
-        for(int i = 0; i < options.iterations + options.skip; i++) {
-
-          if(i == options.skip)
-            t_start = MPI_Wtime();
-
-          for(int iMessage = 0; iMessage < nmessages; ++iMessage)
-            MPI_CHECK(MPI_Irecv(&r_buf[iMessage*options.max_message_size], size, MPI_INT, iRank, iMessage, comm, &allReq[iMessage]));
-          for(int iMessage = 0; iMessage < nmessages; ++iMessage)
-            MPI_CHECK(MPI_Isend(&s_buf[iMessage*options.max_message_size], size, MPI_INT, iRank, iMessage, comm, &allReq[nmessages + iMessage]));
-
-          MPI_CHECK(MPI_Waitall(2*nmessages, allReq, MPI_STATUSES_IGNORE));
-
-        }
-
-        double t_end = MPI_Wtime();
-
-        latency = (t_end - t_start) * 1.0e6 / (2.0 * options.iterations);
-
-      } // all other ranks are idle
-
-      MPI_CHECK(MPI_Barrier(comm));
-
-      if(iRank == 1)
-        all_sizes[iSize] = size;
-
-      if(0 == myRank) {
-
-        double peer_latency;
-        MPI_CHECK(MPI_Recv(&peer_latency, 1, MPI_DOUBLE, iRank, 2, comm, MPI_STATUS_IGNORE));
-        double avg_lat = (latency+peer_latency)/2.0;
-
-        if(all_min[iSize] > avg_lat || all_min[iSize] == 0)
-          all_min[iSize] = avg_lat;
-        if(all_max[iSize] < avg_lat)
-          all_max[iSize] = avg_lat;
-        all_avg[iSize] += avg_lat;
-
-        fprintf(fp, "%-10d %-10d %-10d %-10d %-10d %-15d %-15f\n", iRank, mpiSize, 0, options.iterations, nmessages, size*4, avg_lat);
-
-      }
-
-      ++iSize;
+      MPI_CHECK(MPI_Waitall(nmessages, allReqS, MPI_STATUSES_IGNORE));
+      MPI_CHECK(MPI_Waitall(nmessages, allReqR, MPI_STATUSES_IGNORE));
 
     }
 
-    if(iRank == maxRank-1)
-      break;
+    double t_end = MPI_Wtime();
+
+    double latency = (t_end - t_start) * 1.0e6 / options.iterations;
+    MPI_CHECK(MPI_Send(&latency, 1, MPI_DOUBLE, 0, 2, comm));
+
+    MPI_CHECK(MPI_Barrier(comm));
+
+    if(myRank == 0)
+      all_sizes[iSize] = size;
+
+    double avglatency;
+    MPI_Reduce(&latency, &avglatency, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+    avglatency /= mpiSize;
+
+
+    if(0 == myRank) {
+
+      if(all_min[iSize] > avglatency || all_min[iSize] == 0)
+        all_min[iSize] = avglatency;
+      if(all_max[iSize] < avglatency)
+        all_max[iSize] = avglatency;
+      all_avg[iSize] += avglatency;
+
+      fprintf(fp, "%-10d %-10d %-10d %-15d %-15f\n", mpiSize, options.iterations, nmessages, size*4, avglatency);
+
+    }
+
+    ++iSize;
 
   }
 
