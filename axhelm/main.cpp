@@ -119,16 +119,16 @@ int main(int argc, char** argv)
   if(Stressmode)
     vgeo = drandAlloc(Np * Nelements * p_Nvgeo);
   else
-    dfloat* ggeo = drandAlloc(Np * Nelements * p_Nggeo);
+    ggeo = drandAlloc(Np * Nelements * p_Nggeo);
   dfloat* q    = drandAlloc((Ndim * Np) * Nelements);
   dfloat* Aq   = drandAlloc((Ndim * Np) * Nelements);
 
   occa::memory o_ggeo, o_vgeo;
 
   if(Stressmode)
-    occa::memory o_vgeo   = device.malloc(Np * Nelements * p_Nvgeo * sizeof(dfloat), vgeo);
+    o_vgeo   = device.malloc(Np * Nelements * p_Nvgeo * sizeof(dfloat), vgeo);
   else
-    occa::memory o_ggeo   = device.malloc(Np * Nelements * p_Nggeo * sizeof(dfloat), ggeo);
+    o_ggeo   = device.malloc(Np * Nelements * p_Nggeo * sizeof(dfloat), ggeo);
   occa::memory o_q      = device.malloc((Ndim * Np) * Nelements * sizeof(dfloat), q);
   occa::memory o_Aq     = device.malloc((Ndim * Np) * Nelements * sizeof(dfloat), Aq);
   occa::memory o_DrV    = device.malloc(Nq * Nq * sizeof(dfloat), DrV);
@@ -159,7 +159,7 @@ int main(int argc, char** argv)
 
   // check for correctness
   if(Stressmode){
-      axhelmStressReference(Nq, Nelements, offset, 0, lambda, vgeo, DrV, x, Ax);
+      axhelmStressReference(Nq, Nelements, offset, 0, lambda, vgeo, DrV, q, Aq);
   } else {
     for(int n = 0; n < Ndim; ++n) {
       dfloat* x = q + n * offset;
@@ -189,10 +189,6 @@ int main(int argc, char** argv)
   flopCount += 15 * Np;
   if(!BKmode) flopCount += 5 * Np;
   flopCount *= Ndim;
-  if(Stressmode){
-    const dfloat Nq4 = Np*Nq;
-    flopCount = 324.f * Nq4 + 648.f *Np;
-  }
   double gflops = (size * flopCount * Nelements / elapsed) / 1.e9;
   if(rank == 0)
     std::cout << "MPItasks=" << size

@@ -99,6 +99,19 @@ void axhelmReference(int Nq,
   for(int e = 0; e < numElements; ++e)
     axhelmElementReference(Nq, e, lambda, ggeo, D, solIn + e * Nq3, solOut + e * Nq3);
 }
+/* offsets for geometric factors */
+#define RXID 0
+#define RYID 1
+#define SXID 2
+#define SYID 3
+#define  JID 4
+#define JWID 5
+#define IJWID 6
+#define RZID 7
+#define SZID 8
+#define TXID 9
+#define TYID 10
+#define TZID 11
 void axhelmStressReference(int Nq,
                      const int Nelements,
                      const int offset,
@@ -109,37 +122,37 @@ void axhelmStressReference(int Nq,
                      const dfloat*  q,
                      dfloat*  Aq)
 {
-    dfloat s_D[p_Nq][p_Nq];
+    dfloat s_D[Nq][Nq];
 
-    dfloat s_U[p_Nq][p_Nq][p_Nq];
-    dfloat s_V[p_Nq][p_Nq][p_Nq];
-    dfloat s_W[p_Nq][p_Nq][p_Nq];
+    dfloat s_U[Nq][Nq][Nq];
+    dfloat s_V[Nq][Nq][Nq];
+    dfloat s_W[Nq][Nq][Nq];
 
-    dfloat s_SUr[p_Nq][p_Nq][p_Nq];
-    dfloat s_SUs[p_Nq][p_Nq][p_Nq];
-    dfloat s_SUt[p_Nq][p_Nq][p_Nq];
+    dfloat s_SUr[Nq][Nq][Nq];
+    dfloat s_SUs[Nq][Nq][Nq];
+    dfloat s_SUt[Nq][Nq][Nq];
 
-    dfloat s_SVr[p_Nq][p_Nq][p_Nq];
-    dfloat s_SVs[p_Nq][p_Nq][p_Nq];
-    dfloat s_SVt[p_Nq][p_Nq][p_Nq];
+    dfloat s_SVr[Nq][Nq][Nq];
+    dfloat s_SVs[Nq][Nq][Nq];
+    dfloat s_SVt[Nq][Nq][Nq];
 
-    dfloat s_SWr[p_Nq][p_Nq][p_Nq];
-    dfloat s_SWs[p_Nq][p_Nq][p_Nq];
-    dfloat s_SWt[p_Nq][p_Nq][p_Nq];
+    dfloat s_SWr[Nq][Nq][Nq];
+    dfloat s_SWs[Nq][Nq][Nq];
+    dfloat s_SWt[Nq][Nq][Nq];
 
-    for(int j=0;j<p_Nq;++j){
-      for(int i=0;i<p_Nq;++i){
-      s_D[j][i] = D[j*p_Nq+i];
+    for(int j=0;j<Nq;++j){
+      for(int i=0;i<Nq;++i){
+      s_D[j][i] = D[j*Nq+i];
     }
   }
     
 
 for(dlong e=0; e<Nelements; ++e){
 
-    for(int k=0;k<p_Nq;++k){ 
-      for(int j=0;j<p_Nq;++j){
-        for(int i=0;i<p_Nq;++i){
-            const dlong id = e*p_Np+k*p_Nq*p_Nq+j*p_Nq+i;
+    for(int k=0;k<Nq;++k){ 
+      for(int j=0;j<Nq;++j){
+        for(int i=0;i<Nq;++i){
+            const dlong id = e*Nq*Nq*Nq+k*Nq*Nq+j*Nq+i;
             s_U[k][j][i] = q[id + 0*offset];
             s_V[k][j][i] = q[id + 1*offset];
             s_W[k][j][i] = q[id + 2*offset];
@@ -150,29 +163,29 @@ for(dlong e=0; e<Nelements; ++e){
 
 
     // loop over slabs
-     for(int k=0;k<p_Nq;++k){ 
-      for(int j=0;j<p_Nq;++j){
-        for(int i=0;i<p_Nq;++i){   
-          const dlong gid = i + j*p_Nq + k*p_Nq*p_Nq + e*p_Np*p_Nvgeo;
-          const dfloat rx = vgeo[gid + p_RXID*p_Np];
-          const dfloat ry = vgeo[gid + p_RYID*p_Np];
-          const dfloat rz = vgeo[gid + p_RZID*p_Np];
+     for(int k=0;k<Nq;++k){ 
+      for(int j=0;j<Nq;++j){
+        for(int i=0;i<Nq;++i){   
+          const dlong gid = i + j*Nq + k*Nq*Nq + e*Nq*Nq*Nq*p_Nvgeo;
+          const dfloat rx = vgeo[gid + RXID*Nq*Nq*Nq];
+          const dfloat ry = vgeo[gid + RYID*Nq*Nq*Nq];
+          const dfloat rz = vgeo[gid + RZID*Nq*Nq*Nq];
           
-          const dfloat sx = vgeo[gid + p_SXID*p_Np];
-          const dfloat sy = vgeo[gid + p_SYID*p_Np];
-          const dfloat sz = vgeo[gid + p_SZID*p_Np];
+          const dfloat sx = vgeo[gid + SXID*Nq*Nq*Nq];
+          const dfloat sy = vgeo[gid + SYID*Nq*Nq*Nq];
+          const dfloat sz = vgeo[gid + SZID*Nq*Nq*Nq];
           
-          const dfloat tx = vgeo[gid + p_TXID*p_Np];
-          const dfloat ty = vgeo[gid + p_TYID*p_Np];
-          const dfloat tz = vgeo[gid + p_TZID*p_Np];
+          const dfloat tx = vgeo[gid + TXID*Nq*Nq*Nq];
+          const dfloat ty = vgeo[gid + TYID*Nq*Nq*Nq];
+          const dfloat tz = vgeo[gid + TZID*Nq*Nq*Nq];
           
-          const dfloat JW = vgeo[gid + p_JWID*p_Np];
+          const dfloat JW = vgeo[gid + JWID*Nq*Nq*Nq];
 
           // compute 1D derivatives
           dfloat ur = 0.f, us = 0.f, ut = 0.f;
           dfloat vr = 0.f, vs = 0.f, vt = 0.f;
           dfloat wr = 0.f, ws = 0.f, wt = 0.f;
-          for(int m=0;m<p_Nq;++m){
+          for(int m=0;m<Nq;++m){
             const dfloat Dim = s_D[i][m]; // Dr
             const dfloat Djm = s_D[j][m]; // Ds
             const dfloat Dkm = s_D[k][m]; // Dt
@@ -190,7 +203,7 @@ for(dlong e=0; e<Nelements; ++e){
             wt += Dkm*s_W[m][j][i];
           }
 
-          const dlong id = e*p_Np + k*p_Nq*p_Nq + j*p_Nq + i;  
+          const dlong id = e*Nq*Nq*Nq + k*Nq*Nq + j*Nq + i;  
           const dfloat u_lam0 = lambda[id + 0*offset + 0*loffset]; 
           // const dfloat u_lam1 = lambda[id + 1*offset + 0*loffset];
           const dfloat v_lam0 = lambda[id + 0*offset + 1*loffset]; 
@@ -242,11 +255,11 @@ for(dlong e=0; e<Nelements; ++e){
 
 
 // loop over slabs
-    for(int k=0;k<p_Nq;++k){ 
-      for(int j=0;j<p_Nq;++j){
-        for(int i=0;i<p_Nq;++i){
+    for(int k=0;k<Nq;++k){ 
+      for(int j=0;j<Nq;++j){
+        for(int i=0;i<Nq;++i){
           dfloat r_Au = 0.f, r_Av = 0.f, r_Aw = 0.f;
-          for(int m = 0; m < p_Nq; m++) {
+          for(int m = 0; m < Nq; m++) {
             const dfloat Dim = s_D[m][i]; // Dr'
             const dfloat Djm = s_D[m][j]; // Ds'
             const dfloat Dkm = s_D[m][k]; // Dt'
@@ -263,13 +276,13 @@ for(dlong e=0; e<Nelements; ++e){
             r_Aw += Djm*s_SWs[k][m][i];
             r_Aw += Dkm*s_SWt[m][j][i];
           }
-          const dlong id      = e*p_Np +k*p_Nq*p_Nq+ j*p_Nq + i;
+          const dlong id      = e*Nq*Nq*Nq +k*Nq*Nq+ j*Nq + i;
           const dfloat u_lam1 = lambda[id + 1*offset + 0*loffset];
           const dfloat v_lam1 = lambda[id + 1*offset + 1*loffset];
           const dfloat w_lam1 = lambda[id + 1*offset + 2*loffset];
          
-          const dlong gid = i + j*p_Nq + k*p_Nq*p_Nq + e*p_Np*p_Nvgeo;
-          const dfloat JW = vgeo[gid + p_JWID*p_Np];
+          const dlong gid = i + j*Nq + k*Nq*Nq + e*Nq*Nq*Nq*p_Nvgeo;
+          const dfloat JW = vgeo[gid + JWID*Nq*Nq*Nq];
            // store in register
           Aq[id+0*offset] =  r_Au + u_lam1*JW*s_U[k][j][i]; 
           Aq[id+1*offset] =  r_Av + v_lam1*JW*s_V[k][j][i];

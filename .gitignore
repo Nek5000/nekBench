@@ -1,3 +1,7 @@
 build/
 *.o
 *.so
+*.a
+3rdParty/occa/bin/occa
+3rdParty/occa/include/occa/defines/compiledDefines.hpp
+3rdParty/occa/include/occa/scripts/tests/compiler

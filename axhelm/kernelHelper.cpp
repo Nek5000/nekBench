@@ -32,6 +32,22 @@ static occa::kernel loadAxKernel(occa::device device, const std::string threadMo
   props["defines/dfloat"] = dfloatString;
   props["defines/dlong"]  = dlongString;
 
+  /** props for stress kernel **/
+  props["defines/p_Nvgeo"] = p_Nvgeo;
+  props["defines/p_RXID" ] = RXID;
+  props["defines/p_RYID" ] = RYID;
+  props["defines/p_SXID" ] = SXID;
+  props["defines/p_SYID" ] = SYID;
+  props["defines/p_JID"  ] = JID;
+  props["defines/p_JWID" ] = JWID;
+  props["defines/p_IJWID"] = IJWID;
+  props["defines/p_RZID" ] = RZID;
+  props["defines/p_SZID" ] = SZID;
+  props["defines/p_TXID" ] = TXID;
+  props["defines/p_TYID" ] = TYID;
+  props["defines/p_TZID" ] = TZID;
+
+
   occa::kernel axKernel;
 
   std::string root(DBP);
