@@ -27,7 +27,7 @@ int main(int argc, char** argv)
 {
   if(argc < 6) {
     printf(
-      "Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|HIP|OPENCL CPU|VOLTA [BKmode] [nRepetitions] [kernelVersion]\n");
+      "Usage: ./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|HIP|OPENCL CPU|VOLTA [BKmode] [Stress] [nRepetitions] [kernelVersion]\n");
     return 1;
   }
 
@@ -50,13 +50,17 @@ int main(int argc, char** argv)
   if(argc >= 7)
     BKmode = atoi(argv[6]);
 
-  int Ntests = 100;
+  int Stressmode = 0;
   if(argc >= 8)
-    Ntests = atoi(argv[7]);
+    Stressmode = atoi(argv[7]);
+
+  int Ntests = 100;
+  if(argc >= 9)
+    Ntests = atoi(argv[8]);
 
   int kernelVersion = 0;
-  if(argc >= 9)
-    kernelVersion = atoi(argv[8]);
+  if(argc >= 10)
+    kernelVersion = atoi(argv[9]);
 
   const int deviceId = 0;
   const int platformId = 0;
@@ -105,16 +109,26 @@ int main(int argc, char** argv)
   std::string kernelName = "axhelm";
   if(assembled) kernelName = "axhelm_partial";
   if(BKmode) kernelName = "axhelm_bk";
+  if(Stressmode) kernelName = "axhelm_stress";
   if(Ndim > 1) kernelName += "_n" + std::to_string(Ndim);
   kernelName += "_v" + std::to_string(kernelVersion);
   axKernel = loadAxKernel(device, threadModel, arch, kernelName, N, Nelements);
 
   // populate device arrays
-  dfloat* ggeo = drandAlloc(Np * Nelements * p_Nggeo);
+  dfloat* ggeo, *vgeo;
+  if(Stressmode)
+    vgeo = drandAlloc(Np * Nelements * p_Nvgeo);
+  else
+    dfloat* ggeo = drandAlloc(Np * Nelements * p_Nggeo);
   dfloat* q    = drandAlloc((Ndim * Np) * Nelements);
   dfloat* Aq   = drandAlloc((Ndim * Np) * Nelements);
 
-  occa::memory o_ggeo   = device.malloc(Np * Nelements * p_Nggeo * sizeof(dfloat), ggeo);
+  occa::memory o_ggeo, o_vgeo;
+
+  if(Stressmode)
+    occa::memory o_vgeo   = device.malloc(Np * Nelements * p_Nvgeo * sizeof(dfloat), vgeo);
+  else
+    occa::memory o_ggeo   = device.malloc(Np * Nelements * p_Nggeo * sizeof(dfloat), ggeo);
   occa::memory o_q      = device.malloc((Ndim * Np) * Nelements * sizeof(dfloat), q);
   occa::memory o_Aq     = device.malloc((Ndim * Np) * Nelements * sizeof(dfloat), Aq);
   occa::memory o_DrV    = device.malloc(Nq * Nq * sizeof(dfloat), DrV);
@@ -128,24 +142,30 @@ int main(int argc, char** argv)
   }
   occa::memory o_lambda = device.malloc(2 * offset * sizeof(dfloat), lambda);
 
+  occa::memory & geom_factor = Stressmode ? o_vgeo : o_ggeo;
+
   // run kernel
-  axKernel(Nelements, offset, o_ggeo, o_DrV, o_lambda, o_q, o_Aq);
+  axKernel(Nelements, offset, geom_factor, o_DrV, o_lambda, o_q, o_Aq);
   device.finish();
   MPI_Barrier(MPI_COMM_WORLD);
   const double start = MPI_Wtime();
 
   for(int test = 0; test < Ntests; ++test)
-    axKernel(Nelements, offset, o_ggeo, o_DrV, o_lambda, o_q, o_Aq);
+    axKernel(Nelements, offset, geom_factor, o_DrV, o_lambda, o_q, o_Aq);
 
   device.finish();
   MPI_Barrier(MPI_COMM_WORLD);
   const double elapsed = (MPI_Wtime() - start) / Ntests;
 
   // check for correctness
-  for(int n = 0; n < Ndim; ++n) {
-    dfloat* x = q + n * offset;
-    dfloat* Ax = Aq + n * offset;
-    axhelmReference(Nq, Nelements, lambda1, ggeo, DrV, x, Ax);
+  if(Stressmode){
+      axhelmStressReference(Nq, Nelements, offset, 0, lambda, vgeo, DrV, x, Ax);
+  } else {
+    for(int n = 0; n < Ndim; ++n) {
+      dfloat* x = q + n * offset;
+      dfloat* Ax = Aq + n * offset;
+      axhelmReference(Nq, Nelements, lambda1, ggeo, DrV, x, Ax);
+    }
   }
   o_Aq.copyTo(q);
   dfloat maxDiff = 0;
@@ -160,12 +180,19 @@ int main(int argc, char** argv)
   // print statistics
   const dfloat GDOFPerSecond = (size * Ndim * (N * N * N) * Nelements / elapsed) / 1.e9;
   long long bytesMoved = (Ndim * 2 * Np + 7 * Np) * sizeof(dfloat); // x, Ax, geo
-  if(!BKmode) bytesMoved += 2 * Np * sizeof(dfloat);
+  if(!BKmode) bytesMoved += 2 * Np * sizeof(dfloat); // D
+  if(Stressmode){
+    bytesMoved += 2 * Np * sizeof(dfloat); // lambda
+  }
   const double bw = (size * bytesMoved * Nelements / elapsed) / 1.e9;
   double flopCount = Np * 12 * Nq;
   flopCount += 15 * Np;
   if(!BKmode) flopCount += 5 * Np;
   flopCount *= Ndim;
+  if(Stressmode){
+    const dfloat Nq4 = Np*Nq;
+    flopCount = 324.f * Nq4 + 648.f *Np;
+  }
   double gflops = (size * flopCount * Nelements / elapsed) / 1.e9;
   if(rank == 0)
     std::cout << "MPItasks=" << size
