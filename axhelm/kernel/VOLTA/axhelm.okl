@@ -1325,13 +1325,16 @@ for(dlong e=0; e<Nelements; ++e; @outer(0)){
   // AK: heavy memory usage, optimize later
     @shared dfloat s_D[p_Nq][p_Nq];
 
-    @shared dfloat s_U[p_Nq][p_Nq][p_Nq];
-    @shared dfloat s_V[p_Nq][p_Nq][p_Nq];
-    @shared dfloat s_W[p_Nq][p_Nq][p_Nq];
+    @shared dfloat s_U[p_Nq][p_Nq];
+    @shared dfloat s_V[p_Nq][p_Nq];
+    @shared dfloat s_SUr[p_Nq][p_Nq];
+    @shared dfloat s_SUs[p_Nq][p_Nq];
+    @shared dfloat s_W[p_Nq][p_Nq];
+    @exclusive dfloat s_Uloc[p_Nq];
+    @exclusive dfloat s_Vloc[p_Nq];
+    @exclusive dfloat s_Wloc[p_Nq];
 
-    #define s_SUr s_U
-    #define s_SUs s_V
-    #define s_SUt s_W
+    @exclusive dfloat s_SUtloc[p_Nq];
 
     @shared dfloat s_SVr[p_Nq][p_Nq];
     @shared dfloat s_SVs[p_Nq][p_Nq];
@@ -1360,9 +1363,18 @@ for(dlong e=0; e<Nelements; ++e; @outer(0)){
         for(int i=0;i<p_Nq;++i;@inner(0)){
           if(k==0) s_D[j][i] = D[p_Nq*j+i];
             const dlong id = e*p_Np+k*p_Nq*p_Nq+j*p_Nq+i;
-            s_U[k][j][i] = q[id + 0*offset];
-            s_V[k][j][i] = q[id + 1*offset];
-            s_W[k][j][i] = q[id + 2*offset];
+            s_U[j][i] = q[id + 0*offset];
+            s_V[j][i] = q[id + 1*offset];
+            s_W[j][i] = q[id + 2*offset];
+          if(k==0){
+            #pragma unroll p_Nq
+            for(int l = 0 ; l < p_Nq; ++l){
+              const dlong other_id = e*p_Np+l*p_Nq*p_Nq+j*p_Nq+i;
+              s_Uloc[l] = q[other_id + 0*offset];
+              s_Vloc[l] = q[other_id + 1*offset];
+              s_Wloc[l] = q[other_id + 2*offset];
+            }
+          }
         }
       }
       @barrier("local");
@@ -1392,17 +1404,17 @@ for(dlong e=0; e<Nelements; ++e; @outer(0)){
             const dfloat Djm = s_D[j][m]; // Ds
             const dfloat Dkm = s_D[k][m]; // Dt
 
-            ur += Dim*s_U[k][j][m];
-            us += Djm*s_U[k][m][i];
-            ut += Dkm*s_U[m][j][i];
+            ur += Dim*s_U[j][m];
+            us += Djm*s_U[m][i];
+            ut += Dkm*s_Uloc[m];
             //
-            vr += Dim*s_V[k][j][m];
-            vs += Djm*s_V[k][m][i];
-            vt += Dkm*s_V[m][j][i];
+            vr += Dim*s_V[j][m];
+            vs += Djm*s_V[m][i];
+            vt += Dkm*s_Vloc[m];
             //
-            wr += Dim*s_W[k][j][m];
-            ws += Djm*s_W[k][m][i];
-            wt += Dkm*s_W[m][j][i];
+            wr += Dim*s_W[j][m];
+            ws += Djm*s_W[m][i];
+            wt += Dkm*s_Wloc[m];
           }
 
           const dlong id = e*p_Np + k*p_Nq*p_Nq + j*p_Nq + i;
@@ -1431,9 +1443,9 @@ for(dlong e=0; e<Nelements; ++e; @outer(0)){
           s32 = JW*(dwdy + dvdz);
           s33 = JW*(dwdz + dwdz);
           // store in register
-          r_Au[k] =  lambda[id+ 1 * offset]*JW*s_U[k][j][i];
-          r_Av[k] =  lambda[id+ 1 * offset]*JW*s_V[k][j][i];
-          r_Aw[k] =  lambda[id+ 1 * offset]*JW*s_W[k][j][i];
+          r_Au[k] =  lambda[id+ 1 * offset]*JW*s_U[j][i];
+          r_Av[k] =  lambda[id+ 1 * offset]*JW*s_V[j][i];
+          r_Aw[k] =  lambda[id+ 1 * offset]*JW*s_W[j][i];
 
         }
       }
@@ -1441,9 +1453,9 @@ for(dlong e=0; e<Nelements; ++e; @outer(0)){
       for(int j=0;j<p_Nq;++j;@inner(1)){
         for(int i=0;i<p_Nq;++i;@inner(0)){
 
-         s_SUr[k][j][i] =  rx*s11 + ry*s12 + rz*s13;
-         s_SUs[k][j][i] =  sx*s11 + sy*s12 + sz*s13;
-         s_SUt[k][j][i] =  tx*s11 + ty*s12 + tz*s13;
+         s_SUr[j][i] =  rx*s11 + ry*s12 + rz*s13;
+         s_SUs[j][i] =  sx*s11 + sy*s12 + sz*s13;
+         s_SUtloc[k] =  tx*s11 + ty*s12 + tz*s13;
          //
          s_SVr[j][i] =  rx*s21 + ry*s22 + rz*s23;
          s_SVs[j][i] =  sx*s21 + sy*s22 + sz*s23;
@@ -1463,8 +1475,8 @@ for(dlong e=0; e<Nelements; ++e; @outer(0)){
             const dfloat Dim = s_D[m][i]; // Dr'
             const dfloat Djm = s_D[m][j]; // Ds'
 
-            r_Au[k] += Dim*s_SUr[k][j][m];
-            r_Au[k] += Djm*s_SUs[k][m][i];
+            r_Au[k] += Dim*s_SUr[j][m];
+            r_Au[k] += Djm*s_SUs[m][i];
 
             r_Av[k] += Dim*s_SVr[j][m];
             r_Av[k] += Djm*s_SVs[m][i];
@@ -1483,7 +1495,7 @@ for(dlong e=0; e<Nelements; ++e; @outer(0)){
           for(int m = 0; m < p_Nq; m++) {
             const dfloat Dkm = s_D[m][k]; // Dt'
 
-            r_Au[k] += Dkm*s_SUt[m][j][i];
+            r_Au[k] += Dkm*s_SUtloc[m];
             r_Av[k] += Dkm*s_SVt[m];
             r_Aw[k] += Dkm*s_SWt[m];
           }
