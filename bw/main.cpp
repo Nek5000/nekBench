@@ -55,18 +55,18 @@ int main(int argc, char** argv)
   props["header"].asArray();
   props["flags"].asObject();
   setCompilerFlags(device, props);
-  occa::kernel triadKernel = device.buildKernel(DBP "kernel/triad.okl", "triad", props);
 
   timer::init(MPI_COMM_WORLD, device, 0);
 
   {
     const int Ntests = 1000;
-    const int N[] = {1, 1000 * 512, 2000 * 512, 4000 * 512, 8000 * 512};
+    const int N[] = {1, 256*512, 512 * 512, 1000 * 512, 2000 * 512, 4000 * 512, 8000 * 512, 16000 * 512};
     const int Nsize = sizeof(N) / sizeof(int);
     const int nWords = N[sizeof(N) / sizeof(N[0]) - 1];
     occa::memory o_a = device.malloc(nWords * sizeof(double));
     occa::memory o_b = device.malloc(nWords * sizeof(double));
     occa::memory o_c = device.malloc(nWords * sizeof(double));
+    occa::kernel triadKernel = device.buildKernel(DBP "kernel/bwKernels.okl", "triad", props);
 
     for(int test = 0; test < Ntests; ++test) triadKernel(1000, 1.0, o_a, o_b, o_c);
 
@@ -88,7 +88,7 @@ int main(int argc, char** argv)
     o_a.free();
     o_b.free();
     o_c.free();
-
+/*
     occa::memory o_wrk = device.malloc(3 * nWords * sizeof(double));
     o_a = o_wrk + 0 * nWords * sizeof(double);
     o_b = o_wrk + 1 * nWords * sizeof(double);
@@ -109,13 +109,41 @@ int main(int argc, char** argv)
                 << bytes / elapsed << " bytes/s\n";
     }
     o_wrk.free();
+*/
+  }
+
+  std::cout << "\n";
+
+  {
+    const int Ntests = 50;
+    const int blockSize = 128;
+    const int N = blockSize*1024*1024; 
+    const int Nblock = N/blockSize; 
+    occa::memory o_a = device.malloc(N * sizeof(double));
+    occa::kernel smemKernel = device.buildKernel(DBP "kernel/bwKernels.okl", "smem", props);
+
+    smemKernel(Nblock, N, o_a);
+
+    device.finish();
+    timer::reset("smem");
+    timer::tic("smem");
+    for(int test = 0; test < Ntests; ++test) smemKernel(Nblock, N, o_a);
+    device.finish();
+    timer::toc("smem");
+    timer::update();
+    double elapsed = timer::query("smem", "HOST:MAX") / (double)Ntests;
+    long bytes = blockSize*2*sizeof(double)*N;
+    std::cout << "shared mem bw: "
+              << elapsed << " s, "
+              << bytes / elapsed << " bytes/s\n";
+    o_a.free();
   }
 
   std::cout << "\n";
 
   {
     const int N[] =
-    {1, 4000, 2000, 8000, 16000, 50000, 100000, 150000, 300000, 2000 * 512, 4000 * 512, 8000 * 512};
+    {1, 2000, 4000, 8000, 16000, 50000, 100000, 150000, 300000, 2000 * 512, 4000 * 512, 8000 * 512};
     const int Nsize = sizeof(N) / sizeof(int);
     const int nWords = N[sizeof(N) / sizeof(N[0]) - 1];
     props["mapped"] = true;
@@ -139,6 +167,8 @@ int main(int argc, char** argv)
                 << elapsed << " s, "
                 << bytes / elapsed << " bytes/s\n";
     }
+
+  std::cout << "\n";
 
     for(int i = 0; i < Nsize; ++i) {
       int Ntests = 5000;
