@@ -2,6 +2,8 @@
 #include <assert.h>
 #include <unistd.h>
 #include <occa.hpp>
+#include <numeric>
+#include <algorithm>
 
 #define FIELD_WIDTH 20
 #define FLOAT_PRECISION 2
@@ -175,6 +177,7 @@ static void pingpong(MPI_Comm comm) {
   }
 
   int maxRank = std::min(512, mpiSize);
+  int rankLoopCounter = 0;
   for(int iRank = 1; iRank < maxRank; iRank = (iRank<32||maxRank<128 ? iRank+1 : (maxRank-1-iRank < 5 ? maxRank-1 : iRank+5))) {
 
     int iSize = 0;
@@ -257,6 +260,8 @@ static void pingpong(MPI_Comm comm) {
 
     }
 
+    ++rankLoopCounter;
+
     if(iRank == maxRank-1)
       break;
 
@@ -265,12 +270,12 @@ static void pingpong(MPI_Comm comm) {
   if(myRank == 0) {
     printf("%-10s %-13s %-13s %-13s\n", "bytes", "average", "minimum", "maximum");
     for(int i = 0; i < loopCounter; ++i) {
-      printf("%-10d %-13f %-13f %-13f\n", all_sizes[i]*4, all_avg[i]/((double)(mpiSize-1)), all_min[i], all_max[i]);
+      printf("%-10d %-13f %-13f %-13f\n", all_sizes[i]*4, all_avg[i]/((double)rankLoopCounter), all_min[i], all_max[i]);
     }
-    double avg_sum = 0;
-    for(int i = 0; i < loopCounter; ++i)
-      avg_sum += all_avg[i];
-    printf("\nGlobal average: %f\n\n", avg_sum/(double)loopCounter);
+    double avg_sum = std::accumulate(all_avg, all_avg+loopCounter, 0.0f);
+    avg_sum /= (double)rankLoopCounter;
+    avg_sum /= (double)loopCounter;
+    printf("\nGlobal average: %f\n\n", avg_sum);
     fflush(stdout);
 
     fclose(fp);
@@ -297,6 +302,9 @@ static void pairexchange(int nmessages, MPI_Comm comm) {
   MPI_Comm_split_type(commdup, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &sharedcomm);
   int sharedsize;
   MPI_Comm_size(sharedcomm, &sharedsize);
+
+  if(sharedsize == mpiSize)
+    sharedsize = 1;
 
   int mypartner;
   if((int(myRank/sharedsize))%2 == 0) {
@@ -374,24 +382,23 @@ static void pairexchange(int nmessages, MPI_Comm comm) {
     double t_end = MPI_Wtime();
 
     double latency = (t_end - t_start) * 1.0e6 / options.iterations;
-    MPI_CHECK(MPI_Send(&latency, 1, MPI_DOUBLE, 0, 2, comm));
-
-    MPI_CHECK(MPI_Barrier(comm));
 
     if(myRank == 0)
       all_sizes[iSize] = size;
 
-    double avglatency;
-    MPI_Reduce(&latency, &avglatency, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-    avglatency /= mpiSize;
-
+    double alllatencies[mpiSize];
+    MPI_Gather(&latency, 1, MPI_DOUBLE, alllatencies, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     if(0 == myRank) {
 
-      if(all_min[iSize] > avglatency || all_min[iSize] == 0)
-        all_min[iSize] = avglatency;
-      if(all_max[iSize] < avglatency)
-        all_max[iSize] = avglatency;
+      double avglatency = std::accumulate(alllatencies, alllatencies+mpiSize, 0.0f)/(double)mpiSize;
+      double minlatency = *std::min_element(alllatencies, alllatencies+mpiSize);
+      double maxlatency = *std::max_element(alllatencies, alllatencies+mpiSize);
+
+      if(all_min[iSize] > minlatency || all_min[iSize] == 0)
+        all_min[iSize] = minlatency;
+      if(all_max[iSize] < maxlatency)
+        all_max[iSize] = maxlatency;
       all_avg[iSize] += avglatency;
 
       fprintf(fp, "%-10d %-10d %-10d %-15d %-15f\n", mpiSize, options.iterations, nmessages, size*4, avglatency);
@@ -405,7 +412,7 @@ static void pairexchange(int nmessages, MPI_Comm comm) {
   if(myRank == 0) {
     printf("%-10s %-13s %-13s %-13s\n", "bytes", "average", "minimum", "maximum");
     for(int i = 0; i < loopCounter; ++i) {
-      printf("%-10d %-13f %-13f %-13f\n", all_sizes[i]*4, all_avg[i]/((double)(mpiSize-1)), all_min[i], all_max[i]);
+      printf("%-10d %-13f %-13f %-13f\n", all_sizes[i]*4, all_avg[i], all_min[i], all_max[i]);
     }
     double avg_sum = 0;
     for(int i = 0; i < loopCounter; ++i)
