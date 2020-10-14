@@ -34,8 +34,8 @@ struct options_t {
     size_t pairs;
 };
 
-static void pingpong(MPI_Comm comm);
-static void pairexchange(int nmessages, MPI_Comm comm);
+static void pingpong(bool dumptofile, MPI_Comm comm);
+static void pairexchange(bool dumptofile, int nmessages, MPI_Comm comm);
 
 // GLOBALS
 struct options_t options;
@@ -43,7 +43,7 @@ int *s_buf, *r_buf;
 
 extern "C" { // Begin C Linkage
 
-int pingPongSinglePair(int useDevice, occa::device device, MPI_Comm comm) {
+int pingPongSinglePair(bool dumptofile, int useDevice, occa::device device, MPI_Comm comm) {
 
   int size, rank;
   MPI_Comm_size(comm,&size);
@@ -77,7 +77,7 @@ int pingPongSinglePair(int useDevice, occa::device device, MPI_Comm comm) {
   }
 
   MPI_CHECK(MPI_Barrier(comm));
-  pingpong(comm);
+  pingpong(dumptofile, comm);
   MPI_CHECK(MPI_Barrier(comm));
 
   if(useDevice) {
@@ -92,7 +92,7 @@ int pingPongSinglePair(int useDevice, occa::device device, MPI_Comm comm) {
 
 }
 
-int multiPairExchange(int nmessages, int useDevice, occa::device device, MPI_Comm comm) {
+int multiPairExchange(bool dumptofile, int nmessages, int useDevice, occa::device device, MPI_Comm comm) {
 
   int size, rank;
   MPI_Comm_size(comm,&size);
@@ -126,7 +126,7 @@ int multiPairExchange(int nmessages, int useDevice, occa::device device, MPI_Com
   }
 
   MPI_CHECK(MPI_Barrier(comm));
-  pairexchange(nmessages, comm);
+  pairexchange(dumptofile, nmessages, comm);
   MPI_CHECK(MPI_Barrier(comm));
 
   if(useDevice) {
@@ -142,7 +142,7 @@ int multiPairExchange(int nmessages, int useDevice, occa::device device, MPI_Com
 }
 } // end C Linkage
 
-static void pingpong(MPI_Comm comm) {
+static void pingpong(bool dumptofile, MPI_Comm comm) {
 
   int myRank, mpiSize;
   MPI_Comm_rank(comm, &myRank);
@@ -163,16 +163,22 @@ static void pingpong(MPI_Comm comm) {
   FILE *fp;
   if(0 == myRank) {
 
-    time_t rawtime;
-    struct tm *timeinfo;
-    time(&rawtime);
-    timeinfo = localtime(&rawtime);
-    char timebuffer[80];
-    char buffer[80];
-    strftime(timebuffer,80,"%Y_%m_%d_%R.txt", timeinfo);
-    sprintf(buffer, "pingpong_%s", timebuffer);
-    fp = fopen(buffer, "w");
-    fprintf(fp, "%-10s %-10s %-10s %-10s %-15s %-15s\n", "sender", "total", "receiver", "loopcount", "bytes", "timing");
+    if(dumptofile) {
+
+      time_t rawtime;
+      struct tm *timeinfo;
+      time(&rawtime);
+      timeinfo = localtime(&rawtime);
+      char timebuffer[80];
+      char buffer[80];
+      strftime(timebuffer,80,"%Y_%m_%d_%R.txt", timeinfo);
+      sprintf(buffer, "pingpong_%s", timebuffer);
+      fp = fopen(buffer, "w");
+      fprintf(fp, "%-10s %-10s %-10s %-10s %-15s %-15s\n", "sender", "total", "receiver", "loopcount", "bytes", "timing");
+
+    } else
+
+      printf("%-10s %-10s %-10s %-10s %-15s %-15s\n", "sender", "total", "receiver", "loopcount", "bytes", "timing");
 
   }
 
@@ -252,7 +258,10 @@ static void pingpong(MPI_Comm comm) {
           all_max[iSize] = avg_lat;
         all_avg[iSize] += avg_lat;
 
-        fprintf(fp, "%-10d %-10d %-10d %-10d %-15d %-15f\n", iRank, mpiSize, 0, options.iterations, size*4, avg_lat);
+        if(dumptofile)
+          fprintf(fp, "%-10d %-10d %-10d %-10d %-15d %-15f\n", iRank, mpiSize, 0, options.iterations, size*4, avg_lat);
+        else
+          printf("%-10d %-10d %-10d %-10d %-15d %-15f\n", iRank, mpiSize, 0, options.iterations, size*4, avg_lat);
 
       }
 
@@ -269,16 +278,12 @@ static void pingpong(MPI_Comm comm) {
 
   if(myRank == 0) {
     printf("%-10s %-13s %-13s %-13s\n", "bytes", "average", "minimum", "maximum");
-    for(int i = 0; i < loopCounter; ++i) {
+    for(int i = 0; i < loopCounter; ++i)
       printf("%-10d %-13f %-13f %-13f\n", all_sizes[i]*4, all_avg[i]/((double)rankLoopCounter), all_min[i], all_max[i]);
-    }
-    double avg_sum = std::accumulate(all_avg, all_avg+loopCounter, 0.0f);
-    avg_sum /= (double)rankLoopCounter;
-    avg_sum /= (double)loopCounter;
-    printf("\nGlobal average: %f\n\n", avg_sum);
     fflush(stdout);
 
-    fclose(fp);
+    if(dumptofile)
+      fclose(fp);
 
   }
 
@@ -289,7 +294,7 @@ static void pingpong(MPI_Comm comm) {
 
 }
 
-static void pairexchange(int nmessages, MPI_Comm comm) {
+static void pairexchange(bool dumptofile, int nmessages, MPI_Comm comm) {
 
   int myRank, mpiSize;
   MPI_Comm_rank(comm, &myRank);
@@ -332,16 +337,22 @@ static void pairexchange(int nmessages, MPI_Comm comm) {
   FILE *fp;
   if(0 == myRank) {
 
-    time_t rawtime;
-    struct tm *timeinfo;
-    time(&rawtime);
-    timeinfo = localtime(&rawtime);
-    char timebuffer[80];
-    char buffer[80];
-    strftime(timebuffer,80,"%Y_%m_%d_%R.txt", timeinfo);
-    sprintf(buffer, "pairwiseexchange_nmessages_%i_%s", nmessages, timebuffer);
-    fp = fopen(buffer, "w");
-    fprintf(fp, "%-10s %-10s %-10s %-15s %-15s\n", "total", "loopcount", "n messages", "bytes", "timing");
+    if(dumptofile) {
+
+      time_t rawtime;
+      struct tm *timeinfo;
+      time(&rawtime);
+      timeinfo = localtime(&rawtime);
+      char timebuffer[80];
+      char buffer[80];
+      strftime(timebuffer,80,"%Y_%m_%d_%R.txt", timeinfo);
+      sprintf(buffer, "pairwiseexchange_nmessages_%i_%s", nmessages, timebuffer);
+      fp = fopen(buffer, "w");
+      fprintf(fp, "%-10s %-10s %-10s %-15s %-15s\n", "total", "loopcount", "n messages", "bytes", "timing");
+
+    } else
+
+      printf("%-10s %-10s %-10s %-15s %-15s\n", "total", "loopcount", "n messages", "bytes", "timing");
 
   }
 
@@ -401,7 +412,10 @@ static void pairexchange(int nmessages, MPI_Comm comm) {
         all_max[iSize] = maxlatency;
       all_avg[iSize] += avglatency;
 
-      fprintf(fp, "%-10d %-10d %-10d %-15d %-15f\n", mpiSize, options.iterations, nmessages, size*4, avglatency);
+      if(dumptofile)
+        fprintf(fp, "%-10d %-10d %-10d %-15d %-15f\n", mpiSize, options.iterations, nmessages, size*4, avglatency);
+      else
+        printf("%-10d %-10d %-10d %-15d %-15f\n", mpiSize, options.iterations, nmessages, size*4, avglatency);
 
     }
 
@@ -411,16 +425,12 @@ static void pairexchange(int nmessages, MPI_Comm comm) {
 
   if(myRank == 0) {
     printf("%-10s %-13s %-13s %-13s\n", "bytes", "average", "minimum", "maximum");
-    for(int i = 0; i < loopCounter; ++i) {
-      printf("%-10d %-13f %-13f %-13f\n", all_sizes[i]*4, all_avg[i], all_min[i], all_max[i]);
-    }
-    double avg_sum = 0;
     for(int i = 0; i < loopCounter; ++i)
-      avg_sum += all_avg[i];
-    printf("\nGlobal average: %f\n\n", avg_sum/(double)loopCounter);
+      printf("%-10d %-13f %-13f %-13f\n", all_sizes[i]*4, all_avg[i], all_min[i], all_max[i]);
     fflush(stdout);
 
-    fclose(fp);
+    if(dumptofile)
+      fclose(fp);
 
   }
 

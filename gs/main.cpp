@@ -25,7 +25,7 @@ int main(int argc, char **argv)
   setupAide options;
 
   if(argc<6){
-    if(rank ==0) printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <ogs_mode> <nRepetitions> <pairwise exchange n messages> <enable timers> <run dummy kernel> <use FP32> <GPU aware MPI> <DEVICE-ID>\n");
+    if(rank ==0) printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <ogs_mode> <nRepetitions> <pairwise exchange n messages> <dump details to file> <enable timers> <run dummy kernel> <use FP32> <GPU aware MPI> <DEVICE-ID>\n");
 
     MPI_Finalize();
     exit(1);
@@ -58,31 +58,34 @@ int main(int argc, char **argv)
   int pwNMessages = 20;
   if(argc>8) pwNMessages = std::stoi(argv[8]);
 
+  bool dumptofile = true;
+  if(argc>9) dumptofile = std::stoi(argv[9]);
+
   int enabledTimer = 0;
-  if(argc>9) enabledTimer = std::stoi(argv[9]);
+  if(argc>10) enabledTimer = std::stoi(argv[10]);
 
   int dummyKernel = 0;
-  if(argc>10) dummyKernel = std::stoi(argv[10]);
+  if(argc>11) dummyKernel = std::stoi(argv[11]);
 
   int unit_size = sizeof(double);
   std::string floatType("double");
-  if(argc>11 && std::stoi(argv[11])) {
+  if(argc>12 && std::stoi(argv[12])) {
     floatType = "float";
     unit_size = sizeof(float);
   }
 
   int enabledGPUMPI = 0;
-  if(argc>12) {
-    if(std::stoi(argv[12])) {
+  if(argc>13) {
+    if(std::stoi(argv[13])) {
       enabledGPUMPI = 1;
       ogs_mode_list.push_back(OGS_DEVICEMPI);
     }
   }
 
   options.setArgs("DEVICE NUMBER", "LOCAL-RANK");
-  if(argc>13) {
+  if(argc>14) {
     std::string deviceNumber;
-    deviceNumber.assign(strdup(argv[13]));
+    deviceNumber.assign(strdup(argv[14]));
     options.setArgs("DEVICE NUMBER", deviceNumber);
   }
 
@@ -201,13 +204,13 @@ int main(int argc, char **argv)
   MPI_Barrier(mesh->comm);
   {
     const int nPairs = mesh->size/2;
-    pingPongSinglePair(0, mesh->device, mesh->comm);
-    multiPairExchange(1, 0, mesh->device, mesh->comm);
-    multiPairExchange(pwNMessages, 0, mesh->device, mesh->comm);
+    pingPongSinglePair(dumptofile, 0, mesh->device, mesh->comm);
+    multiPairExchange(dumptofile, 1, 0, mesh->device, mesh->comm);
+    multiPairExchange(dumptofile, pwNMessages, 0, mesh->device, mesh->comm);
     if(enabledGPUMPI) {
-      pingPongSinglePair(1, mesh->device, mesh->comm);
-      multiPairExchange(1, 1, mesh->device, mesh->comm);
-      multiPairExchange(pwNMessages, 1, mesh->device, mesh->comm);
+      pingPongSinglePair(dumptofile, 1, mesh->device, mesh->comm);
+      multiPairExchange(dumptofile, 1, 1, mesh->device, mesh->comm);
+      multiPairExchange(dumptofile, pwNMessages, 1, mesh->device, mesh->comm);
     }
   }
 
