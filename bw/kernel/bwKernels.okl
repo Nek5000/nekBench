@@ -14,12 +14,13 @@
                   @restrict double* a)
 {
   for(int b = 0; b < Nblocks; ++b; @outer(0)) {
-    @shared double s[128];
-    @exclusive double r_x = 0;
+    @shared volatile double s[128];
+    @exclusive double r_x;
 
     for(int i = 0; i < 128; ++i; @inner(0)) {
       const int id = i + b*128;
       s[i] = a[id];
+      r_x = s[0];
     }
 
     @barrier("local");
