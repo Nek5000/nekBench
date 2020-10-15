@@ -35,6 +35,7 @@ namespace occa {
     std::string slashToSnake(const std::string &str);
 
     bool isAbsolutePath(const std::string &filename);
+    std::string getRelativePath(const std::string &filename);
 
     std::string expandEnvVariables(const std::string &filename);
 
@@ -51,6 +52,8 @@ namespace occa {
     std::string extension(const std::string &filename);
 
     std::string shortname(const std::string &filename);
+
+    std::string findInPaths(const std::string &filename, const strVector &paths);
 
     bool isDir(const std::string &filename);
     bool isFile(const std::string &filename);

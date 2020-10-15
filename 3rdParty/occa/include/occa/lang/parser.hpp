@@ -51,9 +51,11 @@ namespace occa {
       statementContext_t smntContext;
       statementPeeker_t smntPeeker;
 
+      int loadingStatementType;
       bool checkSemicolon;
 
       unknownToken defaultRootToken;
+      statementPtrVector comments;
       attributeTokenMap attributes;
 
       bool success;
@@ -113,6 +115,11 @@ namespace occa {
       exprNode* getExpression(const int start,
                               const int end);
 
+      void loadComments();
+      void loadComments(const int start,
+                        const int end);
+      void pushComments();
+
       void loadAttributes(attributeTokenMap &attrs);
 
       attribute_t* getAttribute(const std::string &name);
@@ -123,10 +130,6 @@ namespace occa {
       void loadBaseType(vartype_t &vartype);
       void loadType(vartype_t &vartype);
       vartype_t loadType();
-
-      bool isLoadingStruct();
-
-      struct_t* loadStruct();
 
       bool isLoadingVariable();
       bool isLoadingFunction();
@@ -164,6 +167,7 @@ namespace occa {
 
       void loadAllStatements();
 
+      statement_t* loadNextStatement();
       statement_t* getNextStatement();
 
       statement_t* loadBlockStatement(attributeTokenMap &smntAttributes);
@@ -173,8 +177,6 @@ namespace occa {
       statement_t* loadExpressionStatement(attributeTokenMap &smntAttributes);
 
       statement_t* loadDeclarationStatement(attributeTokenMap &smntAttributes);
-
-      statement_t* loadStructStatement(attributeTokenMap &smntAttributes);
 
       statement_t* loadNamespaceStatement(attributeTokenMap &smntAttributes);
 
@@ -203,6 +205,7 @@ namespace occa {
 
       statement_t* loadClassAccessStatement(attributeTokenMap &smntAttributes);
 
+      statement_t* loadDirectiveStatement(attributeTokenMap &smntAttributes);
       statement_t* loadPragmaStatement(attributeTokenMap &smntAttributes);
 
       statement_t* loadGotoStatement(attributeTokenMap &smntAttributes);

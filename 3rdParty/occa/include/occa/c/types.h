@@ -91,6 +91,8 @@ extern const int OCCA_PROPERTIES;
 extern const occaType occaNull;
 extern const occaType occaUndefined;
 extern const occaType occaDefault;
+extern const occaType occaTrue;
+extern const occaType occaFalse;
 extern const occaUDim_t occaAllBytes;
 //======================================
 
@@ -98,7 +100,7 @@ extern const occaUDim_t occaAllBytes;
 OCCA_LFUNC bool OCCA_RFUNC occaIsUndefined(occaType value);
 OCCA_LFUNC bool OCCA_RFUNC occaIsDefault(occaType value);
 
-OCCA_LFUNC occaType OCCA_RFUNC occaPtr(void *value);
+OCCA_LFUNC occaType OCCA_RFUNC occaPtr(const void *value);
 
 OCCA_LFUNC occaType OCCA_RFUNC occaBool(bool value);
 

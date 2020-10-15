@@ -27,8 +27,10 @@ namespace occa {
 
     kernel::~kernel() {
       if (cuModule) {
-        OCCA_CUDA_ERROR("Kernel (" + name + ") : Unloading Module",
-                        cuModuleUnload(cuModule));
+        OCCA_CUDA_DESTRUCTOR_ERROR(
+          "Kernel (" + name + ") : Unloading Module",
+          cuModuleUnload(cuModule)
+        );
         cuModule = NULL;
       }
     }
@@ -42,7 +44,7 @@ namespace occa {
     }
 
     dim kernel::maxOuterDims() const {
-      return dim(-1, -1, -1);
+      return dim(occa::UDIM_DEFAULT, occa::UDIM_DEFAULT, occa::UDIM_DEFAULT);
     }
 
     dim kernel::maxInnerDims() const {
@@ -54,7 +56,7 @@ namespace occa {
                                            CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK,
                                            cuFunction));
 
-        maxInnerDims_.x = maxSize;
+        maxInnerDims_.x = (udim_t) maxSize;
       }
       return maxInnerDims_;
     }

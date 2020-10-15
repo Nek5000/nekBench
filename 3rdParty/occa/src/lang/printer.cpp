@@ -2,17 +2,6 @@
 
 namespace occa {
   namespace lang {
-    int charsFromNewline(const std::string &s) {
-      const char *c = s.c_str();
-      const int chars = (int) s.size();
-      for (int pos = (chars - 1); pos >= 0; --pos) {
-        if (*c == '\n') {
-          return (chars - pos - 1);
-        }
-      }
-      return chars;
-    }
-
     printer::printer() :
       ss(),
       out(NULL) {
@@ -48,7 +37,9 @@ namespace occa {
       inlinedStack.clear();
       inlinedStack.push_back(false);
 
-      lastChar = '\0';
+      for (int i = 0; i < lastCharsBufferSize; ++i) {
+        lastChars[i] = '\0';
+      }
       charsFromNewline = 0;
     }
 
@@ -67,6 +58,10 @@ namespace occa {
       }
     }
 
+    int printer::indentationSize() {
+      return (int) indent.size();
+    }
+
     void printer::addIndentation() {
       indent += "  ";
     }
@@ -79,11 +74,11 @@ namespace occa {
     }
 
     char printer::getLastChar() {
-      return lastChar;
+      return lastChars[0];
     }
 
     bool printer::lastCharNeedsWhitespace() {
-      switch (lastChar) {
+      switch (lastChars[0]) {
       case '\0':
       case '(':  case '[':
       case ' ':  case '\t': case '\r':
@@ -94,7 +89,11 @@ namespace occa {
     }
 
     void printer::forceNextInlined() {
-      lastChar = '\0';
+      lastChars[0] = '\0';
+    }
+
+    int printer::cursorPosition() {
+      return charsFromNewline;
     }
 
     std::string printer::indentFromNewline() {
@@ -113,15 +112,38 @@ namespace occa {
       }
     }
 
+    void printer::printSpace() {
+      if (lastChars[0] != ' ') {
+        *this << ' ';
+      }
+    }
+
     void printer::printNewline() {
-      if (lastChar != '\n') {
+      if (lastChars[0] != '\n') {
         *this << '\n';
+      }
+    }
+
+    void printer::printNewlines(const int count) {
+      const int newlines = (
+        count <= lastCharsBufferSize
+        ? count
+        : lastCharsBufferSize
+      );
+
+      // Avoid printing newlines if we already have some
+      bool needsNewline = false;
+      for (int i = 0; i < newlines; ++i) {
+        needsNewline = needsNewline || lastChars[i] != '\n';
+        if (needsNewline) {
+          *this << '\n';
+        }
       }
     }
 
     void printer::printEndNewline() {
       if (!isInlined()) {
-        if (lastChar != '\n') {
+        if (lastChars[0] != '\n') {
           *this << '\n';
         }
       } else if (lastCharNeedsWhitespace()) {

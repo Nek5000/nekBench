@@ -59,6 +59,15 @@ void testPathMethods() {
   ASSERT_EQ(occa::io::convertSlashes("/a/b"),
             "/a/b");
 
+  ASSERT_EQ(occa::io::getRelativePath("./a"),
+            "a");
+  ASSERT_EQ(occa::io::getRelativePath("./a/b"),
+            "a/b");
+  ASSERT_EQ(occa::io::getRelativePath(".a/b"),
+            ".a/b");
+  ASSERT_EQ(occa::io::getRelativePath("../a/b"),
+            "../a/b");
+
   ASSERT_EQ(occa::io::expandEnvVariables("~"),
             occa::env::HOME);
   ASSERT_EQ(occa::io::expandEnvVariables("~/a"),
@@ -136,7 +145,7 @@ void testDirMethods() {
             0);
   dirs = occa::io::directories(testDir);
   ASSERT_EQ((int) dirs.size(),
-            6);
+            7);
 
   ASSERT_IN(testDir + "c/", dirs);
   ASSERT_IN(testDir + "io/", dirs);
@@ -161,7 +170,7 @@ void testIOMethods() {
             content);
 
   // C Read
-  size_t charCount = -1;
+  size_t charCount = occa::UDIM_DEFAULT;
   char *c = occa::io::c_read(test_foo, &charCount);
   ASSERT_EQ(charCount,
             content.size());

@@ -2,41 +2,42 @@ This benchmark computes the Helmholtz matrix-vector product
 ```
 AU = lambda0*[A]u + lambda1*[B]u
 ```
+or in BK mode
+```
+AU = [A]u
+```
 on deformed hexhedral spectral elements where A is the Laplace operator.
-Note, this benchmark is similar to CEED BK5 but different due to diagonal term [B] and the variable coefficients. 
 
 # Usage
 
 ```
-./axhelm polynomialDegree Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|OPENCL arch [nRepetitions] [kernelVersion] [deviceID] [platformID]
+./axhelm N Ndim numElements [NATIVE|OKL]+SERIAL|CUDA|HIP|OPENCL CPU|VOLTA [BKmode] [nRepetitions] [kernelVersion]
 ```
 Tuned kernels for the following architectures are available:
 * VOLTA (NVidia Pascal, Volta or Turing)
 * CPU (generic)	
 
 # Examples
-Here a few examples how to run the benchmark for 8000 elements with a polynomial degree 7
+Here a few examples how to run the benchmark for 2000 elements with a polynomial degree 7
 
-### Single GPU with OCCA kernel
+### Single Nvidia V100
 ```
->./axhelm 7 1 8000 OCCA+CUDA VOLTA 1000
-MPItasks=1 OMPthreads=1 Ndim=1 N=7 Nelements=8000 elapsed time=0.000393228 GDOF/s=6.97814 GB/s=749.977 GFLOPS/s=1187.46
-```
+>./axhelm 7 1 8000 OCCA+CUDA VOLTA
 
-### Single GPU with native CUDA kernel
-```
->./axhelm 7 1 8000 NATIVE+CUDA VOLTA 1000
-MPItasks=1 OMPthreads=1 Ndim=1 N=7 Nelements=8000 elapsed time=0.000395148 GDOF/s=6.94424 GB/s=746.334 GFLOPS/s=1181.7
-```
-
-### Hybrid MPI+OpenMP with native CPU kernel
-```
->OMP_PLACES=cores OMP_PROC_BIND=close OMP_NUM_THREADS=24 OCCA_CXX='g++' OCCA_CXXFLAGS='-O3 -march=native -mtune=native -fopenmp' mpirun -np 2 -bind-to socket ./axhelm 7 1 4000 NATIVE+OPENMP CPU 1000
-MPItasks=2 OMPthreads=24 Ndim=1 N=7 Nelements=8000 elapsed time=0.00120629 GDOF/s=2.27475 GB/s=244.479 GFLOPS/s=387.092
+word size: 8 bytes
+active occa mode: CUDA
+BK mode enabled
+Correctness check: maxError = 9.09495e-13
+MPItasks=1 OMPthreads=96 NRepetitions=100 Ndim=1 N=7 Nelements=4000 elapsed time=0.00018497 GDOF/s=7.41742 GB/s=797.189 GFLOPS/s=1229 
 ```
 
-### Pured MPI with native CPU kernel
+### Hybrid MPI+OpenMP with native CPU kernel on two socket Intel Xeon Gold 6252
 ```
->OCCA_CXX='icc' OCCA_CXXFLAGS='-O3 -xCORE-AVX512 -qopt-zmm-usage=high' OCCA_LDFLAGS='-static-intel' mpirun -np 48 -bind-to core ./axhelm 7 1 166 NATIVE+SERIAL CPU 1000
-MPItasks=48 OMPthreads=1 Ndim=1 N=7 Nelements=7920 elapsed time=0.00115478 GDOF/s=2.35245 GB/s=252.83 GFLOPS/s=400.314
+>OMP_PLACES=cores OMP_PROC_BIND=close OMP_NUM_THREADS=24 OCCA_CXX='g++' OCCA_CXXFLAGS='-O3 -march=native -mtune=native -fopenmp' mpirun -np 2 -bind-to socket ./axhelm 7 1 2000 NATIVE+OPENMP CPU
+
+word size: 8 bytes
+active occa mode: OpenMP
+BK mode enabled
+Correctness check: maxError = 1.36424e-12
+MPItasks=2 OMPthreads=24 NRepetitions=100 Ndim=1 N=7 Nelements=4000 elapsed time=0.000351181 GDOF/s=3.90682 GB/s=419.886 GFLOPS/s=647.324
 ```

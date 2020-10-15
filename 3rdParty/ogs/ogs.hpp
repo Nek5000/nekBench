@@ -112,12 +112,18 @@ SOFTWARE.
 #ifndef OGS_HPP
 #define OGS_HPP 1
 
+#include <functional>
 #include <math.h>
 #include <stdlib.h>
 #include <occa.hpp>
 
 #include "mpi.h"
 #include "types.h"
+
+//#define OGS_ENABLE_TIMER
+#ifdef OGS_ENABLE_TIMER
+#include "timer.hpp"
+#endif
 
 #define ogsFloat  "float"
 #define ogsDouble "double"
@@ -224,5 +230,39 @@ void ogsScatterManyStart (occa::memory  o_Sv, occa::memory  o_v, const int k, co
 void ogsScatterManyFinish(occa::memory  o_Sv, occa::memory  o_v, const int k, const dlong sstride, const dlong stride, const char *type, const char *op, ogs_t *ogs);
 
 void *ogsHostMallocPinned(occa::device &device, size_t size, void *source, occa::memory &mem, occa::memory &h_mem);
+
+#define USE_OOGS
+
+enum oogs_mode { OOGS_AUTO, OOGS_DEFAULT, OOGS_HOSTMPI, OOGS_DEVICEMPI };
+
+typedef struct {
+
+  ogs_t *ogs;
+
+  occa::memory h_buffSend, h_buffRecv;
+  unsigned char *bufSend, *bufRecv;
+
+  occa::memory o_bufSend, o_bufRecv;
+
+  occa::memory o_scatterOffsets, o_gatherOffsets;
+  occa::memory o_scatterIds, o_gatherIds;
+
+  occa::kernel packBufDoubleKernel, unpackBufDoubleKernel;
+  occa::kernel packBufFloatKernel, unpackBufFloatKernel;
+
+  oogs_mode mode;
+
+} oogs_t;
+
+namespace oogs{
+
+void start(occa::memory o_v, const int k, const dlong stride, const char *type, const char *op, oogs_t *h);
+void finish(occa::memory o_v, const int k, const dlong stride, const char *type, const char *op, oogs_t *h);
+oogs_t *setup(ogs_t *ogs, int nVec, dlong stride, const char *type, std::function<void()> callback, oogs_mode gsMode);
+oogs_t *setup(dlong N, hlong *ids, const int k, const dlong stride, const char *type, MPI_Comm &comm,
+              int verbose, occa::device device, std::function<void()> callback, oogs_mode mode);
+void destroy(oogs_t *h);
+
+}
 
 #endif

@@ -127,7 +127,6 @@ namespace ogs {
   extern occa::kernel gatherKernel_longMax;
 
 
-
   extern occa::kernel gatherVecKernel_floatAdd;
   extern occa::kernel gatherVecKernel_floatMul;
   extern occa::kernel gatherVecKernel_floatMin;
@@ -147,7 +146,6 @@ namespace ogs {
   extern occa::kernel gatherVecKernel_longMul;
   extern occa::kernel gatherVecKernel_longMin;
   extern occa::kernel gatherVecKernel_longMax;
-
 
 
   extern occa::kernel gatherManyKernel_floatAdd;
@@ -190,6 +188,8 @@ namespace ogs {
   extern occa::stream dataStream;
 
   void initKernels(MPI_Comm comm, occa::device device);
+
+  extern occa::properties kernelInfo;
 
   void freeKernels();
 }

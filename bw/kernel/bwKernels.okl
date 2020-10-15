@@ -1,0 +1,41 @@
+@kernel void triad(const int N,
+                   const double alpha,
+                   @restrict const double* a,
+                   @restrict const double* b,
+                   @restrict double* c)
+{
+  for(int n = 0; n < N; ++n; @tile(256,@outer,@inner))
+    if(n < N)
+      c[n] = a[n] + alpha * b[n];
+}
+
+@kernel void smem(const int Nblocks,
+                  const int N,
+                  @restrict double* a)
+{
+  for(int b = 0; b < Nblocks; ++b; @outer(0)) {
+    @shared double s[128];
+    @exclusive double r_x = 0;
+
+    for(int i = 0; i < 128; ++i; @inner(0)) {
+      const int id = i + b*128;
+      s[i] = a[id];
+    }
+
+    @barrier("local");
+
+#pragma unroll 128
+    for(int j = 0; j < 128; ++j) {
+      for(int i = 0; i < 128; ++i; @inner(0)) {
+        s[(i+j) % 128] += r_x;
+      }
+    }
+
+    @barrier("local");
+
+    for(int i = 0; i < 128; ++i; @inner(0)) {
+      const int id = i + b*128;
+      a[id] = s[i];
+    }
+  }
+}

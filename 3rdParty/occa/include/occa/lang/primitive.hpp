@@ -83,6 +83,12 @@ namespace occa {
       value.ptr = p.value.ptr;
     }
 
+    inline primitive& operator = (const primitive &p) {
+      type = p.type;
+      value.ptr = p.value.ptr;
+      return *this;
+    }
+
     primitive(const char *c);
     primitive(const std::string &s);
 
@@ -282,8 +288,11 @@ namespace occa {
       case primitiveType::int16_  : return (TM) value.int16_;
       case primitiveType::int32_  : return (TM) value.int32_;
       case primitiveType::int64_  : return (TM) value.int64_;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wfloat-equal"
       case primitiveType::float_  : return (TM) value.float_;
       case primitiveType::double_ : return (TM) value.double_;
+#pragma GCC diagnostic pop
       default: OCCA_FORCE_ERROR("Type not set");
       }
       return TM();

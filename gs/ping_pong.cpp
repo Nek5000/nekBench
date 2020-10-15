@@ -14,24 +14,25 @@
 #define LAT_SKIP_LARGE 10
 
 #define MPI_CHECK(stmt)                                          \
-do {                                                             \
-   int mpi_errno = (stmt);                                       \
-   if (MPI_SUCCESS != mpi_errno) {                               \
-       fprintf(stderr, "[%s:%d] MPI call failed with %d \n",     \
-        __FILE__, __LINE__,mpi_errno);                           \
-       exit(EXIT_FAILURE);                                       \
-   }                                                             \
-   assert(MPI_SUCCESS == mpi_errno);                             \
-} while (0)
+  do {                                                             \
+    int mpi_errno = (stmt);                                       \
+    if (MPI_SUCCESS != mpi_errno) {                               \
+      fprintf(stderr, "[%s:%d] MPI call failed with %d \n",     \
+              __FILE__, __LINE__,mpi_errno);                           \
+      exit(EXIT_FAILURE);                                       \
+    }                                                             \
+    assert(MPI_SUCCESS == mpi_errno);                             \
+  } while (0)
 
-struct options_t {
-    size_t min_message_size;
-    size_t max_message_size;
-    size_t iterations;
-    size_t iterations_large;
-    size_t skip;
-    size_t skip_large;
-    size_t pairs;
+struct options_t
+{
+  size_t min_message_size;
+  size_t max_message_size;
+  size_t iterations;
+  size_t iterations_large;
+  size_t skip;
+  size_t skip_large;
+  size_t pairs;
 };
 
 static void pingpong(bool dumptofile, MPI_Comm comm);
@@ -438,5 +439,6 @@ static void pairexchange(bool dumptofile, int nmessages, MPI_Comm comm) {
   free(all_min);
   free(all_max);
   free(all_avg);
+
 
 }

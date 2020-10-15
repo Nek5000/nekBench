@@ -12,6 +12,7 @@ endif
 
 binPath  = $(PROJ_DIR)/bin
 libPath  = $(PROJ_DIR)/lib
+modPath  = $(PROJ_DIR)/lib/occa/fortran/modules
 objPath  = $(PROJ_DIR)/obj
 srcPath  = $(PROJ_DIR)/src
 incPath  = $(PROJ_DIR)/include
@@ -23,17 +24,17 @@ debugEnabled = 0
 checkEnabled = 1
 
 ifeq ($(OCCA_DEVELOPER),1)
- ifeq ($(DEBUG),0)
+  ifeq ($(DEBUG),0)
     debugEnabled = 0
- else
+  else
     debugEnabled = 1
- endif
+  endif
 else
- ifeq ($(DEBUG),1)
+  ifeq ($(DEBUG),1)
     debugEnabled = 1
- else
+  else
     debugEnabled = 0
- endif
+  endif
 endif
 
 flags =
@@ -108,26 +109,46 @@ else
   cCompilerFlags = $(CFLAGS)
 endif
 
+FC ?= gfortran
+
+ifndef FFLAGS
+  ifeq ($(debugEnabled),1)
+    fCompilerFlags = $(debugFlags)
+  else
+    fCompilerFlags = $(releaseFlags)
+  endif
+else
+  fCompilerFlags = $(FFLAGS)
+endif
+
 ifeq ($(OCCA_COVERAGE),1)
-  coverageFlags = --coverage -fno-inline -fno-inline-small-functions -fno-default-inline -Wno-ignored-optimization-argument
+  coverageFlags = --coverage -fno-inline -fno-inline-small-functions -fno-default-inline
   compilerFlags += $(coverageFlags)
   cCompilerFlags += $(coverageFlags)
+  fCompilerFlags += $(coverageFlags)
 endif
 
 compiler  = $(CXX)
 cCompiler = $(CC)
+fCompiler = $(FC)
 
 linkerFlags = $(LDFLAGS)
+fLinkerFlags = $(LDFLAGS)
 #=================================================
 
 
 #---[ Paths/Flags ]-------------------------------
-paths = -I$(OCCA_DIR)/include
+# OCCA (global) include and library paths
+paths  = -I$(OCCA_DIR)/include
+paths += -L$(OCCA_DIR)/lib
+
+# Extra (user-supplied) include and library paths
 paths += $(foreach path, $(subst :, ,$(OCCA_INCLUDE_PATH)), -I$(path))
 paths += $(foreach path, $(subst :, ,$(OCCA_LIBRARY_PATH)), -L$(path))
 
-ifneq (,$(wildcard ./$(incPath)/*))
-  paths += -I./$(incPath)
+# Project (local) include path
+ifneq (,$(strip $(wildcard $(incPath)/*)))
+  paths += -I$(incPath)
 endif
 
 linkerFlags += -locca
@@ -145,12 +166,16 @@ endif
 libraryFlagsFor = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; libraryFlags "$1")
 includeFlagsFor = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; headerFlags  "$1")
 
+compilerVendor       = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; compilerVendor       "$(compiler)")
 compilerReleaseFlags = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; compilerReleaseFlags "$(compiler)")
 compilerDebugFlags   = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; compilerDebugFlags   "$(compiler)")
 compilerCpp11Flags   = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; compilerCpp11Flags   "$(compiler)")
 compilerPicFlag      = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; compilerPicFlag      "$(compiler)")
 compilerSharedFlag   = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; compilerSharedFlag   "$(compiler)")
 compilerPthreadFlag  = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; compilerPthreadFlag  "$(compiler)")
+
+fCompilerModuleDirFlag = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; fCompilerModuleDirFlag "$(fCompiler)")
+fCompilerCppFlag       = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; fCompilerCppFlag       "$(fCompiler)")
 
 compilerSupportsMPI    = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; compilerSupportsMPI    "$(compiler)")
 compilerSupportsOpenMP = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.sh; compilerSupportsOpenMP "$(compiler)")
@@ -159,12 +184,25 @@ compilerOpenMPFlag     = $(shell . $(OCCA_DIR)/include/occa/scripts/shellTools.s
 
 
 #---[ Compiler Info ]-----------------------------
+vendor       = $(call compilerVendor)
 debugFlags   = $(call compilerDebugFlags)
 releaseFlags = $(call compilerReleaseFlags)
 cpp11Flags   = $(call compilerCpp11Flags)
 picFlag      = $(call compilerPicFlag)
 sharedFlag   = $(call compilerSharedFlag)
 pthreadFlag  = $(call compilerPthreadFlag)
+
+fModuleDirFlag = $(call fCompilerModuleDirFlag)
+fCppFlag       = $(call fCompilerCppFlag)
+
+# Workaround for GitHub Actions CI tests on Ubuntu using GCC.
+ifdef GITHUB_ACTIONS
+  ifeq ($(usingLinux),1)
+    ifeq ($(vendor),GCC)
+      releaseFlags := $(filter-out -march=native,$(releaseFlags))
+    endif
+  endif
+endif
 #=================================================
 
 
@@ -188,7 +226,7 @@ ifeq ($(usingLinux),1)
 
 else ifeq ($(usingMacOS),1)
 
-	OCCA_OS := OCCA_MACOS_OS
+  OCCA_OS := OCCA_MACOS_OS
   flags += -Wno-deprecated-declarations
   linkerFlags += -framework accelerate -framework CoreServices
   soNameFlag = -Wl,-install_name,@rpath/libocca.dylib
@@ -198,7 +236,7 @@ else ifeq ($(usingWindows),1)
 
   ifeq ($(usingWinux),0)
     OCCA_OS := OCCA_WINDOWS_OS
-	  OCCA_USING_VS := 1
+    OCCA_USING_VS := 1
   else
     OCCA_OS := OCCA_WINDOWS_OS
   endif
@@ -211,12 +249,20 @@ endif
 
 
 #---[ Variable Dependencies ]---------------------
-mpiEnabled    = 0
-openmpEnabled = 0
-cudaEnabled   = 0
-hipEnabled    = 0
-openclEnabled = 0
-metalEnabled  = 0
+fortranEnabled = 0
+mpiEnabled     = 0
+openmpEnabled  = 0
+cudaEnabled    = 0
+hipEnabled     = 0
+openclEnabled  = 0
+metalEnabled   = 0
+
+
+#---[ Fortran ]-------------------------
+ifdef OCCA_FORTRAN_ENABLED
+  fortranEnabled = $(OCCA_FORTRAN_ENABLED)
+endif
+include $(OCCA_DIR)/scripts/Make.fortran
 
 
 #---[ MPI ]-----------------------------
@@ -270,31 +316,86 @@ endif
 
 
 #---[ HIP ]-----------------------------
-hipEnabled = 0
-hipIncFlags = $(call includeFlagsFor,hip/hip_runtime_api.h)
-ifneq (,$(hipIncFlags))
-  HIP_PATH = ${hipIncFlags:-I%=%}/..
-  hipEnabled = 1
-endif
 ifdef OCCA_HIP_ENABLED
   hipEnabled = $(OCCA_HIP_ENABLED)
-endif
 
-ifeq ($(hipEnabled),1)
-  ifneq (,$(HIP_PATH))
-    hipPlatform = $(shell $(HIP_PATH)/bin/hipconfig --platform)
-    hipConfig = $(shell $(HIP_PATH)/bin/hipconfig --cpp_config)
+  ifeq ($(hipEnabled),1)
+    #set HIP_PATH if not supplied by user
+    ifeq (,$(HIP_PATH))
+      hipIncFlags = $(call includeFlagsFor,hip/hip_runtime_api.h)
+      ifneq (,$(hipIncFlags))
+        HIP_PATH = ${hipIncFlags:-I%=%}/..
+      endif
+    endif
+
+    #set HIP_PLATFORM if not supplied by user
+    ifeq (,$(HIP_PLATFORM))
+      hipPlatform = $(shell $(HIP_PATH)/bin/hipconfig --platform)
+    else
+      hipPlatform = $(HIP_PLATFORM)
+    endif
+
     ifeq ($(hipPlatform),nvcc)
-      linkerFlags += -lcuda -lcudart
+      linkerFlags += -lcuda
+      linkerFlags += -lcudart
+    else ifeq ($(hipPlatform),hcc)
+      #set HIP_COMPILER if not supplied by user
+      ifeq (,$(HIP_COMPILER))
+        hipCompiler = $(shell $(HIP_PATH)/bin/hipconfig --compiler)
+      else
+        hipCompiler = $(HIP_COMPILER)
+      endif
+
+      #Select HCC or HIP Runtime
+      ifeq ($(hipCompiler),hcc)
+        linkerFlags += -lhip_hcc
+      else ifeq ($(hipCompiler),clang)
+        linkerFlags += -lamdhip64
+      endif
+    endif
+  endif
+else
+  #find HIP_PATH if not supplied by user
+  ifeq (,$(HIP_PATH))
+    hipIncFlags = $(call includeFlagsFor,hip/hip_runtime_api.h)
+    ifneq (,$(hipIncFlags))
+      HIP_PATH = ${hipIncFlags:-I%=%}/..
+    endif
+  endif
+
+  ifneq (,$(HIP_PATH))
+    #set HIP_PLATFORM if not supplied by user
+    ifeq (,$(HIP_PLATFORM))
+      hipPlatform = $(shell $(HIP_PATH)/bin/hipconfig --platform)
+    else
+      hipPlatform = $(HIP_PLATFORM)
+    endif
+
+    ifeq ($(hipPlatform),nvcc)
       hipLibFlags  = $(call libraryFlagsFor,cuda)
       hipLibFlags += $(call libraryFlagsFor,cudart)
     else ifeq ($(hipPlatform),hcc)
-      linkerFlags += -lhip_hcc
-      hipLibFlags = $(call libraryFlagsFor,hip_hcc)
+      #set HIP_COMPILER if not supplied by user
+      ifeq (,$(HIP_COMPILER))
+        hipCompiler = $(shell $(HIP_PATH)/bin/hipconfig --compiler)
+      else
+        hipCompiler = $(HIP_COMPILER)
+      endif
+
+      #Select HCC or HIP Runtime
+      ifeq ($(hipCompiler),hcc)
+        hipLibFlags = $(call libraryFlagsFor,hip_hcc)
+      else ifeq ($(hipCompiler),clang)
+        hipLibFlags = $(call libraryFlagsFor,amdhip64)
+      endif
     endif
-    paths += $(hipConfig)
-    paths += $(hipIncFlags)
-    linkerFlags += $(hipLibFlags)
+
+    ifneq (,$(hipLibFlags))
+      hipEnabled = 1
+      paths += $(shell $(HIP_PATH)/bin/hipconfig --cpp_config)
+      paths += $(call includeFlagsFor,hip/hip_runtime_api.h)
+      linkerFlags += $(hipLibFlags)
+    endif
   endif
 endif
 
@@ -368,10 +469,11 @@ else
   OCCA_CHECK_ENABLED := 0
 endif
 
-OCCA_MPI_ENABLED    := $(mpiEnabled)
-OCCA_OPENMP_ENABLED := $(openmpEnabled)
-OCCA_CUDA_ENABLED   := $(cudaEnabled)
-OCCA_HIP_ENABLED    := $(hipEnabled)
-OCCA_OPENCL_ENABLED := $(openclEnabled)
-OCCA_METAL_ENABLED  := $(metalEnabled)
+OCCA_FORTRAN_ENABLED := $(fortranEnabled)
+OCCA_MPI_ENABLED     := $(mpiEnabled)
+OCCA_OPENMP_ENABLED  := $(openmpEnabled)
+OCCA_CUDA_ENABLED    := $(cudaEnabled)
+OCCA_HIP_ENABLED     := $(hipEnabled)
+OCCA_OPENCL_ENABLED  := $(openclEnabled)
+OCCA_METAL_ENABLED   := $(metalEnabled)
 #=================================================
