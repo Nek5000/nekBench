@@ -23,9 +23,8 @@ int main(int argc, char** argv)
   MPI_Comm_rank (MPI_COMM_WORLD, &rank);
   setupAide options;
 
-  if(argc < 6) {
-    if(rank == 0) printf(
-        "usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <ogs_mode> <nRepetitions> <enable timers> <run dummy kernel> <use FP32> <GPU aware MPI> <DEVICE-ID>\n");
+  if(argc<6){
+    if(rank ==0) printf("usage: ./gs N nelX nelY nelZ SERIAL|CUDA|HIP|OPENCL <ogs_mode> <nRepetitions> <pairwise exchange n messages> <run dummy kernel> <use FP32> <GPU aware MPI> <DEVICE-ID>\n");
 
     MPI_Finalize();
     exit(1);
@@ -40,13 +39,13 @@ int main(int argc, char** argv)
   options.setArgs("THREAD MODEL", threadModel);
 
   std::list<ogs_mode> ogs_mode_list;
-  if(argc > 6 && std::stoi(argv[6]) > 0) {
+  if(argc > 6 && std::stoi(argv[6]) >= 0) {
     const int mode = std::stoi(argv[6]);
-    if(mode < 0 || mode > 4) {
+    if(mode > 2) {
       if(rank == 0) printf("invalid ogs_mode!\n");
       MPI_Abort(MPI_COMM_WORLD,1);
     }
-    if(mode) ogs_mode_list.push_back((ogs_mode)(mode - 1));
+    if(mode >= 0) ogs_mode_list.push_back((ogs_mode)(mode));
   } else {
     ogs_mode_list.push_back(OGS_DEFAULT);
     ogs_mode_list.push_back(OGS_HOSTMPI);
@@ -55,29 +54,31 @@ int main(int argc, char** argv)
   int Ntests = 100;
   if(argc > 7) Ntests = std::stoi(argv[7]);
 
-  int enabledTimer = 0;
-  if(argc > 8) enabledTimer = std::stoi(argv[8]);
+  int pwNMessages = 26;
+  if(argc>8) pwNMessages = std::stoi(argv[8]);
+
+  bool dumptofile = true;
 
   int dummyKernel = 0;
-  if(argc > 9) dummyKernel = std::stoi(argv[9]);
+  if(argc>9) dummyKernel = std::stoi(argv[9]);
 
   int unit_size = sizeof(double);
   std::string floatType("double");
-  if(argc > 10 && std::stoi(argv[10])) {
+  if(argc>10 && std::stoi(argv[10])) {
     floatType = "float";
     unit_size = sizeof(float);
   }
 
   int enabledGPUMPI = 0;
-  if(argc > 11) {
-    if(argv[11]) {
+  if(argc>11) {
+    if(std::stoi(argv[11])) {
       enabledGPUMPI = 1;
       ogs_mode_list.push_back(OGS_DEVICEMPI);
     }
   }
 
   options.setArgs("DEVICE NUMBER", "LOCAL-RANK");
-  if(argc > 12) {
+  if(argc>12) {
     std::string deviceNumber;
     deviceNumber.assign(strdup(argv[12]));
     options.setArgs("DEVICE NUMBER", deviceNumber);
@@ -195,20 +196,26 @@ int main(int argc, char** argv)
   if(mesh->rank == 0) cout << "\nstarting measurement ...\n";
   fflush(stdout);
 
-  // ping pong
   mesh->device.finish();
   MPI_Barrier(mesh->comm);
   {
-    const int nPairs = mesh->size / 2;
-    pingPongMulti(nPairs, 0, mesh->device, mesh->comm);
-    if(enabledGPUMPI) pingPongMulti(nPairs, enabledGPUMPI, mesh->device, mesh->comm);
+    if(pwNMessages > mesh->size) pwNMessages = mesh->size-1;
+    pingPongSinglePair(dumptofile, 0, mesh->device, mesh->comm);
+    //multiPairExchange(dumptofile, 1, 0, mesh->device, mesh->comm);
+    multiPairExchange(dumptofile, pwNMessages, 0, mesh->device, mesh->comm);
+    if(enabledGPUMPI) {
+      pingPongSinglePair(dumptofile, 1, mesh->device, mesh->comm);
+      //multiPairExchange(dumptofile, 1, 1, mesh->device, mesh->comm);
+      multiPairExchange(dumptofile, pwNMessages, 1, mesh->device, mesh->comm);
+    }
   }
 
   for (auto const& ogs_mode_enum : ogs_mode_list) {
+
     occa::stream defaultStream = mesh->device.getStream();
     occa::stream kernelStream  = mesh->device.createStream();
 
-    // gs
+    // run with enabled timers
     mygsEnableTimer(1);
     timer::reset();
     mesh->device.setStream(kernelStream);
@@ -229,9 +236,10 @@ int main(int argc, char** argv)
     mesh->device.setStream(defaultStream);
     MPI_Barrier(mesh->comm);
 
+    // run without timers
     mygsEnableTimer(0);
     const double start = MPI_Wtime();
-    for(int test = 0; test < Ntests; ++test) {
+    for(int test=0;test<Ntests;++test) {
       mygsStart(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
       if(dummyKernel) {
         kernel(Nlocal, o_U);
@@ -242,7 +250,7 @@ int main(int argc, char** argv)
     mesh->device.finish();
     mesh->device.setStream(defaultStream);
     MPI_Barrier(mesh->comm);
-    const double elapsed = (MPI_Wtime() - start) / Ntests;
+    const double elapsed = (MPI_Wtime() - start)/Ntests;
 
     // print stats
     const int Ntimer = 10;
