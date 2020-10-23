@@ -3668,26 +3668,31 @@ void meshPrintPartitionStatistics(mesh_t* mesh)
   if(mesh->size == 1) return;
   ogs_t* ogs = mesh->ogs;
 
+  MPI_Comm localComm;
+  MPI_Comm_split_type(ogs->comm, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &localComm);
+  int localCommSize, localRankId; 
+  MPI_Comm_rank(localComm, &localRankId);
+  MPI_Comm_size(localComm, &localCommSize);
+
+  MPI_Comm nodeComm;
+  int color = MPI_UNDEFINED;
+  if (localRankId == 0) color = 1;
+  MPI_Comm_split(ogs->comm, color, 0, &nodeComm);
+  int nodeCommSize, nodeRankId = -1;
+  if (color != MPI_UNDEFINED) {
+    MPI_Comm_rank(nodeComm, &nodeRankId);
+    MPI_Comm_size(nodeComm, &nodeCommSize);
+  }
+
   int nelMin, nelMax;
   nelMax = mesh->Nelements;
   nelMin = mesh->Nelements;
   MPI_Allreduce(MPI_IN_PLACE, &nelMin, 1, MPI_INT, MPI_MIN, ogs->comm);
   MPI_Allreduce(MPI_IN_PLACE, &nelMax, 1, MPI_INT, MPI_MAX, ogs->comm);
 
-  int nhMin, nhMax, nhSum;
-  nhMax = nhMin = nhSum = ogs->NhaloGather;
-  MPI_Allreduce(MPI_IN_PLACE, &nhMax, 1, MPI_INT, MPI_MAX, ogs->comm);
-  MPI_Allreduce(MPI_IN_PLACE, &nhMin, 1, MPI_INT, MPI_MIN, ogs->comm);
-  MPI_Allreduce(MPI_IN_PLACE, &nhSum, 1, MPI_INT, MPI_SUM, ogs->comm);
-
   if (mesh->rank == 0) {
     printf("\n");
-    printf(
-      "max elements: %d | min elements: %d | balance: %lf\n",
-      nelMax, nelMin, (double)nelMax / nelMin);
-    printf(
-      "max halo size: %d | min halo size: %d | avg halo size: %lf\n",
-      nhMax, nhMin, (double)nhSum / mesh->size);
+    printf("max|min|bal elements: %d %d %.2f\n", nelMax, nelMin, (double)nelMax / nelMin);
     printf("\n");
   }
 
@@ -3708,6 +3713,7 @@ void meshPrintPartitionStatistics(mesh_t* mesh)
     MPI_Allreduce(MPI_IN_PLACE, &ncMax, 1, MPI_INT, MPI_MAX, ogs->comm);
     MPI_Allreduce(MPI_IN_PLACE, &ncMin, 1, MPI_INT, MPI_MIN, ogs->comm);
     MPI_Allreduce(MPI_IN_PLACE, &ncSum, 1, MPI_DOUBLE, MPI_SUM, ogs->comm);
+    ncSum = ncSum/mesh->size;
 
     // message sizes
     int nsMin, nsMax;
@@ -3720,32 +3726,42 @@ void meshPrintPartitionStatistics(mesh_t* mesh)
       nsMin = Ncomm[i] < Ncomm[i - 1] ? Ncomm[i] : Ncomm[i - 1];
       nsSum += Ncomm[i];
     }
-    nsSum = nsSum / Nmsg;
+    double nsAvg = nsSum / Nmsg;
     MPI_Allreduce(MPI_IN_PLACE, &nsMax, 1, MPI_INT, MPI_MAX, ogs->comm);
     MPI_Allreduce(MPI_IN_PLACE, &nsMin, 1, MPI_INT, MPI_MIN, ogs->comm);
-    MPI_Allreduce(MPI_IN_PLACE, &nsSum, 1, MPI_DOUBLE, MPI_SUM, ogs->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &nsAvg, 1, MPI_DOUBLE, MPI_SUM, ogs->comm);
+    nsAvg = nsAvg/mesh->size;
 
-    // message volume per rank
+    // message volume per compute node
     int nssMin, nssMax;
     double nssSum;
-    nssMin = nsSum;
-    nssMax = nsSum;
-    nssSum = nsSum;
-    MPI_Allreduce(MPI_IN_PLACE, &nssMax, 1, MPI_INT, MPI_MAX, ogs->comm);
-    MPI_Allreduce(MPI_IN_PLACE, &nssMin, 1, MPI_INT, MPI_MIN, ogs->comm);
-    MPI_Allreduce(MPI_IN_PLACE, &nssSum, 1, MPI_DOUBLE, MPI_SUM, ogs->comm);
+    MPI_Allreduce(&nsSum, &nssSum, 1, MPI_DOUBLE, MPI_SUM, localComm);
+    nssMin = nssSum;
+    nssMax = nssSum;
+    nssSum = nssSum/localCommSize;
+    if (color != MPI_UNDEFINED) {
+      MPI_Allreduce(MPI_IN_PLACE, &nssMax, 1, MPI_INT, MPI_MAX, nodeComm);
+      MPI_Allreduce(MPI_IN_PLACE, &nssMin, 1, MPI_INT, MPI_MIN, nodeComm);
+      MPI_Allreduce(MPI_IN_PLACE, &nssSum, 1, MPI_DOUBLE, MPI_SUM, nodeComm);
+      nssSum = nssSum/nodeCommSize;
+    }
+
+    // halos
+    int nhMin, nhMax;
+    double nhSum;
+    nhMax = nhMin = nhSum = ogs->NhaloGather;
+    MPI_Allreduce(MPI_IN_PLACE, &nhMax, 1, MPI_INT, MPI_MAX, ogs->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &nhMin, 1, MPI_INT, MPI_MIN, ogs->comm);
+    MPI_Allreduce(MPI_IN_PLACE, &nhSum, 1, MPI_DOUBLE, MPI_SUM, ogs->comm);
+    nhSum = nhSum/mesh->size;
 
     if (mesh->rank == 0) {
-      printf(
-        "max nmsg: %d | min nmsg: %d | avg nmsg: %lf\n",
-        ncMax, ncMin, ncSum / mesh->size);
-      printf(
-        "max msg size: %d | min msg size: %d | avg msg size: %lf\n",
-        nsMax, nsMin, nsSum / mesh->size);
-      printf(
-        "max msg volume: %d | min msg volume: %d | avg msg volume: %lf\n",
-        nssMax, nssMin, nssSum / mesh->size);
-      printf("\n");
+      printf("max|min|avg Nmsg per rank: %d %d %.2f\n", ncMax, ncMin, ncSum);
+      printf("max|min|avg msgSizes across all ranks: %d %d %.2f\n", nsMax, nsMin, nsAvg);
+      printf("max|min|avg haloSize per rank: %d %d %.2f\n", nhMax, nhMin, nhSum);
+    }
+    if (nodeRankId == 0) {
+      printf("max|min|avg msgVolume per compute node: %d %d %.2f\n\n", nssMax, nssMin, nssSum);
     }
 
     free(Ncomm);

@@ -122,7 +122,7 @@ int main(int argc, char** argv)
   // setup gs
   const dlong Nlocal = mesh->Nelements * mesh->Np;
   ogs_t* ogs = ogsSetup(Nlocal, mesh->globalIds, mesh->comm, 1, mesh->device);
-  mygsSetup(ogs, enabledTimer);
+  mygsSetup(ogs);
   mesh->ogs = ogs;
 
   meshPrintPartitionStatistics(mesh);
@@ -209,21 +209,35 @@ int main(int argc, char** argv)
     occa::stream kernelStream  = mesh->device.createStream();
 
     // gs
+    mygsEnableTimer(1);
     timer::reset();
     mesh->device.setStream(kernelStream);
     mesh->device.finish();
     MPI_Barrier(mesh->comm);
+    for(int test = 0; test < Ntests; ++test) {
+      mygsStart(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
+      if(dummyKernel) {
+        timer::tic("dummyKernel");
+        kernel(Nlocal, o_U);
+        mesh->device.setStream(defaultStream);
+        timer::toc("dummyKernel");
+      }
+      mygsFinish(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
+      timer::update();
+    }
+    mesh->device.finish();
+    mesh->device.setStream(defaultStream);
+    MPI_Barrier(mesh->comm);
+
+    mygsEnableTimer(0);
     const double start = MPI_Wtime();
     for(int test = 0; test < Ntests; ++test) {
       mygsStart(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
       if(dummyKernel) {
-        if(enabledTimer) timer::tic("dummyKernel");
         kernel(Nlocal, o_U);
         mesh->device.setStream(defaultStream);
-        if(enabledTimer) timer::toc("dummyKernel");
       }
       mygsFinish(o_q, floatType.c_str(), ogsAdd, ogs, ogs_mode_enum);
-      if(enabledTimer) timer::update();
     }
     mesh->device.finish();
     mesh->device.setStream(defaultStream);
@@ -233,19 +247,17 @@ int main(int argc, char** argv)
     // print stats
     const int Ntimer = 10;
     double etime[Ntimer];
-    if(enabledTimer) {
-      etime[0] = timer::query("gather_halo", "DEVICE:MAX");
-      etime[1] = timer::query("gs_interior", "DEVICE:MAX");
-      etime[2] = timer::query("scatter", "DEVICE:MAX");
-      etime[3] = timer::query("gs_host", "HOST:MAX");
-      etime[4] = timer::query("gs_memcpy_dh", "DEVICE:MAX");
-      etime[5] = timer::query("gs_memcpy_hd", "DEVICE:MAX");
-      etime[6] = timer::query("dummyKernel", "DEVICE:MAX");
-      etime[7] = timer::query("pw_exec", "HOST:MAX");
-      etime[8] = timer::query("pack", "DEVICE:MAX");
-      etime[9] = timer::query("unpack", "DEVICE:MAX");
-      for(int i = 0; i < Ntimer; i++) etime[i] = std::max(etime[i],0.0) / Ntests;
-    }
+    etime[0] = timer::query("gather_halo", "DEVICE:MAX");
+    etime[1] = timer::query("gs_interior", "DEVICE:MAX");
+    etime[2] = timer::query("scatter", "DEVICE:MAX");
+    etime[3] = timer::query("gs_host", "HOST:MAX");
+    etime[4] = timer::query("gs_memcpy_dh", "DEVICE:MAX");
+    etime[5] = timer::query("gs_memcpy_hd", "DEVICE:MAX");
+    etime[6] = timer::query("dummyKernel", "DEVICE:MAX");
+    etime[7] = timer::query("pw_exec", "HOST:MAX");
+    etime[8] = timer::query("pack", "DEVICE:MAX");
+    etime[9] = timer::query("unpack", "DEVICE:MAX");
+    for(int i = 0; i < Ntimer; i++) etime[i] = std::max(etime[i],0.0) / Ntests;
 
     if(mesh->rank == 0) {
       int Nthreads =  omp_get_max_threads();
@@ -264,20 +276,18 @@ int main(int argc, char** argv)
       ((double)(NX * NY * NZ) * N * N * N / elapsed) / 1.e9 << " GDOF/s\n"
            << "  avg elapsed time              : " << elapsed << " s\n";
 
-      if(enabledTimer) {
-        cout << "    gather halo                 : " << etime[0] << " s\n"
-             << "    gs interior                 : " << etime[1] << " s\n"
-             << "    scatter halo                : " << etime[2] << " s\n"
-             << "    memcpy host<->device        : " << etime[4] + etime[5] << " s\n";
+      cout << "    gather halo                 : " << etime[0] << " s\n"
+           << "    gs interior                 : " << etime[1] << " s\n"
+           << "    scatter halo                : " << etime[2] << " s\n"
+           << "    memcpy host<->device        : " << etime[4] + etime[5] << " s\n";
 
-        if(ogs_mode_enum == OGS_DEFAULT)
-          cout << "    gslib_host                  : " << etime[3] << " s\n";
-        else
-          cout << "    pack/unpack buf             : " << etime[8] + etime[9] << " s\n"
-               << "    pw exec                     : " << etime[7] << " s\n";
+      if(ogs_mode_enum == OGS_DEFAULT)
+        cout << "    gslib_host                  : " << etime[3] << " s\n";
+      else
+        cout << "    pack/unpack buf             : " << etime[8] + etime[9] << " s\n"
+             << "    pw exec                     : " << etime[7] << " s\n";
 
-        cout << "  avg elapsed time dummy kernel : " << etime[6] << " s\n";
-      }
+      cout << "  avg elapsed time dummy kernel : " << etime[6] << " s\n";
     }
   }
   MPI_Finalize();

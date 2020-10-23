@@ -180,7 +180,7 @@ static void convertMap(const uint* restrict map,
   }
 }
 
-void mygsSetup(ogs_t* ogs, int timer)
+void mygsSetup(ogs_t* ogs)
 {
   const unsigned transpose = 0;
   struct gs_data* gsh = (gs_data*) ogs->haloGshSym;
@@ -191,7 +191,6 @@ void mygsSetup(ogs_t* ogs, int timer)
   const unsigned vn = 1;
   const unsigned unit_size = vn * sizeof(double);
 
-  enabledTimer = timer;
   if(Nhalo == 0) return;
   occa::properties props;
   props["mapped"] = true;
@@ -546,4 +545,9 @@ void mygsFinish(occa::memory o_v, const char* type, const char* op, ogs_t* ogs, 
                 o_v);
     if(enabledTimer) timer::deviceToc("scatter");
   }
+}
+
+void mygsEnableTimer(int enabled)
+{
+  enabledTimer = enabled;
 }
