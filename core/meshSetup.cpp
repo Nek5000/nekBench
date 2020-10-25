@@ -3738,7 +3738,7 @@ void meshPrintPartitionStatistics(mesh_t* mesh)
     MPI_Allreduce(&nsSum, &nssSum, 1, MPI_DOUBLE, MPI_SUM, localComm);
     nssMin = nssSum;
     nssMax = nssSum;
-    nssSum = nssSum/localCommSize;
+    nssSum = nssSum;
     if (color != MPI_UNDEFINED) {
       MPI_Allreduce(MPI_IN_PLACE, &nssMax, 1, MPI_INT, MPI_MAX, nodeComm);
       MPI_Allreduce(MPI_IN_PLACE, &nssMin, 1, MPI_INT, MPI_MIN, nodeComm);

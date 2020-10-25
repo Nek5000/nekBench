@@ -200,12 +200,10 @@ int main(int argc, char** argv)
   MPI_Barrier(mesh->comm);
   {
     if(pwNMessages > mesh->size) pwNMessages = mesh->size-1;
-    pingPongSinglePair(dumptofile, 0, mesh->device, mesh->comm);
-    //multiPairExchange(dumptofile, 1, 0, mesh->device, mesh->comm);
+    //pingPongSinglePair(dumptofile, 0, mesh->device, mesh->comm);
     multiPairExchange(dumptofile, pwNMessages, 0, mesh->device, mesh->comm);
     if(enabledGPUMPI) {
-      pingPongSinglePair(dumptofile, 1, mesh->device, mesh->comm);
-      //multiPairExchange(dumptofile, 1, 1, mesh->device, mesh->comm);
+      //pingPongSinglePair(dumptofile, 1, mesh->device, mesh->comm);
       multiPairExchange(dumptofile, pwNMessages, 1, mesh->device, mesh->comm);
     }
   }

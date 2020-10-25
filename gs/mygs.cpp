@@ -329,7 +329,10 @@ static void myHostGatherScatter(occa::memory o_u,
     ogs->device.finish(); // waiting for buffers to be ready
     MPI_Barrier(comm->c);
 
-    if(enabledTimer) timer::hostTic("pw_exec");
+    if(enabledTimer) {
+      timer::hostUpdate("pw_exec");
+      timer::hostTic("pw_exec");
+    }
 
     MPI_Neighbor_alltoallv(bufSend, ngh.sendcounts, ngh.senddispls, MPI_UNSIGNED_CHAR,
                            bufRecv, ngh.recvcounts, ngh.recvdispls, MPI_UNSIGNED_CHAR,
