@@ -57,7 +57,7 @@ int main(int argc, char** argv)
   int pwNMessages = 26;
   if(argc>8) pwNMessages = std::stoi(argv[8]);
 
-  bool dumptofile = true;
+  bool dumptofile = false;
 
   int dummyKernel = 0;
   if(argc>9) dummyKernel = std::stoi(argv[9]);
